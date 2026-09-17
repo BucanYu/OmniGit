@@ -70,9 +70,6 @@ lerna-debug.log*
 .env.*.local
 *.local
 
-# --- AI Agent Session Context & Memory ---
-.agent/
-
 # --- OS & Editor Metadata ---
 .DS_Store
 Thumbs.db
