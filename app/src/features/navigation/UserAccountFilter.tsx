@@ -71,10 +71,22 @@ export function UserAccountFilter() {
   const containerRef = useRef<HTMLDivElement>(null);
   const currentProject = projects.find((p) => p.id === activeProjectId);
 
-  // Active account for current project
+  // Active account for current project (Prioritizes live gitUser for selected repo)
   const activeAccount = useMemo(() => {
+    if (gitUser?.name) {
+      const matchByName = workspaceAccounts.find(
+        (a) => a.name.toLowerCase() === gitUser.name.toLowerCase()
+      );
+      if (matchByName) return matchByName;
+    }
+    if (gitUser?.email) {
+      const matchByEmail = workspaceAccounts.find(
+        (a) => a.email && a.email.toLowerCase() === gitUser.email.toLowerCase()
+      );
+      if (matchByEmail) return matchByEmail;
+    }
     return workspaceAccounts.find((a) => a.isCurrent) || workspaceAccounts[0];
-  }, [workspaceAccounts]);
+  }, [workspaceAccounts, gitUser]);
 
   // Close dropdown on click outside
   useEffect(() => {
@@ -101,19 +113,10 @@ export function UserAccountFilter() {
     );
   }, [workspaceAccounts, searchQuery]);
 
-  // Determine primary user and display text according to user rule:
-  // "多个用户的时候优先展示第一个用户"
-  const primaryUserName = selectedAuthorNames.length > 0 ? selectedAuthorNames[0] : null;
-  const extraCount = selectedAuthorNames.length > 1 ? selectedAuthorNames.length - 1 : 0;
-
-  // Make an author the primary user (move to index 0 of selectedAuthorNames)
-  const handleSetPrimary = (authorName: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    useAppStore.setState((state) => {
-      const rest = state.selectedAuthorNames.filter((n) => n !== authorName);
-      return { selectedAuthorNames: [authorName, ...rest] };
-    });
-  };
+  // Current active project committer identity
+  const currentCommitterName = gitUser?.name || activeAccount?.name || 'Git Accounts';
+  const totalAccountsCount = workspaceAccounts.length;
+  const extraCount = totalAccountsCount > 1 ? totalAccountsCount - 1 : 0;
 
   // Switch git user identity
   const handleSwitchUser = async (name: string, email: string, e?: React.MouseEvent) => {
@@ -121,6 +124,7 @@ export function UserAccountFilter() {
     setIsSubmitting(true);
     try {
       await switchActiveGitUser(name, email, false, false);
+      await loadWorkspaceAccounts();
     } finally {
       setIsSubmitting(false);
     }
@@ -178,29 +182,30 @@ export function UserAccountFilter() {
             : 'bg-theme-card hover:bg-theme-card-hover text-theme-main border-theme-border-card shadow-xs'
         }`}
         title={
-          selectedAuthorNames.length > 1
-            ? t.userAccount.selectedHeaderTooltip(selectedAuthorNames.length, selectedAuthorNames.join(', '), primaryUserName)
-            : primaryUserName
-            ? t.userAccount.currentDisplayTooltip(primaryUserName)
-            : t.userAccount.defaultTooltip
+          extraCount > 0
+            ? `${t.userAccount.currentProjectBound}: ${currentCommitterName} (${t.userAccount.workspaceAccountsTitle}: ${totalAccountsCount})`
+            : `${t.userAccount.currentProjectBound}: ${currentCommitterName}`
         }
       >
-        {selectedAuthorNames.length > 1 ? (
+        {extraCount > 0 ? (
           <Users className="w-3.5 h-3.5 text-sky-400 shrink-0" />
         ) : (
           <User className="w-3.5 h-3.5 text-sky-400 shrink-0" />
         )}
 
-        {/* Primary Account Name */}
+        {/* Current Project Active Committer Name */}
         <span className="font-semibold text-theme-main max-w-[120px] truncate text-[11px]">
-          {primaryUserName || activeAccount?.name || gitUser?.name || 'Git Accounts'}
+          {currentCommitterName}
         </span>
 
         {/* Multiple Users Extra Count Badge */}
         {extraCount > 0 && (
           <span
             className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-sky-500/20 text-sky-400 border border-sky-500/40 font-mono"
-            title={t.userAccount.extraAccountsTooltip(extraCount, selectedAuthorNames.slice(1).join(', '))}
+            title={t.userAccount.extraAccountsTooltip(
+              extraCount,
+              workspaceAccounts.filter((a) => a.name !== currentCommitterName).map((a) => a.name).join(', ')
+            )}
           >
             +{extraCount}
           </span>
@@ -248,12 +253,12 @@ export function UserAccountFilter() {
           <div className="px-3 py-2.5 bg-sky-500/10 border-b border-theme-border flex items-center justify-between">
             <div className="flex items-center gap-2.5 overflow-hidden flex-1 mr-2">
               <div className="w-7 h-7 rounded-full bg-sky-500/20 text-sky-400 flex items-center justify-center font-bold text-[12px] shrink-0 border border-sky-500/30">
-                {(activeAccount?.name || gitUser?.name || 'G').charAt(0).toUpperCase()}
+                {(currentCommitterName || 'G').charAt(0).toUpperCase()}
               </div>
               <div className="truncate flex-1">
                 <div className="flex items-center gap-1.5">
                   <span className="font-bold text-theme-main truncate text-[12px]">
-                    {activeAccount?.name || gitUser?.name || 'Git User'}
+                    {currentCommitterName}
                   </span>
                   <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-semibold flex items-center gap-0.5 shrink-0">
                     <ShieldCheck className="w-2.5 h-2.5" />
@@ -353,7 +358,10 @@ export function UserAccountFilter() {
               filteredAccounts.map((account: WorkspaceGitAccount) => {
                 const isChecked = selectedAuthorNames.includes(account.name);
                 const isPrimary = selectedAuthorNames[0] === account.name;
-                const isCurrentProjectAccount = account.isCurrent;
+                const isCurrentProjectAccount =
+                  (gitUser?.name && account.name.toLowerCase() === gitUser.name.toLowerCase()) ||
+                  (gitUser?.email && account.email && account.email.toLowerCase() === gitUser.email.toLowerCase()) ||
+                  (activeAccount ? account.id === activeAccount.id : account.isCurrent);
 
                 return (
                   <div

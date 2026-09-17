@@ -26,7 +26,7 @@ export interface WorkspaceGitAccount {
   projectNames: string[];
   isCurrent: boolean;
   hasPassword?: boolean;
-  source: 'project' | 'credential' | 'custom';
+  source: 'project' | 'credential' | 'custom' | 'global';
 }
 
 export interface GitFileItem {
@@ -1830,6 +1830,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         get().loadRepoData(activeProject.path),
         get().pollWorkspaceSyncStatus(),
         get().loadRepoAuthors(activeProject.path),
+        get().loadWorkspaceAccounts(),
         fetch(`/api/git/user?path=${encodeURIComponent(activeProject.path)}`)
           .then((res) => res.json())
           .then((user) => set({ gitUser: user }))
@@ -2560,12 +2561,18 @@ export const useAppStore = create<AppState>((set, get) => ({
         get().loadRepoData(targetProject.path, false);
       }
       get().loadRepoAuthors(targetProject.path);
+      get().loadRecentCommitMessages(targetProject.path);
+      get().loadLastCommit(targetProject.path);
       fetch(`/api/git/user?path=${encodeURIComponent(targetProject.path)}`)
         .then((res) => res.json())
         .then((user) => {
-          if (user && user.name) set({ gitUser: user });
+          if (user && user.name) {
+            set({ gitUser: user });
+            get().loadWorkspaceAccounts();
+          }
         })
         .catch(() => {});
+      get().loadWorkspaceAccounts();
       if (get().activeTab === 'log') {
         get().fetchCommitLogs(true);
       }
@@ -2599,6 +2606,9 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       try {
         await get().loadRepoData(targetProject.path, true);
+        get().loadRecentCommitMessages(targetProject.path);
+        get().loadLastCommit(targetProject.path);
+        get().loadWorkspaceAccounts();
         if (get().activeTab === 'log') {
           await get().fetchCommitLogs(true);
         }
@@ -2724,11 +2734,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   loadLastCommit: async (repoPath?: string) => {
     const targetPath = repoPath || get().projects.find((p) => p.id === get().activeProjectId)?.path;
     if (!targetPath) return null;
+    const normTarget = targetPath.replace(/\\/g, '/').toLowerCase();
     try {
       const res = await fetch(`/api/git/last-commit?path=${encodeURIComponent(targetPath)}`);
       if (res.ok) {
         const details: GitCommitDetails = await res.json();
-        set({ lastCommitDetails: details });
+        const nowActive = get().projects.find((p) => p.id === get().activeProjectId);
+        if (nowActive && nowActive.path.replace(/\\/g, '/').toLowerCase() === normTarget) {
+          set({ lastCommitDetails: details });
+        }
         return details;
       }
     } catch (e) {
@@ -2740,6 +2754,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   loadRecentCommitMessages: async (repoPath?: string) => {
     const targetPath = repoPath || get().projects.find((p) => p.id === get().activeProjectId)?.path;
     if (!targetPath) return;
+    const normTarget = targetPath.replace(/\\/g, '/').toLowerCase();
     try {
       const res = await fetch(`/api/git/recent-commit-messages?path=${encodeURIComponent(targetPath)}&limit=25`);
       if (res.ok) {
@@ -2752,7 +2767,18 @@ export const useAppStore = create<AppState>((set, get) => ({
         }
         // ONLY this project's commit messages: local history first, then git commit history
         const projectHistory = Array.from(new Set([...localHistory, ...gitMessages])).slice(0, 30);
-        set({ commitHistory: projectHistory });
+
+        // Cache in repoSnapshotCache for this repository so future visits have it immediately
+        const cached = repoSnapshotCache.get(normTarget);
+        if (cached) {
+          cached.commitHistory = projectHistory;
+        }
+
+        // Guard against asynchronous race condition: Only set state if targetPath is STILL the active project!
+        const nowActive = get().projects.find((p) => p.id === get().activeProjectId);
+        if (nowActive && nowActive.path.replace(/\\/g, '/').toLowerCase() === normTarget) {
+          set({ commitHistory: projectHistory });
+        }
       }
     } catch (e) {
       console.error('Failed to load recent commit messages:', e);
@@ -3297,18 +3323,86 @@ export const useAppStore = create<AppState>((set, get) => ({
         }),
       });
       let accounts: WorkspaceGitAccount[] = await res.json();
+      if (!Array.isArray(accounts)) accounts = [];
 
-      // Read any local custom saved accounts
-      let customAccounts: WorkspaceGitAccount[] = [];
+      // Maintain a persistent pool of all known accounts in this workspace so accounts never disappear on switch
+      const poolKey = 'omnigit_workspace_known_accounts_pool';
+      let pool: WorkspaceGitAccount[] = [];
       try {
-        const raw = typeof window !== 'undefined' ? localStorage.getItem('omnigit_custom_git_accounts') : null;
-        if (raw) customAccounts = JSON.parse(raw);
+        const rawPool = typeof window !== 'undefined' ? localStorage.getItem(poolKey) : null;
+        if (rawPool) pool = JSON.parse(rawPool);
       } catch {}
 
-      for (const ca of customAccounts) {
-        const key = (ca.email || ca.username || ca.name).toLowerCase().trim();
+      // Merge newly fetched accounts into pool
+      for (const acc of accounts) {
+        const key = (acc.email || acc.username || acc.name).toLowerCase().trim();
+        const existingIdx = pool.findIndex(
+          (p) => (p.email || p.username || p.name).toLowerCase().trim() === key
+        );
+        if (existingIdx >= 0) {
+          pool[existingIdx] = { ...pool[existingIdx], ...acc };
+        } else {
+          pool.push(acc);
+        }
+      }
+
+      // Also merge any user-defined custom accounts
+      try {
+        const rawCustom = typeof window !== 'undefined' ? localStorage.getItem('omnigit_custom_git_accounts') : null;
+        if (rawCustom) {
+          const customAccounts: WorkspaceGitAccount[] = JSON.parse(rawCustom);
+          for (const ca of customAccounts) {
+            const key = (ca.email || ca.username || ca.name).toLowerCase().trim();
+            if (!pool.some((p) => (p.email || p.username || p.name).toLowerCase().trim() === key)) {
+              pool.push(ca);
+            }
+          }
+        }
+      } catch {}
+
+      // Re-hydrate any pooled accounts that were not in the scan into accounts list (as available accounts)
+      for (const pooled of pool) {
+        const key = (pooled.email || pooled.username || pooled.name).toLowerCase().trim();
         if (!accounts.some((a) => (a.email || a.username || a.name).toLowerCase().trim() === key)) {
-          accounts.push(ca);
+          accounts.push({
+            ...pooled,
+            isCurrent: false,
+            projectPaths: [],
+            projectNames: [],
+          });
+        }
+      }
+
+      // Save updated pool
+      try {
+        if (typeof window !== 'undefined') {
+          safeLocalStorageSetItem(poolKey, JSON.stringify(pool));
+        }
+      } catch {}
+
+      // Determine which account is currently active for the selected project
+      if (currentProject) {
+        const normCurrent = currentProject.path.replace(/\\/g, '/').toLowerCase();
+        // Priority 1: Match by live gitUser for this repo
+        const liveUser = get().gitUser;
+        let matched: WorkspaceGitAccount | undefined;
+        if (liveUser?.name) {
+          matched = accounts.find(
+            (a) =>
+              a.name.toLowerCase() === liveUser.name.toLowerCase() ||
+              (a.email && liveUser.email && a.email.toLowerCase() === liveUser.email.toLowerCase())
+          );
+        }
+        // Priority 2: Match by projectPaths
+        if (!matched) {
+          matched = accounts.find((a) =>
+            a.projectPaths.some((p) => p.replace(/\\/g, '/').toLowerCase() === normCurrent)
+          );
+        }
+        if (matched) {
+          accounts.forEach((a) => {
+            a.isCurrent = a.id === matched!.id;
+          });
         }
       }
 

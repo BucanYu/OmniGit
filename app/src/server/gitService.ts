@@ -74,10 +74,20 @@ function getSystemGitCredentials(): Promise<Array<{ target: string; host: string
           const lines = stdout.split(/\r?\n/);
           for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
-            const targetMatch = line.match(/(?:target=)?(git:https?:\/\/([^\s\r\n/]+)[^\s\r\n]*)/i);
-            if (targetMatch) {
-              const target = targetMatch[1];
-              const host = targetMatch[2];
+            let target = '';
+            let host = '';
+            const gitMatch = line.match(/(?:target=)?(git:https?:\/\/([^\s\r\n/]+)[^\s\r\n]*)/i);
+            if (gitMatch) {
+              target = gitMatch[1];
+              host = gitMatch[2];
+            } else {
+              const ghMatch = line.match(/(?:target=)?(?:GitHub\s*-\s*)?https?:\/\/([^\s\r\n/]+)[^\s\r\n]*/i);
+              if (ghMatch && (line.toLowerCase().includes('github') || line.toLowerCase().includes('git'))) {
+                target = line.trim();
+                host = ghMatch[1].replace(/^api\./i, '');
+              }
+            }
+            if (target && host) {
               let username = '';
               for (let j = i + 1; j < Math.min(i + 6, lines.length); j++) {
                 const nextLine = lines[j];
@@ -125,7 +135,7 @@ export interface WorkspaceGitAccount {
   projectNames: string[];
   isCurrent: boolean;
   hasPassword?: boolean;
-  source: 'project' | 'credential' | 'custom';
+  source: 'project' | 'credential' | 'custom' | 'global';
 }
 
 export interface RealGitFile {
@@ -932,6 +942,7 @@ export const gitService = {
           existing.hasPassword = true;
         }
       } else {
+        const normP = p.replace(/\\/g, '/');
         accountMap.set(dedupeKey, {
           id: dedupeKey,
           name,
@@ -939,7 +950,7 @@ export const gitService = {
           username,
           remoteHost: remoteHost || undefined,
           remoteUrl: remoteUrl || undefined,
-          projectPaths: [p],
+          projectPaths: [normP],
           projectNames: [projectName],
           isCurrent: isCurrentProject,
           hasPassword: !!matchedCred,
@@ -948,7 +959,36 @@ export const gitService = {
       }
     }
 
-    // 2. If accountMap is empty (no repos in workspace or no git config found), fallback to global user
+    // 2. Merge all available system credentials into accountMap so they are never lost (per user preference)
+    for (const cred of creds) {
+      const credEmail = cred.username.includes('@') ? cred.username : '';
+      const credName = cred.username.includes('@') ? cred.username.split('@')[0] : cred.username;
+      const dedupeKey = (credEmail || cred.username || credName).toLowerCase().trim();
+      if (!dedupeKey) continue;
+      if (accountMap.has(dedupeKey)) {
+        const existing = accountMap.get(dedupeKey)!;
+        if (!existing.remoteHost && cred.host) {
+          existing.remoteHost = cred.host;
+        }
+        existing.hasPassword = true;
+      } else {
+        accountMap.set(dedupeKey, {
+          id: dedupeKey,
+          name: credName,
+          email: credEmail,
+          username: cred.username,
+          remoteHost: cred.host || undefined,
+          remoteUrl: undefined,
+          projectPaths: [],
+          projectNames: [],
+          isCurrent: false,
+          hasPassword: true,
+          source: 'credential',
+        });
+      }
+    }
+
+    // 3. If accountMap is empty (no projects found), fallback to global user
     if (accountMap.size === 0 && globalUser.name) {
       const gKey = (globalUser.email || globalUser.name).toLowerCase().trim();
       accountMap.set(gKey, {
@@ -959,8 +999,21 @@ export const gitService = {
         projectPaths: [],
         projectNames: [],
         isCurrent: true,
-        source: 'project',
+        source: 'global',
       });
+    }
+
+    // 4. Mark isCurrent for the active project
+    if (activePath) {
+      const normActive = activePath.replace(/\\/g, '/').toLowerCase();
+      const activeProjectAccount = Array.from(accountMap.values()).find((a) =>
+        a.projectPaths.some((p) => p.replace(/\\/g, '/').toLowerCase() === normActive)
+      );
+      if (activeProjectAccount) {
+        accountMap.forEach((a) => {
+          a.isCurrent = a.id === activeProjectAccount.id;
+        });
+      }
     }
 
     // Sort: Current project account first, then accounts with workspace projects, then others
@@ -1050,9 +1103,9 @@ export const gitService = {
 
     for (const p of targets) {
       if (fs.existsSync(p)) {
-        await runGit(['config', 'user.name', name], p);
+        await runGit(['config', '--local', 'user.name', name], p);
         if (email) {
-          await runGit(['config', 'user.email', email], p);
+          await runGit(['config', '--local', 'user.email', email], p);
         }
       }
     }
