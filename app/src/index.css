@@ -1,0 +1,462 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root,
+[data-theme="darcula"] {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color-scheme: dark;
+  user-select: none;
+
+  --bg-app: #1a1b1f;
+  --bg-header: #1d1e23;
+  --bg-sidebar: #151619;
+  --bg-panel: #1d1e23;
+  --bg-subbar: #23252b;
+  --bg-card: #26282e;
+  --bg-card-hover: #30333b;
+  --bg-input: #151619;
+  --bg-hover: #24262c;
+  --bg-active: #20355a;
+  --text-active: #ffffff;
+  --text-active-dim: #93c5fd;
+  --border-active: #3b82f6;
+  --border: #2c2f36;
+  --border-subtle: #24262c;
+  --border-card: #383b44;
+  --text-main: #f1f3f7;
+  --text-muted: #9ba1af;
+  --text-dim: #6b7280;
+  --accent: #3b82f6;
+  --accent-hover: #2563eb;
+}
+
+[data-theme="idea-light"],
+[data-theme="light"] {
+  color-scheme: light;
+
+  --bg-app: #f4f6f9;
+  --bg-header: #f8fafc;
+  --bg-sidebar: #e9edf3;
+  --bg-panel: #ffffff;
+  --bg-subbar: #f1f4f8;
+  --bg-card: #ffffff;
+  --bg-card-hover: #f1f5f9;
+  --bg-input: #ffffff;
+  --bg-hover: #e2e7ef;
+  --bg-active: #dbeafe;
+  --text-active: #1d4ed8;
+  --text-active-dim: #2563eb;
+  --border-active: #2563eb;
+  --border: #dbe0ea;
+  --border-subtle: #e8ecf2;
+  --border-card: #cbd5e1;
+  --text-main: #0f172a;
+  --text-muted: #475569;
+  --text-dim: #64748b;
+  --accent: #0284c7;
+  --accent-hover: #0369a1;
+}
+
+[data-theme="github-dark"] {
+  color-scheme: dark;
+
+  --bg-app: #0d1117;
+  --bg-header: #161b22;
+  --bg-sidebar: #090d13;
+  --bg-panel: #0d1117;
+  --bg-subbar: #161b22;
+  --bg-card: #1c2128;
+  --bg-card-hover: #272f3a;
+  --bg-input: #090d13;
+  --bg-hover: #191f27;
+  --bg-active: #172d4c;
+  --text-active: #ffffff;
+  --text-active-dim: #79c0ff;
+  --border-active: #2f81f7;
+  --border: #272e37;
+  --border-subtle: #1c2229;
+  --border-card: #333c48;
+  --text-main: #e6edf3;
+  --text-muted: #9ba7b4;
+  --text-dim: #768390;
+  --accent: #2f81f7;
+  --accent-hover: #1f6feb;
+}
+
+[data-theme="nord-frost"] {
+  color-scheme: dark;
+
+  --bg-app: #222630;
+  --bg-header: #282e3a;
+  --bg-sidebar: #1b1f27;
+  --bg-panel: #222630;
+  --bg-subbar: #29303c;
+  --bg-card: #2f3644;
+  --bg-card-hover: #3a4354;
+  --bg-input: #1b1f27;
+  --bg-hover: #313947;
+  --bg-active: #2d4560;
+  --text-active: #eceff4;
+  --text-active-dim: #88c0d0;
+  --border-active: #88c0d0;
+  --border: #3a4252;
+  --border-subtle: #2d3441;
+  --border-card: #454f62;
+  --text-main: #eceff4;
+  --text-muted: #c8d0de;
+  --text-dim: #94a3b8;
+  --accent: #88c0d0;
+  --accent-hover: #81a1c1;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--bg-app);
+  color: var(--text-main);
+  overflow: hidden;
+  height: 100vh;
+  width: 100vw;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+#root {
+  height: 100vh;
+  width: 100vw;
+}
+
+/* Custom modern scrollbar for panels */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(140, 140, 140, 0.25);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(140, 140, 140, 0.45);
+}
+
+/* Electron titlebar & drag control helpers */
+.app-region-drag {
+  -webkit-app-region: drag;
+}
+
+.app-region-no-drag,
+.app-region-no-drag * {
+  -webkit-app-region: no-drag !important;
+}
+
+/* =========================================================
+   CRITICAL: Solid, 100% Opaque Dropdown Panels & Cards
+   Guarantees ZERO bleed-through or transparency across all themes!
+   ========================================================= */
+.bg-theme-card,
+.theme-dropdown-panel {
+  background-color: var(--bg-card) !important;
+  opacity: 1 !important;
+}
+
+.theme-dropdown-panel {
+  background-color: var(--bg-card) !important;
+  border: 1px solid var(--border-card) !important;
+  opacity: 1 !important;
+  z-index: 100 !important;
+}
+
+[data-theme="idea-light"] .theme-dropdown-panel,
+[data-theme="idea-light"] .bg-theme-card,
+[data-theme="light"] .theme-dropdown-panel,
+[data-theme="light"] .bg-theme-card {
+  background-color: #ffffff !important;
+  border-color: #d1d5df !important;
+  box-shadow: 0 12px 32px -4px rgba(0, 0, 0, 0.12), 0 2px 6px -1px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(0, 0, 0, 0.04) !important;
+}
+
+[data-theme="darcula"] .theme-dropdown-panel,
+[data-theme="darcula"] .bg-theme-card {
+  background-color: #26282e !important;
+  border-color: #383b44 !important;
+  box-shadow: 0 14px 38px -4px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.07) !important;
+}
+
+[data-theme="github-dark"] .theme-dropdown-panel,
+[data-theme="github-dark"] .bg-theme-card {
+  background-color: #1c2128 !important;
+  border-color: #333c48 !important;
+  box-shadow: 0 14px 38px -4px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(56, 189, 248, 0.12) !important;
+}
+
+[data-theme="nord-frost"] .theme-dropdown-panel,
+[data-theme="nord-frost"] .bg-theme-card {
+  background-color: #2f3644 !important;
+  border-color: #454f62 !important;
+  box-shadow: 0 14px 38px -4px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(136, 192, 208, 0.15) !important;
+}
+
+/* =========================================================
+   High Contrast Upstream Remote Tracking Badges
+   Ensures sharp, legible WCAG AAA contrast across all 4 themes!
+   ========================================================= */
+.theme-upstream-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3.5px;
+  padding: 1.5px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-weight: 600;
+  line-height: 1.25;
+  white-space: nowrap;
+  letter-spacing: -0.01em;
+  transition: all 0.15s ease;
+}
+
+[data-theme="darcula"] .theme-upstream-badge {
+  background-color: rgba(96, 125, 168, 0.22);
+  color: #c9d6ec;
+  border: 1px solid rgba(130, 160, 205, 0.42);
+}
+
+[data-theme="darcula"] .theme-upstream-badge:hover {
+  background-color: rgba(96, 125, 168, 0.32);
+  border-color: rgba(130, 160, 205, 0.68);
+}
+
+[data-theme="github-dark"] .theme-upstream-badge {
+  background-color: rgba(56, 139, 253, 0.18);
+  color: #b3dbff;
+  border: 1px solid rgba(56, 139, 253, 0.45);
+}
+
+[data-theme="github-dark"] .theme-upstream-badge:hover {
+  background-color: rgba(56, 139, 253, 0.3);
+  border-color: rgba(56, 139, 253, 0.72);
+}
+
+[data-theme="nord-frost"] .theme-upstream-badge {
+  background-color: rgba(136, 192, 208, 0.18);
+  color: #a3e0f0;
+  border: 1px solid rgba(136, 192, 208, 0.42);
+}
+
+[data-theme="nord-frost"] .theme-upstream-badge:hover {
+  background-color: rgba(136, 192, 208, 0.3);
+  border-color: rgba(136, 192, 208, 0.72);
+}
+
+[data-theme="idea-light"] .theme-upstream-badge,
+[data-theme="light"] .theme-upstream-badge {
+  background-color: #eef3fa;
+  color: #1a4273;
+  border: 1px solid #bccfe8;
+}
+
+[data-theme="idea-light"] .theme-upstream-badge:hover,
+[data-theme="light"] .theme-upstream-badge:hover {
+  background-color: #e2ebf7;
+  border-color: #9cb9df;
+}
+
+/* =========================================================
+   IntelliJ IDEA 1:1 Conflict & 3-Way Merge Highlights for Monaco Editor
+   Guarantees soft red/pink background with distinct gutter and token markers
+   ========================================================= */
+.monaco-editor .monaco-conflict-line {
+  background-color: rgba(248, 113, 113, 0.28) !important;
+  border-left: 3px solid #ef4444 !important;
+}
+
+.monaco-editor.vs .monaco-conflict-line,
+[data-theme="idea-light"] .monaco-editor .monaco-conflict-line,
+.theme-idea-light .monaco-conflict-line {
+  background-color: #ffe8e8 !important;
+  border-left: 3px solid #f87171 !important;
+}
+
+.monaco-editor .monaco-conflict-inline {
+  background-color: rgba(239, 68, 68, 0.42) !important;
+  border-radius: 2px !important;
+}
+
+.monaco-editor .monaco-resolved-line {
+  background-color: rgba(34, 197, 94, 0.16) !important;
+  border-left: 3px solid #22c55e !important;
+}
+
+.monaco-editor.vs .monaco-resolved-line,
+[data-theme="idea-light"] .monaco-editor .monaco-resolved-line,
+.theme-idea-light .monaco-resolved-line {
+  background-color: #e6f9ed !important;
+  border-left: 3px solid #34d399 !important;
+}
+
+.monaco-editor.vs .monaco-conflict-inline,
+[data-theme="idea-light"] .monaco-editor .monaco-conflict-inline,
+.theme-idea-light .monaco-conflict-inline {
+  background-color: #ffc2c2 !important;
+  border-radius: 2px !important;
+}
+
+.monaco-editor .monaco-conflict-marker-line {
+  background-color: rgba(239, 68, 68, 0.5) !important;
+  color: #ffa4a4 !important;
+  font-weight: 700 !important;
+}
+
+.monaco-editor.vs .monaco-conflict-marker-line,
+[data-theme="idea-light"] .monaco-editor .monaco-conflict-marker-line,
+.theme-idea-light .monaco-conflict-marker-line {
+  background-color: #ffc0c8 !important;
+  color: #b71c1c !important;
+  font-weight: 700 !important;
+}
+
+.monaco-editor .monaco-conflict-gutter {
+  background-color: #ef4444 !important;
+  width: 4px !important;
+}
+
+.monaco-editor .monaco-conflict-gutter-icon {
+  background-color: #ef4444;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-left: 4px;
+}
+
+.monaco-yours-line {
+  background-color: rgba(56, 189, 248, 0.18) !important;
+}
+
+[data-theme="idea-light"] .monaco-yours-line {
+  background-color: #e3f2fd !important;
+}
+
+.monaco-yours-gutter {
+  background-color: #38bdf8 !important;
+  width: 3px !important;
+}
+
+.monaco-theirs-line {
+  background-color: rgba(168, 85, 247, 0.18) !important;
+}
+
+[data-theme="idea-light"] .monaco-theirs-line {
+  background-color: #f3e5f5 !important;
+}
+
+.monaco-theirs-gutter {
+  background-color: #a855f7 !important;
+  width: 3px !important;
+}
+
+/* =========================================================
+   Monaco Diff Editor High-Contrast Highlights (Dark & Light)
+   Ensures crystal-clear green/red line and character diffs
+   ========================================================= */
+.monaco-diff-editor .line-insert,
+.monaco-editor .line-insert {
+  background-color: rgba(34, 197, 94, 0.16) !important;
+  border-left: 3px solid #22c55e !important;
+}
+
+.monaco-diff-editor .line-delete,
+.monaco-editor .line-delete {
+  background-color: rgba(239, 68, 68, 0.16) !important;
+  border-left: 3px solid #f43f5e !important;
+}
+
+.monaco-diff-editor .char-insert,
+.monaco-editor .char-insert {
+  background-color: rgba(34, 197, 94, 0.38) !important;
+  border-bottom: 2px solid #22c55e !important;
+  border-radius: 2px !important;
+}
+
+.monaco-diff-editor .char-delete,
+.monaco-editor .char-delete {
+  background-color: rgba(239, 68, 68, 0.38) !important;
+  border-bottom: 2px solid #f43f5e !important;
+  border-radius: 2px !important;
+}
+
+/* Light Theme (idea-light) specifics - Soft Pastel Tints */
+[data-theme="idea-light"] .monaco-diff-editor .line-insert,
+[data-theme="idea-light"] .monaco-editor .line-insert {
+  background-color: #eaf6ee !important;
+  border-left: 3px solid #16a34a !important;
+}
+
+[data-theme="idea-light"] .monaco-diff-editor .line-delete,
+[data-theme="idea-light"] .monaco-editor .line-delete {
+  background-color: #fef1f2 !important;
+  border-left: 3px solid #e11d48 !important;
+}
+
+[data-theme="idea-light"] .monaco-diff-editor .char-insert,
+[data-theme="idea-light"] .monaco-editor .char-insert {
+  background-color: #bbf7d0 !important;
+  color: #14532d !important;
+  border-bottom: 2px solid #16a34a !important;
+}
+
+[data-theme="idea-light"] .monaco-diff-editor .char-delete,
+[data-theme="idea-light"] .monaco-editor .char-delete {
+  background-color: #fecdd3 !important;
+  color: #9f1239 !important;
+  border-bottom: 2px solid #e11d48 !important;
+}
+
+.monaco-diff-editor .insert-sign {
+  color: #22c55e !important;
+  font-weight: bold !important;
+}
+
+.monaco-diff-editor .delete-sign {
+  color: #f43f5e !important;
+  font-weight: bold !important;
+}
+
+/* =========================================================
+   Fix Monaco Editor Find Widget Close Button Tooltip Bug
+   Hides the flickering "Close (Escape)" tooltip popup that intercepts
+   mouse clicks and blocks the user from closing the search box.
+   ========================================================= */
+.workbench-hover-container,
+.monaco-hover,
+.monaco-hover-content,
+.monaco-editor .monaco-hover,
+.monaco-editor .find-widget .monaco-hover,
+div[widget-id*="hover"] {
+  display: none !important;
+  pointer-events: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+}
+
+/* Ensure the Close button in Monaco Find Widget is always responsive and clickable */
+.monaco-editor .find-widget .button.codicon-widget-close,
+.monaco-editor .find-widget .button[aria-label*="Close"],
+.monaco-editor .find-widget .close-button {
+  cursor: pointer !important;
+  pointer-events: auto !important;
+  z-index: 1000 !important;
+  position: relative !important;
+}
+
+.monaco-editor .find-widget .button.codicon-widget-close:hover,
+.monaco-editor .find-widget .button[aria-label*="Close"]:hover {
+  background-color: rgba(140, 140, 140, 0.25) !important;
+  border-radius: 4px !important;
+}
+

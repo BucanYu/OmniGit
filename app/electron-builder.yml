@@ -1,0 +1,35 @@
+appId: com.omnigit.app
+productName: OmniGit
+copyright: Copyright © 2026 OmniGit Team
+
+directories:
+  output: release
+
+files:
+  - dist/**/*
+  - dist-electron/**/*
+  - package.json
+
+publish:
+  provider: github
+  owner: omnigit
+  repo: OmniGit
+  releaseType: release
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  executableName: OmniGit
+  requestedExecutionLevel: asInvoker
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  perMachine: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: OmniGit
+  uninstallDisplayName: OmniGit
+  deleteAppDataOnUninstall: false

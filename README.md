@@ -2,6 +2,13 @@
 
 > **全自闭环架构 · 0ms 乐观更新 · 原生无边框桌面体验 · 在线增量自动更新**
 
+[English](README.en.md) | **简体中文**
+
+[![GitHub release](https://img.shields.io/github/v/release/BucanYu/OmniGit?style=flat-square&color=0284c7)](https://github.com/BucanYu/OmniGit/releases)
+[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS-blue?style=flat-square)](https://github.com/BucanYu/OmniGit/releases)
+
+👉 **[点击前往 GitHub Releases 下载最新安装包 (Windows / macOS)](https://github.com/BucanYu/OmniGit/releases/latest)**
+
 OmniGit 是一款专为多工程、大工作区并行协作设计的高性能 Git 桌面管理客户端。采用全内置自闭环架构，在目标 Windows 电脑上除了 Git 外**无需安装任何运行时环境**，具备毫秒级响应、沉浸式无边框顶栏、可视化的多分支合并/冲突解决与智能自动更新机制。
 
 ---
@@ -39,11 +46,11 @@ OmniGit 是一款专为多工程、大工作区并行协作设计的高性能 Gi
 
 ## 快速运行与日常开发
 
-所有便捷控制脚本均存放在 [`scripts/`](file:///d:/projects/OmniGit/scripts) 目录下：
+所有便捷控制脚本均收敛存放在 [`scripts/`](scripts/) 目录下（详见 [`scripts/README.md`](scripts/README.md) 开发者环境说明）：
 
 ### 1. 桌面客户端本地直接预览
 如果您想直接启动无边框的 Windows 原生桌面版应用：
-- **方式一（推荐）**：双击运行 [`scripts/start_desktop.bat`](file:///d:/projects/OmniGit/scripts/start_desktop.bat)；
+- **方式一（推荐）**：双击运行 [`scripts/start_desktop.bat`](scripts/start_desktop.bat)；
 - **方式二（命令行）**：
   ```bash
   cd app
@@ -52,32 +59,32 @@ OmniGit 是一款专为多工程、大工作区并行协作设计的高性能 Gi
 
 ### 2. Web 浏览器端开发调试
 如果您想在浏览器中以热重载模式调试前端界面：
-- **方式一（推荐）**：双击运行 [`scripts/start_dev.bat`](file:///d:/projects/OmniGit/scripts/start_dev.bat)（将在 `http://localhost:5345` 打开）；
+- **方式一（推荐）**：双击运行 [`scripts/start_dev.bat`](scripts/start_dev.bat)（将在 `http://localhost:5345` 打开）；
 - **方式二（命令行）**：
   ```bash
   cd app
   npm run dev
   ```
-- **停止开发服务**：双击运行 [`scripts/stop_dev.bat`](file:///d:/projects/OmniGit/scripts/stop_dev.bat)。
+- **停止开发服务**：双击运行 [`scripts/stop_dev.bat`](scripts/stop_dev.bat)。
 
 ---
 
 ## 一键打包 Windows 桌面客户端与安装包
 
 ### 1. 批处理脚本一键打包 (One-Click Build)
-直接双击运行根目录下或 `scripts` 目录下的打包脚本：
-👉 **[`scripts/build_desktop.bat`](file:///d:/projects/OmniGit/scripts/build_desktop.bat)**
+直接双击运行 `scripts` 目录下的跨平台打包脚本：
+👉 **[`scripts/build_desktop.bat`](scripts/build_desktop.bat)**
 
 脚本会自动执行：
-1. 校验 D 盘及系统开发环境变量；
+1. 校验系统开发环境与 Node.js 运行时；
 2. 执行全量 TypeScript 严格类型检查；
 3. 构建 Vite 前端优化压缩资源包；
 4. 编译 Electron 主进程与动态服务模块；
-5. 自动生成多分辨率品牌桌面图标；
-6. 调用 NSIS 编译器高压缩压制生成商业级单文件安装程序。
+5. 注入高饱和度品牌双环专属图标；
+6. 调用内置便携版 NSIS 编译器高压缩压制生成商业级单文件安装程序。
 
-### 2. 双重交付物与分发说明
-打包完成后，产物均在 `app/release/` 目录下生成：
+### 2. 双重交付物与 GitHub Releases 分发说明
+打包完成后，产物均在 `app/release/` 目录下生成（该目录已被 `.gitignore` 保护，安装包统一发布到 [GitHub Releases](https://github.com/BucanYu/OmniGit/releases)）：
 - **📦 单文件安装包（商业级正式交付）**：
   - 文件：`app/release/OmniGit-Setup-0.1.0.exe`（单文件约 75MB，LZMA 深度压缩）
   - 特性：
