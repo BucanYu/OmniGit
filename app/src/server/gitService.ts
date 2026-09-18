@@ -1,6 +1,176 @@
-import { execFile, exec, spawn } from 'child_process';
+import { execFile, exec, spawn, type ChildProcess } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
+
+export interface CloneProgressEvent {
+  phase: 'counting' | 'compressing' | 'receiving' | 'resolving' | 'checkout' | 'completing' | 'unknown';
+  phaseText: string;
+  percent: number;
+  stagePercent?: number;
+  transferred?: string;
+  speed?: string;
+  objects?: string;
+  raw: string;
+}
+
+const activeCloneProcesses = new Map<string, ChildProcess>();
+
+function killProcessTree(child: ChildProcess): Promise<void> {
+  return new Promise((resolve) => {
+    if (!child || !child.pid) return resolve();
+    const pid = child.pid;
+    if (process.platform === 'win32') {
+      exec(`taskkill /PID ${pid} /T /F`, () => resolve());
+    } else {
+      try {
+        process.kill(-pid, 'SIGKILL');
+      } catch {
+        try {
+          child.kill('SIGKILL');
+        } catch {}
+      }
+      resolve();
+    }
+  });
+}
+
+function parseGitProgress(line: string): CloneProgressEvent | null {
+  const clean = line.trim();
+  if (!clean) return null;
+
+  // 1. Receiving objects (the bulk of the clone, 20% ~ 85%)
+  const receivingMatch = clean.match(/Receiving objects:\s+(\d+)%(?:\s+\((\d+\/\d+)\))?(?:,\s+([0-9.]+\s+[KMGT]?i?B))?(?:\s+\|\s+([0-9.]+\s+[KMGT]?i?B\/s))?/i);
+  if (receivingMatch) {
+    const stageP = parseInt(receivingMatch[1], 10) || 0;
+    const overall = Math.min(85, Math.max(20, Math.round(20 + stageP * 0.65)));
+    return {
+      phase: 'receiving',
+      phaseText: '正在下载对象与历史数据 (Receiving objects)',
+      percent: overall,
+      stagePercent: stageP,
+      objects: receivingMatch[2],
+      transferred: receivingMatch[3],
+      speed: receivingMatch[4],
+      raw: clean,
+    };
+  }
+
+  // 2. Resolving deltas (85% ~ 95%)
+  const deltasMatch = clean.match(/Resolving deltas:\s+(\d+)%(?:\s+\((\d+\/\d+)\))?/i);
+  if (deltasMatch) {
+    const stageP = parseInt(deltasMatch[1], 10) || 0;
+    const overall = Math.min(95, Math.max(85, Math.round(85 + stageP * 0.1)));
+    return {
+      phase: 'resolving',
+      phaseText: '正在解压与重构差异 (Resolving deltas)',
+      percent: overall,
+      stagePercent: stageP,
+      objects: deltasMatch[2],
+      raw: clean,
+    };
+  }
+
+  // 3. Updating / checking out files (95% ~ 99%)
+  const updatingMatch = clean.match(/(?:Updating files|Checking out files):\s+(\d+)%(?:\s+\((\d+\/\d+)\))?/i);
+  if (updatingMatch) {
+    const stageP = parseInt(updatingMatch[1], 10) || 0;
+    const overall = Math.min(99, Math.max(95, Math.round(95 + stageP * 0.04)));
+    return {
+      phase: 'checkout',
+      phaseText: '正在检出工作区文件 (Checking out files)',
+      percent: overall,
+      stagePercent: stageP,
+      objects: updatingMatch[2],
+      raw: clean,
+    };
+  }
+
+  // 4. Compressing objects (10% ~ 20%)
+  const compressMatch = clean.match(/Compressing objects:\s+(\d+)%(?:\s+\((\d+\/\d+)\))?/i);
+  if (compressMatch) {
+    const stageP = parseInt(compressMatch[1], 10) || 0;
+    const overall = Math.min(20, Math.max(10, Math.round(10 + stageP * 0.1)));
+    return {
+      phase: 'compressing',
+      phaseText: '正在压缩数据 (Compressing objects)',
+      percent: overall,
+      stagePercent: stageP,
+      objects: compressMatch[2],
+      raw: clean,
+    };
+  }
+
+  // 5. Counting objects (0% ~ 10%)
+  const countingMatch = clean.match(/Counting objects:\s+(\d+)%(?:\s+\((\d+\/\d+)\))?/i);
+  if (countingMatch) {
+    const stageP = parseInt(countingMatch[1], 10) || 0;
+    const overall = Math.min(10, Math.max(0, Math.round(stageP * 0.1)));
+    return {
+      phase: 'counting',
+      phaseText: '正在计算对象 (Counting objects)',
+      percent: overall,
+      stagePercent: stageP,
+      objects: countingMatch[2],
+      raw: clean,
+    };
+  }
+
+  if (/Cloning into/i.test(clean)) {
+    return {
+      phase: 'counting',
+      phaseText: '正在初始化克隆 (Initializing clone)',
+      percent: 2,
+      raw: clean,
+    };
+  }
+
+  return null;
+}
+
+function diagnoseCloneError(errorText: string): string {
+  if (!errorText) return '克隆操作失败 / Clone failed';
+  
+  // Real authentication failures
+  if (
+    /Authentication failed for/i.test(errorText) ||
+    /could not read (?:Username|Password)/i.test(errorText) ||
+    /Invalid username or password/i.test(errorText) ||
+    /remote:\s*HTTP Basic:\s*Access denied/i.test(errorText) ||
+    /fatal:\s*Authentication failed/i.test(errorText) ||
+    /fatal:\s*remote error:\s*GitLab:\s*API is not accessible/i.test(errorText) ||
+    /\bHTTP\s+(?:401|403)\b/i.test(errorText) ||
+    /\bstatus\s*(?:401|403)\b/i.test(errorText)
+  ) {
+    return '远端仓库认证失败 (Authentication failed): 请检查账号密码、Personal Access Token 或仓库访问权限';
+  }
+
+  if (/Could not resolve host/i.test(errorText)) {
+    return '无法解析远端服务器域名 (Could not resolve host): 请检查网络连接、公司 VPN 或仓库 URL';
+  }
+
+  if (/Repository not found|remote:\s*Not Found|\bHTTP\s+404\b/i.test(errorText)) {
+    return '远端仓库未找到 (Repository not found): 请核对仓库 URL 是否正确，或当前账号无权访问该私有仓库';
+  }
+
+  if (/already exists and is not an empty directory/i.test(errorText)) {
+    return '目标文件夹已存在且不为空，无法克隆至该目录';
+  }
+
+  if (/Connection timed out|operation timed out|Failed to connect to/i.test(errorText)) {
+    return '连接远端服务器超时 (Connection timed out): 请检查网络代理或服务器状态';
+  }
+
+  if (/SSL certificate problem|certificate has expired/i.test(errorText)) {
+    return 'SSL 证书验证失败: 远端服务器证书不受信任或已过期';
+  }
+
+  const fatalLine = errorText.split(/[\r\n]+/).find((l) => /^fatal:\s*/i.test(l.trim()));
+  if (fatalLine) {
+    return fatalLine.trim();
+  }
+
+  return errorText.slice(0, 300);
+}
 
 interface RepoWatcherEntry {
   watcher: fs.FSWatcher | null;
@@ -2429,7 +2599,198 @@ export const gitService = {
     return { savedWorkspaces: [], recentProjects: [], workspaceProjectPaths: {} };
   },
 
-  // Clone a remote Git repository into local directory
+  // Clone a remote Git repository with real-time progress and logs streaming (No arbitrary wall-clock timeout)
+  cloneRepoStream(
+    remoteUrl: string,
+    targetDir: string,
+    options?: {
+      branch?: string;
+      username?: string;
+      password?: string;
+      cloneId?: string;
+    },
+    onProgress?: (progress: CloneProgressEvent) => void,
+    onLog?: (line: string) => void
+  ): Promise<{
+    success: boolean;
+    message: string;
+    repoPath?: string;
+    repoName?: string;
+    currentBranch?: string;
+  }> {
+    return new Promise((resolve) => {
+      const trimmedUrl = (remoteUrl || '').trim();
+      let finalTargetDir = (targetDir || '').trim();
+
+      if (!trimmedUrl) {
+        return resolve({ success: false, message: 'Please enter a valid remote Git URL / 请输入有效的远端 Git 仓库地址' });
+      }
+      if (!finalTargetDir) {
+        return resolve({ success: false, message: 'Please specify target folder / 请指定本地存放文件夹路径' });
+      }
+
+      finalTargetDir = path.resolve(finalTargetDir);
+
+      // 1. Check if target directory already exists and is non-empty
+      if (fs.existsSync(finalTargetDir)) {
+        try {
+          const files = fs.readdirSync(finalTargetDir);
+          if (files.length > 0) {
+            return resolve({
+              success: false,
+              message: `目标文件夹已存在且不为空，无法克隆至该目录: ${finalTargetDir}`,
+            });
+          }
+        } catch (e: any) {
+          return resolve({ success: false, message: `检查目标文件夹失败: ${e.message}` });
+        }
+      } else {
+        try {
+          const parentDir = path.dirname(finalTargetDir);
+          if (!fs.existsSync(parentDir)) {
+            fs.mkdirSync(parentDir, { recursive: true });
+          }
+        } catch (e: any) {
+          return resolve({ success: false, message: `无法创建父级目录: ${e.message}` });
+        }
+      }
+
+      // 2. Prepare Git clone command & URL
+      let cloneUrl = trimmedUrl;
+      if (options?.username && options?.password && /^https?:\/\//i.test(trimmedUrl)) {
+        try {
+          const u = new URL(trimmedUrl);
+          u.username = encodeURIComponent(options.username);
+          u.password = encodeURIComponent(options.password);
+          cloneUrl = u.toString();
+        } catch {}
+      }
+
+      const args = ['clone', '--progress'];
+      if (options?.branch && options.branch.trim()) {
+        args.push('-b', options.branch.trim());
+      }
+      args.push(cloneUrl, finalTargetDir);
+
+      const parentDir = path.dirname(finalTargetDir);
+      const cloneId = options?.cloneId || `clone_${Date.now()}`;
+
+      // Spawn git clone without wall-clock timeout (matching official Git CLI & GitHub Desktop)
+      const child = spawn('git', args, {
+        cwd: parentDir,
+        windowsHide: true,
+        env: {
+          ...process.env,
+          GIT_TERMINAL_PROMPT: '0',
+        },
+      });
+
+      activeCloneProcesses.set(cloneId, child);
+
+      let accumulatedStderr = '';
+      let accumulatedStdout = '';
+      let stderrBuffer = '';
+
+      const handleChunk = (chunk: Buffer, isStderr: boolean) => {
+        const text = chunk.toString('utf8');
+        if (isStderr) {
+          accumulatedStderr += text;
+          stderrBuffer += text;
+          const parts = stderrBuffer.split(/[\r\n]+/);
+          if (!stderrBuffer.endsWith('\r') && !stderrBuffer.endsWith('\n')) {
+            stderrBuffer = parts.pop() || '';
+          } else {
+            stderrBuffer = '';
+          }
+          for (const line of parts) {
+            const clean = line.trim();
+            if (!clean) continue;
+            onLog?.(clean);
+            const prog = parseGitProgress(clean);
+            if (prog) {
+              onProgress?.(prog);
+            }
+          }
+        } else {
+          accumulatedStdout += text;
+          const lines = text.split(/[\r\n]+/);
+          for (const line of lines) {
+            const clean = line.trim();
+            if (clean) onLog?.(clean);
+          }
+        }
+      };
+
+      child.stderr?.on('data', (chunk) => handleChunk(chunk, true));
+      child.stdout?.on('data', (chunk) => handleChunk(chunk, false));
+
+      child.on('error', (err) => {
+        activeCloneProcesses.delete(cloneId);
+        resolve({
+          success: false,
+          message: `启动 Git 进程失败: ${err.message}`,
+        });
+      });
+
+      child.on('close', async (code) => {
+        activeCloneProcesses.delete(cloneId);
+
+        if (stderrBuffer.trim()) {
+          const clean = stderrBuffer.trim();
+          onLog?.(clean);
+          const prog = parseGitProgress(clean);
+          if (prog) onProgress?.(prog);
+        }
+
+        if (code === 0) {
+          onProgress?.({
+            phase: 'completing',
+            phaseText: '克隆完成 (Clone complete)',
+            percent: 100,
+            stagePercent: 100,
+            raw: 'Clone finished successfully',
+          });
+
+          const repoName = path.basename(finalTargetDir);
+          let currentBranch = options?.branch?.trim() || 'main';
+          try {
+            const branchRes = await runGit(['branch', '--show-current'], finalTargetDir);
+            if (branchRes.stdout.trim()) {
+              currentBranch = branchRes.stdout.trim();
+            }
+          } catch {}
+
+          resolve({
+            success: true,
+            message: `仓库 '${repoName}' 克隆成功!`,
+            repoPath: finalTargetDir,
+            repoName,
+            currentBranch,
+          });
+        } else {
+          const errorOutput = accumulatedStderr || accumulatedStdout || '克隆操作失败';
+          const diagnosed = diagnoseCloneError(errorOutput);
+          resolve({
+            success: false,
+            message: diagnosed,
+          });
+        }
+      });
+    });
+  },
+
+  // Abort an active clone process tree
+  async abortClone(cloneId: string): Promise<{ success: boolean; message: string }> {
+    const child = activeCloneProcesses.get(cloneId);
+    if (!child) {
+      return { success: false, message: '未找到正在进行的克隆任务' };
+    }
+    activeCloneProcesses.delete(cloneId);
+    await killProcessTree(child);
+    return { success: true, message: '克隆任务已成功中止' };
+  },
+
+  // Clone a remote Git repository into local directory (wraps cloneRepoStream)
   async cloneRepo(
     remoteUrl: string,
     targetDir: string,
@@ -2437,6 +2798,7 @@ export const gitService = {
       branch?: string;
       username?: string;
       password?: string;
+      cloneId?: string;
     }
   ): Promise<{
     success: boolean;
@@ -2445,101 +2807,7 @@ export const gitService = {
     repoName?: string;
     currentBranch?: string;
   }> {
-    const trimmedUrl = (remoteUrl || '').trim();
-    let finalTargetDir = (targetDir || '').trim();
-
-    if (!trimmedUrl) {
-      return { success: false, message: 'Please enter a valid remote Git URL / 请输入有效的远端 Git 仓库地址' };
-    }
-    if (!finalTargetDir) {
-      return { success: false, message: 'Please specify target folder / 请指定本地存放文件夹路径' };
-    }
-
-    finalTargetDir = path.resolve(finalTargetDir);
-
-    // 1. Check if target directory already exists and is non-empty
-    if (fs.existsSync(finalTargetDir)) {
-      try {
-        const files = fs.readdirSync(finalTargetDir);
-        if (files.length > 0) {
-          return {
-            success: false,
-            message: `Target directory already exists and is not empty / 目标文件夹已存在且不为空: ${finalTargetDir}`,
-          };
-        }
-      } catch (e: any) {
-        return { success: false, message: `Failed to inspect target directory / 检查目标文件夹失败: ${e.message}` };
-      }
-    } else {
-      // Create parent directory if needed
-      try {
-        const parentDir = path.dirname(finalTargetDir);
-        if (!fs.existsSync(parentDir)) {
-          fs.mkdirSync(parentDir, { recursive: true });
-        }
-      } catch (e: any) {
-        return { success: false, message: `Failed to create parent directory / 无法创建父级目录: ${e.message}` };
-      }
-    }
-
-    // 2. Prepare Git clone command & URL
-    let cloneUrl = trimmedUrl;
-    // Inject credentials if provided for HTTP/HTTPS URL
-    if (options?.username && options?.password && /^https?:\/\//i.test(trimmedUrl)) {
-      try {
-        const u = new URL(trimmedUrl);
-        u.username = encodeURIComponent(options.username);
-        u.password = encodeURIComponent(options.password);
-        cloneUrl = u.toString();
-      } catch {
-        // Fallback to original URL if parsing fails
-      }
-    }
-
-    const args = ['clone', '--progress'];
-    if (options?.branch && options.branch.trim()) {
-      args.push('-b', options.branch.trim());
-    }
-    args.push(cloneUrl, finalTargetDir);
-
-    const parentDir = path.dirname(finalTargetDir);
-    // Timeout set to 5 minutes (300,000 ms) for large repositories
-    const res = await runGit(args, parentDir, 300000);
-
-    if (res.code !== 0) {
-      // Diagnostic error message cleanup
-      let errorMsg = res.stderr || res.stdout || 'Clone failed / 克隆操作失败';
-      if (/Authentication failed|Invalid credentials|401|403/i.test(errorMsg)) {
-        errorMsg = 'Remote authentication failed (401/403) / 远端仓库认证失败: Please check credentials';
-      } else if (/Could not resolve host/i.test(errorMsg)) {
-        errorMsg = 'Could not resolve host / 无法解析远端服务器域名: Please check network or URL';
-      } else if (/Repository not found|remote: Not Found/i.test(errorMsg)) {
-        errorMsg = 'Remote repository not found / 远端仓库未找到: Please verify URL and access rights';
-      } else if (/already exists and is not an empty directory/i.test(errorMsg)) {
-        errorMsg = `Target directory already exists and is not empty / 目标文件夹已存在且不为空: ${finalTargetDir}`;
-      } else if (/Connection timed out|operation timed out/i.test(errorMsg)) {
-        errorMsg = 'Connection timed out / 连接远端服务器超时: Please check network proxy or server status';
-      }
-      return { success: false, message: errorMsg };
-    }
-
-    // 3. Clone succeeded! Read repo status to get default branch & name
-    const repoName = path.basename(finalTargetDir);
-    let currentBranch = 'main';
-    try {
-      const branchRes = await runGit(['branch', '--show-current'], finalTargetDir);
-      if (branchRes.stdout.trim()) {
-        currentBranch = branchRes.stdout.trim();
-      }
-    } catch {}
-
-    return {
-      success: true,
-      message: `Repository '${repoName}' cloned successfully / 仓库 '${repoName}' 克隆成功!`,
-      repoPath: finalTargetDir,
-      repoName,
-      currentBranch,
-    };
+    return this.cloneRepoStream(remoteUrl, targetDir, options);
   },
 
   // Open native Windows folder selection dialog

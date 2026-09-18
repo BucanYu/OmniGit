@@ -888,6 +888,22 @@ export interface LocaleDictionary {
       dirRequired: string;
       folderRequired: string;
       cloneFailed: string;
+      speedLabel: string;
+      transferredLabel: string;
+      objectsLabel: string;
+      logsToggleShow: string;
+      logsToggleHide: string;
+      abortBtn: string;
+      abortingBtn: string;
+      abortConfirm: string;
+      abortedNotice: string;
+      phaseCounting: string;
+      phaseCompressing: string;
+      phaseReceiving: string;
+      phaseResolving: string;
+      phaseCheckout: string;
+      phaseCompleting: string;
+      existingDirNotice: string;
     };
   };
 }

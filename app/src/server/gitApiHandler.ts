@@ -99,6 +99,58 @@ export async function handleGitApiRequest(req: IncomingMessage, res: ServerRespo
     } else if (pathname === '/api/git/inspect-folder') {
       const result = await gitService.inspectFolder(body.folderPath);
       res.end(JSON.stringify(result));
+    } else if (pathname === '/api/git/clone-stream') {
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      });
+
+      const cloneId = body.cloneId || `clone_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      
+      const sendEvent = (data: any) => {
+        if (!res.writableEnded) {
+          res.write(`data: ${JSON.stringify(data)}\n\n`);
+        }
+      };
+
+      sendEvent({ type: 'init', cloneId });
+
+      try {
+        const result = await gitService.cloneRepoStream(
+          body.remoteUrl,
+          body.targetDir,
+          {
+            branch: body.branch,
+            username: body.username,
+            password: body.password,
+            cloneId,
+          },
+          (progress) => {
+            sendEvent({ type: 'progress', cloneId, ...progress });
+          },
+          (logLine) => {
+            sendEvent({ type: 'log', cloneId, line: logLine });
+          }
+        );
+
+        if (result.success) {
+          sendEvent({ type: 'complete', cloneId, ...result });
+        } else {
+          sendEvent({ type: 'error', cloneId, message: result.message });
+        }
+      } catch (err: any) {
+        sendEvent({ type: 'error', cloneId, message: err.message || '克隆操作异常' });
+      } finally {
+        if (!res.writableEnded) {
+          res.end();
+        }
+      }
+      return true;
+    } else if (pathname === '/api/git/clone-abort') {
+      const result = await gitService.abortClone(body.cloneId);
+      res.end(JSON.stringify(result));
+      return true;
     } else if (pathname === '/api/git/clone-repo') {
       const result = await gitService.cloneRepo(
         body.remoteUrl,

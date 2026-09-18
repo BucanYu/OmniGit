@@ -16,6 +16,10 @@ import {
   AlertCircle,
   Lock,
   Download,
+  Terminal,
+  ChevronDown,
+  ChevronUp,
+  Ban,
 } from 'lucide-react';
 
 interface AddRepoModalProps {
@@ -78,6 +82,31 @@ export function AddRepoModal({ onClose }: AddRepoModalProps) {
   const [authPassword, setAuthPassword] = useState('');
   const [isCloning, setIsCloning] = useState(false);
   const [cloneError, setCloneError] = useState('');
+  const [activeCloneId, setActiveCloneId] = useState<string | null>(null);
+  const [isAborting, setIsAborting] = useState(false);
+  const [showCloneLogs, setShowCloneLogs] = useState(true);
+  const [cloneLogs, setCloneLogs] = useState<string[]>([]);
+  const [cloneProgress, setCloneProgress] = useState<{
+    phase: string;
+    phaseText: string;
+    percent: number;
+    stagePercent?: number;
+    transferred?: string;
+    speed?: string;
+    objects?: string;
+  }>({
+    phase: 'counting',
+    phaseText: '',
+    percent: 0,
+  });
+
+  const logsEndRef = React.useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (showCloneLogs && logsEndRef.current) {
+      logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [cloneLogs, showCloneLogs]);
 
   const [isBrowsing, setIsBrowsing] = useState(false);
 
@@ -138,24 +167,137 @@ export function AddRepoModal({ onClose }: AddRepoModalProps) {
       return;
     }
 
-    setIsCloning(true);
-    setCloneError('');
+    const fullTargetDir = `${targetParentDir.replace(/[\\/]+$/, '')}\\${folderName.trim()}`;
+    const cloneId = `clone_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
-    const res = await cloneAndImportRepo({
-      remoteUrl: cloneUrl.trim(),
-      targetDir: targetParentDir.trim(),
-      folderName: folderName.trim(),
-      branch: cloneBranch.trim() || undefined,
-      username: needAuth ? authUsername.trim() : undefined,
-      password: needAuth ? authPassword.trim() : undefined,
+    setIsCloning(true);
+    setIsAborting(false);
+    setActiveCloneId(cloneId);
+    setCloneError('');
+    setCloneLogs([]);
+    setCloneProgress({
+      phase: 'counting',
+      phaseText: t.modals.addRepo.phaseCounting,
+      percent: 2,
+      stagePercent: 0,
     });
 
-    setIsCloning(false);
+    try {
+      const response = await fetch('/api/git/clone-stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          remoteUrl: cloneUrl.trim(),
+          targetDir: fullTargetDir,
+          branch: cloneBranch.trim() || undefined,
+          username: needAuth ? authUsername.trim() : undefined,
+          password: needAuth ? authPassword.trim() : undefined,
+          cloneId,
+        }),
+      });
 
-    if (res.success) {
-      onClose();
-    } else {
-      setCloneError(res.message || t.modals.addRepo.cloneFailed);
+      if (!response.ok || !response.body) {
+        throw new Error(`HTTP error ${response.status}`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const events = buffer.split('\n\n');
+        buffer = events.pop() || '';
+
+        for (const evt of events) {
+          const trimmedEvt = evt.trim();
+          if (!trimmedEvt) continue;
+          const dataLine = trimmedEvt.split('\n').find((l) => l.startsWith('data: '));
+          if (!dataLine) continue;
+
+          try {
+            const data = JSON.parse(dataLine.slice(6));
+            if (data.type === 'progress') {
+              let pText = data.phaseText;
+              if (data.phase === 'counting') pText = t.modals.addRepo.phaseCounting;
+              else if (data.phase === 'compressing') pText = t.modals.addRepo.phaseCompressing;
+              else if (data.phase === 'receiving') pText = t.modals.addRepo.phaseReceiving;
+              else if (data.phase === 'resolving') pText = t.modals.addRepo.phaseResolving;
+              else if (data.phase === 'checkout') pText = t.modals.addRepo.phaseCheckout;
+              else if (data.phase === 'completing') pText = t.modals.addRepo.phaseCompleting;
+
+              setCloneProgress({
+                phase: data.phase,
+                phaseText: pText,
+                percent: data.percent,
+                stagePercent: data.stagePercent,
+                transferred: data.transferred,
+                speed: data.speed,
+                objects: data.objects,
+              });
+            } else if (data.type === 'log') {
+              setCloneLogs((prev) => {
+                const next = [...prev, data.line];
+                return next.length > 200 ? next.slice(-200) : next;
+              });
+            } else if (data.type === 'complete') {
+              setCloneProgress((prev) => ({
+                ...prev,
+                percent: 100,
+                phase: 'completing',
+                phaseText: t.modals.addRepo.phaseCompleting,
+              }));
+
+              const repoPath = data.repoPath || fullTargetDir;
+              await addProjectsToWorkspace([repoPath]);
+              const created = projects.find((p) => p.path.toLowerCase() === repoPath.toLowerCase());
+              if (created) {
+                setActiveProject(created.id);
+              }
+
+              setTimeout(() => {
+                setIsCloning(false);
+                setActiveCloneId(null);
+                onClose();
+              }, 700);
+              return;
+            } else if (data.type === 'error') {
+              setCloneError(data.message || t.modals.addRepo.cloneFailed);
+              setIsCloning(false);
+              setActiveCloneId(null);
+              return;
+            }
+          } catch {}
+        }
+      }
+    } catch (err: any) {
+      setCloneError(err.message || t.modals.addRepo.cloneFailed);
+      setIsCloning(false);
+      setActiveCloneId(null);
+    }
+  };
+
+  const handleAbortClone = async () => {
+    if (!activeCloneId || isAborting) return;
+    if (!window.confirm(t.modals.addRepo.abortConfirm)) return;
+
+    setIsAborting(true);
+    try {
+      await fetch('/api/git/clone-abort', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cloneId: activeCloneId }),
+      });
+      setCloneError(t.modals.addRepo.abortedNotice);
+    } catch {
+      // ignore
+    } finally {
+      setIsAborting(false);
+      setIsCloning(false);
+      setActiveCloneId(null);
     }
   };
 
@@ -693,17 +835,114 @@ export function AddRepoModal({ onClose }: AddRepoModalProps) {
             {cloneError && (
               <div className="p-2.5 rounded bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                <span className="leading-relaxed flex-1">{cloneError}</span>
+                <div className="flex-1 space-y-1">
+                  <div className="leading-relaxed font-medium">{cloneError}</div>
+                  {cloneError.includes('目标文件夹已存在') && (
+                    <div className="text-[11px] text-rose-300/80 leading-normal">
+                      {t.modals.addRepo.existingDirNotice}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
-            {/* Real-time Cloning Progress Banner */}
+            {/* Real-time Cloning Progress Dashboard */}
             {isCloning && (
-              <div className="p-3 rounded bg-sky-500/15 border border-sky-500/30 text-sky-300 text-xs flex items-center gap-2.5 animate-pulse">
-                <RefreshCw className="w-4 h-4 animate-spin text-sky-400 shrink-0" />
-                <div className="flex flex-col">
-                  <span className="font-semibold">{t.modals.addRepo.cloningHeader}</span>
-                  <span className="text-[10px] text-sky-300/80">{t.modals.addRepo.cloningDesc}</span>
+              <div className="p-3.5 rounded-lg bg-theme-input/90 border border-sky-500/40 shadow-inner space-y-3">
+                {/* Header info */}
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <RefreshCw className="w-4 h-4 animate-spin text-sky-400 shrink-0" />
+                    <span className="font-semibold text-xs text-theme-main truncate">
+                      {cloneProgress.phaseText || t.modals.addRepo.cloningHeader}
+                    </span>
+                  </div>
+                  <span className="font-mono font-bold text-sm text-sky-400 bg-sky-500/15 px-2 py-0.5 rounded border border-sky-500/30 shrink-0">
+                    {cloneProgress.percent}%
+                  </span>
+                </div>
+
+                {/* Animated Progress Bar */}
+                <div className="w-full bg-zinc-800/80 rounded-full h-2.5 overflow-hidden border border-zinc-700/50 relative">
+                  <div
+                    className="bg-gradient-to-r from-sky-500 via-indigo-500 to-emerald-500 h-full transition-all duration-300 ease-out"
+                    style={{ width: `${Math.max(3, Math.min(100, cloneProgress.percent))}%` }}
+                  />
+                </div>
+
+                {/* Metrics Badges */}
+                <div className="grid grid-cols-3 gap-2 text-[11px] font-mono">
+                  <div className="p-1.5 rounded bg-theme-card/60 border border-theme-border-subtle flex flex-col">
+                    <span className="text-[10px] text-theme-dim">{t.modals.addRepo.speedLabel}</span>
+                    <span className="text-sky-400 font-semibold truncate">
+                      {cloneProgress.speed ? `⚡ ${cloneProgress.speed}` : '⚡ 测速中...'}
+                    </span>
+                  </div>
+                  <div className="p-1.5 rounded bg-theme-card/60 border border-theme-border-subtle flex flex-col">
+                    <span className="text-[10px] text-theme-dim">{t.modals.addRepo.transferredLabel}</span>
+                    <span className="text-emerald-400 font-semibold truncate">
+                      {cloneProgress.transferred ? `📦 ${cloneProgress.transferred}` : '📦 计算中...'}
+                    </span>
+                  </div>
+                  <div className="p-1.5 rounded bg-theme-card/60 border border-theme-border-subtle flex flex-col">
+                    <span className="text-[10px] text-theme-dim">{t.modals.addRepo.objectsLabel}</span>
+                    <span className="text-purple-400 font-semibold truncate">
+                      {cloneProgress.objects ? `🔢 ${cloneProgress.objects}` : '🔢 连接中...'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Toggleable Git Terminal Log Panel */}
+                <div className="border border-theme-border-subtle rounded overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setShowCloneLogs((v) => !v)}
+                    className="w-full px-2.5 py-1 bg-zinc-900/80 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 text-[10px] font-mono flex items-center justify-between transition cursor-pointer"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <Terminal className="w-3 h-3 text-emerald-400" />
+                      <span>{showCloneLogs ? t.modals.addRepo.logsToggleHide : t.modals.addRepo.logsToggleShow}</span>
+                      <span className="text-zinc-500">({cloneLogs.length} lines)</span>
+                    </span>
+                    {showCloneLogs ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                  </button>
+
+                  {showCloneLogs && (
+                    <div className="bg-zinc-950 p-2 text-[10px] font-mono text-zinc-300 max-h-36 overflow-y-auto space-y-0.5 select-text border-t border-zinc-800">
+                      {cloneLogs.length === 0 ? (
+                        <div className="text-zinc-600 italic">Git process initiated, awaiting output...</div>
+                      ) : (
+                        cloneLogs.map((line, idx) => (
+                          <div key={idx} className="whitespace-pre-wrap break-all leading-tight text-emerald-400/90">
+                            {line}
+                          </div>
+                        ))
+                      )}
+                      <div ref={logsEndRef} />
+                    </div>
+                  )}
+                </div>
+
+                {/* Abort Button while cloning */}
+                <div className="flex justify-end pt-1">
+                  <button
+                    type="button"
+                    onClick={handleAbortClone}
+                    disabled={isAborting}
+                    className="px-3 py-1 bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-400 hover:text-rose-300 rounded text-xs transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    {isAborting ? (
+                      <>
+                        <RefreshCw className="w-3 h-3 animate-spin" />
+                        <span>{t.modals.addRepo.abortingBtn}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Ban className="w-3 h-3" />
+                        <span>{t.modals.addRepo.abortBtn}</span>
+                      </>
+                    )}
+                  </button>
                 </div>
               </div>
             )}
