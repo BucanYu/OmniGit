@@ -394,7 +394,8 @@ interface AppState {
     preMergeHead: string;
     timestamp: number;
   } | null;
-  undoLastMerge: () => Promise<{ success: boolean; message: string }>;
+  checkMergeUndoStatus: (repoPath?: string, activeBranch?: string) => Promise<{ canUndo: boolean; sourceBranch: string; targetBranch: string; preMergeHead: string } | null>;
+  undoLastMerge: (sourceBranch?: string) => Promise<{ success: boolean; message: string }>;
   deleteBranch: (branchName: string, force?: boolean, isRemote?: boolean) => Promise<{ success: boolean; message: string }>;
   updateProject: () => Promise<void>;
   setNotification: (notif: AppNotification | null) => void;
@@ -2330,6 +2331,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       await get().loadRepoAuthors(repoPath);
       get().loadRecentCommitMessages(repoPath);
       get().loadLastCommit(repoPath);
+      get().checkMergeUndoStatus(repoPath);
     } catch (e: any) {
       console.error('Failed to load repo data:', e);
     } finally {
@@ -3156,19 +3158,93 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  undoLastMerge: async () => {
+  checkMergeUndoStatus: async (repoPath?: string, activeBranch?: string) => {
+    const targetPath = repoPath || get().projects.find((p) => p.id === get().activeProjectId)?.path;
+    if (!targetPath) return null;
+    try {
+      const res = await fetch('/api/git/merge-undo-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          path: targetPath,
+          activeBranch,
+        }),
+      });
+      const data = await res.json();
+      if (data && data.canUndo && data.preMergeHead) {
+        const info = {
+          repoPath: data.repoPath || targetPath,
+          sourceBranch: data.sourceBranch,
+          targetBranch: data.targetBranch,
+          preMergeHead: data.preMergeHead,
+          timestamp: data.timestamp || Date.now(),
+        };
+        set({ lastMergeUndoInfo: info });
+        return info;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  },
+
+  undoLastMerge: async (sourceBranch?: string) => {
     const state = get();
-    const info = state.lastMergeUndoInfo;
-    if (!info) return { success: false, message: 'No merge to undo' };
+    const currentProject = state.projects.find((p) => p.id === state.activeProjectId);
+    if (!currentProject) return { success: false, message: 'No active project' };
 
     const isZh = state.language === 'zh-CN';
+    const targetBranchName = sourceBranch || state.lastMergeUndoInfo?.sourceBranch;
+
+    set({ branchOperationLoading: { type: 'merge', branchName: targetBranchName || 'undo' } });
+
     try {
+      // 1. Resolve merge undo status dynamically from backend (handles crashes, restarts, and cache wipes)
+      let preMergeHead = '';
+      let detectedSource = targetBranchName || '';
+      let detectedTarget = currentProject.currentBranch;
+
+      const statusRes = await fetch('/api/git/merge-undo-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          path: currentProject.path,
+          activeBranch: targetBranchName,
+        }),
+      });
+      const statusData = await statusRes.json();
+
+      if (statusData && statusData.canUndo && statusData.preMergeHead) {
+        preMergeHead = statusData.preMergeHead;
+        detectedSource = statusData.sourceBranch || detectedSource;
+        detectedTarget = statusData.targetBranch || detectedTarget;
+      } else if (state.lastMergeUndoInfo?.preMergeHead) {
+        preMergeHead = state.lastMergeUndoInfo.preMergeHead;
+        detectedSource = state.lastMergeUndoInfo.sourceBranch || detectedSource;
+        detectedTarget = state.lastMergeUndoInfo.targetBranch || detectedTarget;
+      }
+
+      if (!preMergeHead) {
+        set({
+          notification: {
+            id: Date.now(),
+            title: isZh ? '未检测到可撤销的合并' : 'No Merge to Undo',
+            detail: isZh
+              ? `当前分支 (${currentProject.currentBranch}) 最近未检测到合并 '${targetBranchName || ''}' 的记录，或已有后续新提交。为了代码安全，未执行回滚。`
+              : `No recent merge from '${targetBranchName || ''}' detected on current branch, or newer commits exist.`,
+            type: 'warning',
+          },
+        });
+        return { success: false, message: 'No merge to undo' };
+      }
+
+      // 2. Perform safe reset to pre-merge commit
       const res = await fetch('/api/git/undo-merge', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          path: info.repoPath,
-          preMergeHead: info.preMergeHead,
+          path: currentProject.path,
+          preMergeHead,
         }),
       });
       const data = await res.json();
@@ -3178,11 +3254,13 @@ export const useAppStore = create<AppState>((set, get) => ({
           notification: {
             id: Date.now(),
             title: isZh ? '已撤销合并' : 'Merge Undone',
-            detail: data.message,
+            detail: isZh
+              ? `已成功撤销将 '${detectedSource}' 合并到 '${detectedTarget}' 的操作，分支已安全回滚至 (${preMergeHead.slice(0, 7)})`
+              : data.message,
             type: 'info',
           },
         });
-        await get().loadRepoData(info.repoPath, true);
+        await get().loadRepoData(currentProject.path, true);
         await get().fetchCommitLogs(true);
         get().pollWorkspaceSyncStatus();
       } else {
@@ -3199,6 +3277,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch (e: any) {
       const errorMsg = e.message || (isZh ? '请求异常' : 'Request error');
       return { success: false, message: errorMsg };
+    } finally {
+      set({ branchOperationLoading: null });
     }
   },
 

@@ -249,6 +249,11 @@ export async function handleGitApiRequest(req: IncomingMessage, res: ServerRespo
       const preMergeHead = body.preMergeHead || '';
       const result = await gitService.undoMerge(repoPath, preMergeHead);
       res.end(JSON.stringify(result));
+    } else if (pathname === '/api/git/merge-undo-status') {
+      const repoPath = body.path || query.path || '';
+      const activeBranch = body.activeBranch || query.activeBranch || '';
+      const result = await gitService.getMergeUndoStatus(repoPath, activeBranch);
+      res.end(JSON.stringify(result || { canUndo: false }));
     } else if (pathname === '/api/git/outgoing-commits') {
       const data = await gitService.getOutgoingCommits(query.path || '', query.branch || '');
       res.end(JSON.stringify(data));

@@ -1914,6 +1914,7 @@ export const gitService = {
     stdout?: string;
     isConflict?: boolean;
     preMergeHead?: string;
+    mergedHead?: string;
   }> {
     if (!repoPath || !sourceBranch) {
       return {
@@ -1935,6 +1936,32 @@ export const gitService = {
 
     if (res.code === 0) {
       const isUpToDate = res.stdout.includes('Already up to date');
+      const headAfterRes = await runGit(['rev-parse', 'HEAD'], repoPath);
+      const mergedHead = (headAfterRes.stdout || '').trim();
+
+      // Persist undo info to .git/omnigit_merge_undo.json so it survives app crash and cache clear
+      if (!isUpToDate && preMergeHead && mergedHead && preMergeHead !== mergedHead) {
+        try {
+          const gitDirRes = await runGit(['rev-parse', '--git-dir'], repoPath);
+          const gitDir = gitDirRes.code === 0 && gitDirRes.stdout ? path.resolve(repoPath, gitDirRes.stdout.trim()) : path.join(repoPath, '.git');
+          const undoFilePath = path.join(gitDir, 'omnigit_merge_undo.json');
+          fs.writeFileSync(
+            undoFilePath,
+            JSON.stringify({
+              repoPath,
+              sourceBranch: cleanBranch,
+              targetBranch,
+              preMergeHead,
+              mergedHead,
+              timestamp: Date.now(),
+            }, null, 2),
+            'utf8'
+          );
+        } catch (err) {
+          console.warn('Failed to save omnigit_merge_undo.json:', err);
+        }
+      }
+
       return {
         success: true,
         message: isUpToDate
@@ -1943,6 +1970,7 @@ export const gitService = {
         targetBranch,
         sourceBranch: cleanBranch,
         preMergeHead,
+        mergedHead,
         stdout: res.stdout,
       };
     } else {
@@ -1975,13 +2003,22 @@ export const gitService = {
       return { success: false, message: 'Repository path and preMergeHead are required' };
     }
 
-    const gitDir = path.join(repoPath, '.git');
+    const gitDirRes = await runGit(['rev-parse', '--git-dir'], repoPath);
+    const gitDir = gitDirRes.code === 0 && gitDirRes.stdout ? path.resolve(repoPath, gitDirRes.stdout.trim()) : path.join(repoPath, '.git');
     if (fs.existsSync(path.join(gitDir, 'MERGE_HEAD'))) {
       await runGit(['merge', '--abort'], repoPath);
     }
 
     const resetRes = await runGit(['reset', '--hard', preMergeHead], repoPath);
     if (resetRes.code === 0) {
+      // Clean up persistent undo file upon successful rollback
+      try {
+        const undoFilePath = path.join(gitDir, 'omnigit_merge_undo.json');
+        if (fs.existsSync(undoFilePath)) {
+          fs.unlinkSync(undoFilePath);
+        }
+      } catch {}
+
       return {
         success: true,
         message: `已成功撤销本次合并，分支已回滚至合并前状态 (${preMergeHead.slice(0, 7)})`,
@@ -1991,6 +2028,169 @@ export const gitService = {
         success: false,
         message: `撤销合并失败: ${resetRes.stderr || resetRes.stdout}`,
       };
+    }
+  },
+
+  // 32c. Get Merge Undo Status (resolves pre-merge commit from persistent file, git log parents, or reflog)
+  async getMergeUndoStatus(
+    repoPath: string,
+    activeBranch?: string
+  ): Promise<{
+    canUndo: boolean;
+    repoPath: string;
+    sourceBranch: string;
+    targetBranch: string;
+    preMergeHead: string;
+    mergedHead: string;
+    timestamp?: number;
+  } | null> {
+    if (!repoPath || !fs.existsSync(repoPath)) return null;
+
+    try {
+      const curBranchRes = await runGit(['branch', '--show-current'], repoPath);
+      const currentBranch = (curBranchRes.stdout || '').trim();
+      if (!currentBranch) return null;
+
+      const headRes = await runGit(['rev-parse', 'HEAD'], repoPath);
+      const currentHead = (headRes.stdout || '').trim();
+      if (!currentHead) return null;
+
+      const gitDirRes = await runGit(['rev-parse', '--git-dir'], repoPath);
+      const gitDir = gitDirRes.code === 0 && gitDirRes.stdout ? path.resolve(repoPath, gitDirRes.stdout.trim()) : path.join(repoPath, '.git');
+      const undoFilePath = path.join(gitDir, 'omnigit_merge_undo.json');
+
+      const cleanActive = activeBranch ? activeBranch.replace(/^origin\//, '') : '';
+
+      // 1. Check persistent file in .git/
+      if (fs.existsSync(undoFilePath)) {
+        try {
+          const data = JSON.parse(fs.readFileSync(undoFilePath, 'utf8'));
+          if (
+            data &&
+            data.preMergeHead &&
+            data.targetBranch === currentBranch &&
+            data.mergedHead === currentHead
+          ) {
+            const cleanSource = (data.sourceBranch || '').replace(/^origin\//, '');
+            if (!cleanActive || cleanActive.toLowerCase() === cleanSource.toLowerCase()) {
+              return {
+                canUndo: true,
+                repoPath,
+                sourceBranch: data.sourceBranch,
+                targetBranch: data.targetBranch,
+                preMergeHead: data.preMergeHead,
+                mergedHead: data.mergedHead,
+                timestamp: data.timestamp,
+              };
+            }
+          }
+        } catch {}
+      }
+
+      // 2. Dynamic Inspection from Git Log (for merge commits with >= 2 parents)
+      const logRes = await runGit(['log', '-1', '--pretty=format:%H%x00%P%x00%s'], repoPath);
+      if (logRes.code === 0 && logRes.stdout) {
+        const parts = logRes.stdout.split('\x00');
+        const hash = parts[0]?.trim();
+        const parents = (parts[1] || '').trim().split(/\s+/).filter(Boolean);
+        const subject = parts[2] || '';
+
+        if (hash === currentHead && parents.length >= 2) {
+          const preMergeHead = parents[0];
+          const p2 = parents[1];
+
+          let detectedSource = '';
+          const match =
+            subject.match(/Merge (?:remote-tracking )?branch ['"]([^'"]+)['"]/i) ||
+            subject.match(/Merge (?:remote-tracking )?branch (\S+)/i);
+          if (match) {
+            detectedSource = match[1].replace(/^origin\//, '');
+          }
+
+          if (cleanActive) {
+            let isP2Match = false;
+            try {
+              const p2HeadRes = await runGit(['rev-parse', `refs/heads/${cleanActive}`], repoPath);
+              if (p2HeadRes.code === 0 && p2HeadRes.stdout?.trim() === p2) {
+                isP2Match = true;
+              }
+              if (!isP2Match) {
+                const p2RemoteRes = await runGit(['rev-parse', `refs/remotes/origin/${cleanActive}`], repoPath);
+                if (p2RemoteRes.code === 0 && p2RemoteRes.stdout?.trim() === p2) {
+                  isP2Match = true;
+                }
+              }
+            } catch {}
+
+            if (
+              isP2Match ||
+              detectedSource.toLowerCase() === cleanActive.toLowerCase() ||
+              subject.toLowerCase().includes(cleanActive.toLowerCase())
+            ) {
+              return {
+                canUndo: true,
+                repoPath,
+                sourceBranch: cleanActive,
+                targetBranch: currentBranch,
+                preMergeHead,
+                mergedHead: currentHead,
+              };
+            }
+          } else if (detectedSource) {
+            return {
+              canUndo: true,
+              repoPath,
+              sourceBranch: detectedSource,
+              targetBranch: currentBranch,
+              preMergeHead,
+              mergedHead: currentHead,
+            };
+          }
+        }
+      }
+
+      // 3. Dynamic Inspection from Git Reflog & ORIG_HEAD (for Fast-Forward merges)
+      const reflogRes = await runGit(['reflog', '-n', '3', '--format=%H%x00%gd%x00%gs'], repoPath);
+      if (reflogRes.code === 0 && reflogRes.stdout) {
+        const firstLine = reflogRes.stdout.split(/\r?\n/).filter(Boolean)[0];
+        if (firstLine) {
+          const [refHash, , refSubject] = firstLine.split('\x00');
+          if (refHash?.trim() === currentHead && refSubject) {
+            const ffMatch = refSubject.match(/^merge (?:origin\/)?([^:]+):/i);
+            if (ffMatch) {
+              const detectedSource = ffMatch[1].replace(/^origin\//, '');
+              const origHeadPath = path.join(gitDir, 'ORIG_HEAD');
+              let preMergeHead = '';
+              if (fs.existsSync(origHeadPath)) {
+                preMergeHead = fs.readFileSync(origHeadPath, 'utf8').trim();
+              }
+              if (!preMergeHead) {
+                const head1Res = await runGit(['rev-parse', 'HEAD@{1}'], repoPath);
+                if (head1Res.code === 0 && head1Res.stdout) {
+                  preMergeHead = head1Res.stdout.trim();
+                }
+              }
+
+              if (preMergeHead && preMergeHead !== currentHead) {
+                if (!cleanActive || cleanActive.toLowerCase() === detectedSource.toLowerCase()) {
+                  return {
+                    canUndo: true,
+                    repoPath,
+                    sourceBranch: detectedSource,
+                    targetBranch: currentBranch,
+                    preMergeHead,
+                    mergedHead: currentHead,
+                  };
+                }
+              }
+            }
+          }
+        }
+      }
+
+      return null;
+    } catch (e) {
+      return null;
     }
   },
 

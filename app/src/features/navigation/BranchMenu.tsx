@@ -82,6 +82,9 @@ export function BranchMenu({ onClose }: BranchMenuProps) {
   // Tracked branch submenu state
   const [isTrackedOpen, setIsTrackedOpen] = useState(false);
 
+  // Undo merge confirmation state
+  const [undoMergeTarget, setUndoMergeTarget] = useState<string | null>(null);
+
   const menuRef = useRef<HTMLDivElement>(null);
   const flyoutRef = useRef<HTMLDivElement>(null);
   const activeProject = projects.find((p) => p.id === activeProjectId);
@@ -792,40 +795,25 @@ export function BranchMenu({ onClose }: BranchMenuProps) {
                   )}
                 </button>
 
-                {/* 8b. Undo Merge (Enabled ONLY if this exact branch was just merged into current branch; otherwise greyed out) */}
-                {(() => {
-                  const canUndoThisMerge =
-                    Boolean(lastMergeUndoInfo) &&
-                    lastMergeUndoInfo?.repoPath.toLowerCase() === currentProject?.path.toLowerCase() &&
-                    lastMergeUndoInfo?.sourceBranch === activeFlyoutBranch &&
-                    lastMergeUndoInfo?.targetBranch === currentBranchName;
-
-                  return (
-                    <button
-                      type="button"
-                      disabled={!canUndoThisMerge || Boolean(branchOperationLoading)}
-                      onClick={async () => {
-                        await undoLastMerge();
-                        onClose();
-                      }}
-                      className={`w-full text-left px-3 py-1 flex items-center justify-between whitespace-nowrap truncate transition ${
-                        canUndoThisMerge && !branchOperationLoading
-                          ? 'hover:bg-theme-hover text-rose-400 hover:text-rose-300 cursor-pointer font-medium'
-                          : 'opacity-40 text-theme-dim cursor-not-allowed select-none'
-                      }`}
-                      title={
-                        canUndoThisMerge
-                          ? `撤销刚才将 '${activeFlyoutBranch}' 合并到 '${currentBranchName}' 的操作，回滚到合并前提交 (${lastMergeUndoInfo?.preMergeHead.slice(0, 7)})`
-                          : `仅在刚刚执行过【合并 '${activeFlyoutBranch}' 到当前分支】后可用`
-                      }
-                    >
-                      <span className="truncate">
-                        {t.branchMenu.actions.undoMergeInto(activeFlyoutBranch, currentBranchName)}
-                      </span>
-                      {canUndoThisMerge && <Undo2 className="w-3.5 h-3.5 text-rose-400 shrink-0 ml-1.5" />}
-                    </button>
-                  );
-                })()}
+                {/* 8b. Undo Merge (常态：与其它菜单项一致为常规可用状态，点击后弹出确认框执行安全撤销) */}
+                <button
+                  type="button"
+                  disabled={Boolean(branchOperationLoading)}
+                  onClick={() => {
+                    setUndoMergeTarget(activeFlyoutBranch);
+                  }}
+                  className="w-full text-left px-3 py-1 hover:bg-theme-hover disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-between text-theme-main hover:text-rose-400 cursor-pointer whitespace-nowrap truncate group transition"
+                  title={
+                    useAppStore.getState().language === 'zh-CN'
+                      ? `撤销将 '${activeFlyoutBranch}' 合并到 '${currentBranchName}' 的操作`
+                      : `Undo Merge '${activeFlyoutBranch}' into '${currentBranchName}'`
+                  }
+                >
+                  <span className="truncate">
+                    {t.branchMenu.actions.undoMergeInto(activeFlyoutBranch, currentBranchName)}
+                  </span>
+                  <Undo2 className="w-3.5 h-3.5 text-theme-dim group-hover:text-rose-400 shrink-0 ml-1.5 transition-colors" />
+                </button>
 
                 <div className="my-0.5 border-t border-theme/60" />
 
@@ -1070,6 +1058,48 @@ export function BranchMenu({ onClose }: BranchMenuProps) {
                 <span className="text-[11px] font-medium">{t.modals.deleteBranch.forceDelete}</span>
               </label>
             )}
+          </div>
+        }
+      />
+
+      {/* Undo Merge Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={Boolean(undoMergeTarget)}
+        title={
+          useAppStore.getState().language === 'zh-CN'
+            ? `撤销合并 (Undo Merge)`
+            : `Undo Merge`
+        }
+        confirmText={
+          useAppStore.getState().language === 'zh-CN' ? '确认撤销' : 'Undo Merge'
+        }
+        cancelText={
+          useAppStore.getState().language === 'zh-CN' ? '取消' : 'Cancel'
+        }
+        variant="danger"
+        icon="warning"
+        isLoading={Boolean(branchOperationLoading)}
+        onConfirm={async () => {
+          const target = undoMergeTarget;
+          setUndoMergeTarget(null);
+          if (target) {
+            await undoLastMerge(target);
+            onClose();
+          }
+        }}
+        onCancel={() => setUndoMergeTarget(null)}
+        description={
+          <div className="flex flex-col gap-2">
+            <p>
+              {useAppStore.getState().language === 'zh-CN'
+                ? `确认要撤销合并 '${undoMergeTarget}' 到当前分支 '${currentBranchName}' 吗？`
+                : `Are you sure you want to undo merging '${undoMergeTarget}' into '${currentBranchName}'?`}
+            </p>
+            <div className="p-2 rounded bg-rose-500/10 border border-rose-500/20 text-rose-400 text-[11px] leading-relaxed">
+              {useAppStore.getState().language === 'zh-CN'
+                ? '系统将自动检测本次合并并安全回滚到合并前版本。如果当前分支已有后续新提交或未检测到合并记录，系统将提示并中止，以保障代码安全。'
+                : 'OmniGit will check and safely revert HEAD to the pre-merge commit. If newer commits have been made, rollback will be safely prevented.'}
+            </div>
           </div>
         }
       />
