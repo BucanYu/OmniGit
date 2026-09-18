@@ -801,6 +801,7 @@ export function BranchMenu({ onClose }: BranchMenuProps) {
                   disabled={Boolean(branchOperationLoading)}
                   onClick={() => {
                     setUndoMergeTarget(activeFlyoutBranch);
+                    setActiveFlyoutBranch(null);
                   }}
                   className="w-full text-left px-3 py-1 hover:bg-theme-hover disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-between text-theme-main hover:text-rose-400 cursor-pointer whitespace-nowrap truncate group transition"
                   title={

@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { AlertTriangle, Trash2, X, AlertCircle } from 'lucide-react';
 import { useTranslation } from '../../locales';
 
@@ -74,13 +75,13 @@ export function ConfirmDialog({
       ? 'bg-amber-600 hover:bg-amber-700 text-white shadow-sm'
       : 'bg-theme-accent hover:bg-theme-accent-hover text-white shadow-sm';
 
-  return (
+  const dialogContent = (
     <div
-      className="fixed inset-0 z-[999] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 select-none font-sans animate-fade-in"
+      className="fixed inset-0 z-[99999] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 select-none font-sans animate-fade-in"
       onClick={onCancel}
     >
       <div
-        className="bg-theme-card border border-theme-border-card rounded-xl shadow-2xl p-5 w-full max-w-md text-xs text-theme-main relative flex flex-col gap-4"
+        className="bg-theme-card border border-theme-border-card rounded-xl shadow-2xl p-5 w-full max-w-md text-xs text-theme-main relative flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-150"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Top Header */}
@@ -132,4 +133,6 @@ export function ConfirmDialog({
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(dialogContent, document.body) : dialogContent;
 }

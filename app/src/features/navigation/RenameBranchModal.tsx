@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Edit3, X } from 'lucide-react';
 import { useTranslation } from '../../locales';
 
@@ -50,8 +51,8 @@ export function RenameBranchModal({
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+  const modalContent = (
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
       <div
         className="w-full max-w-sm bg-theme-panel border border-theme rounded-lg shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150"
         onClick={(e) => e.stopPropagation()}
@@ -65,7 +66,7 @@ export function RenameBranchModal({
             <div>
               <h3 className="text-sm font-semibold text-theme-main">{t.modals.renameBranch.title}</h3>
               <p className="text-[11px] text-theme-dim">
-                {t.modals.renameBranch.currentName}<span className="font-mono text-sky-400 font-semibold">{oldBranchName}</span>
+                {t.modals.renameBranch.currentName}<span className="font-mono text-amber-400 font-semibold">{oldBranchName}</span>
               </p>
             </div>
           </div>
@@ -117,4 +118,6 @@ export function RenameBranchModal({
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(modalContent, document.body) : modalContent;
 }

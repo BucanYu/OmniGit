@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Tag, Clock, X, GitBranch } from 'lucide-react';
 import { useTranslation } from '../../locales';
 
@@ -49,8 +50,8 @@ export function CheckoutRevisionModal({
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+  const modalContent = (
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
       <div
         className="w-full max-w-md bg-theme-panel border border-theme rounded-lg shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150"
         onClick={(e) => e.stopPropagation()}
@@ -58,12 +59,12 @@ export function CheckoutRevisionModal({
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-theme bg-theme-header">
           <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-md bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+            <div className="w-7 h-7 rounded-md bg-sky-500/15 border border-sky-500/30 flex items-center justify-center text-sky-400">
               <Clock className="w-4 h-4" />
             </div>
             <div>
               <h3 className="text-sm font-semibold text-theme-main">{t.modals.checkoutRevision.title}</h3>
-              <p className="text-[11px] text-theme-dim">{t.modals.checkoutRevision.subtitle}</p>
+              <p className="text-[11px] text-theme-dim">{t.modals.checkoutRevision.description}</p>
             </div>
           </div>
           <button
@@ -79,8 +80,9 @@ export function CheckoutRevisionModal({
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-5 flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-semibold text-theme-main">
-              Tag, Branch, or Commit Hash：
+            <label className="text-xs font-semibold text-theme-main flex items-center gap-1">
+              <Tag className="w-3.5 h-3.5 text-sky-400" />
+              <span>{t.modals.checkoutRevision.targetLabel}</span>
             </label>
             <input
               type="text"
@@ -103,14 +105,17 @@ export function CheckoutRevisionModal({
           </label>
 
           {asNewBranch && (
-            <div className="flex flex-col gap-1.5 pl-6 animate-in fade-in duration-100">
-              <label className="text-[11px] font-medium text-theme-muted">{t.modals.checkoutRevision.newBranchLabel}</label>
+            <div className="flex flex-col gap-1.5 pl-6 animate-in fade-in slide-in-from-top-1 duration-150">
+              <label className="text-xs font-semibold text-theme-main flex items-center gap-1">
+                <GitBranch className="w-3.5 h-3.5 text-amber-400" />
+                <span>{t.modals.checkoutRevision.branchNameLabel}</span>
+              </label>
               <input
                 type="text"
                 value={newBranchName}
                 onChange={(e) => setNewBranchName(e.target.value)}
-                placeholder={t.modals.checkoutRevision.newBranchPlaceholder}
-                className="px-3 py-1 rounded-md bg-theme-input border border-theme text-xs text-theme-main placeholder-theme-dim focus:outline-none focus:border-sky-500 font-mono"
+                placeholder={t.modals.checkoutRevision.branchNamePlaceholder}
+                className="px-3 py-1.5 rounded-md bg-theme-input border border-theme text-xs text-theme-main placeholder-theme-dim focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 font-mono"
               />
             </div>
           )}
@@ -139,4 +144,6 @@ export function CheckoutRevisionModal({
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(modalContent, document.body) : modalContent;
 }

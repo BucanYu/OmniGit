@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { GitBranch, X } from 'lucide-react';
 import { useTranslation } from '../../locales';
 
@@ -48,8 +49,8 @@ export function NewBranchModal({
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+  const modalContent = (
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
       <div
         className="w-full max-w-md bg-theme-panel border border-theme rounded-lg shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150"
         onClick={(e) => e.stopPropagation()}
@@ -61,33 +62,34 @@ export function NewBranchModal({
               <GitBranch className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-theme-main">{t.modals.newBranch.title}</h3>
-              <p className="text-[11px] text-theme-dim">
-                {t.modals.newBranch.sourceBranch}<span className="font-mono text-sky-400 font-semibold">{sourceBranch}</span>
-              </p>
+              <h3 className="text-sm font-semibold text-theme-main leading-none">
+                {t.modals.newBranch.title(sourceBranch)}
+              </h3>
+              <p className="text-[11px] text-theme-muted mt-1">{t.modals.newBranch.description}</p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1 rounded-md text-theme-dim hover:text-theme-main hover:bg-theme-card transition-colors cursor-pointer"
-            title={t.common.close}
+            className="text-theme-muted hover:text-theme-main p-1 rounded hover:bg-theme-card transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Form */}
+        {/* Body */}
         <form onSubmit={handleSubmit} className="p-5 flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-semibold text-theme-main">{t.modals.newBranch.branchNameLabel}</label>
+          <div>
+            <label className="block text-xs font-medium text-theme-main mb-1.5">
+              {t.modals.newBranch.branchNameLabel}
+            </label>
             <input
               type="text"
               autoFocus
               value={branchName}
               onChange={(e) => setBranchName(e.target.value)}
               placeholder={t.modals.newBranch.branchNamePlaceholder}
-              className="px-3 py-1.5 rounded-md bg-theme-input border border-theme text-xs text-theme-main placeholder-theme-dim focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 font-mono"
+              className="w-full px-3 py-1.5 rounded bg-theme-card border border-theme text-xs text-theme-main placeholder:text-theme-dim focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 transition-colors"
             />
           </div>
 
@@ -96,7 +98,7 @@ export function NewBranchModal({
               type="checkbox"
               checked={shouldCheckout}
               onChange={(e) => setShouldCheckout(e.target.checked)}
-              className="rounded text-sky-500 focus:ring-sky-500 cursor-pointer"
+              className="rounded border-theme bg-theme-card text-sky-600 focus:ring-sky-500 cursor-pointer"
             />
             <span>{t.modals.newBranch.checkoutAfterCreate}</span>
           </label>
@@ -125,4 +127,6 @@ export function NewBranchModal({
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(modalContent, document.body) : modalContent;
 }
