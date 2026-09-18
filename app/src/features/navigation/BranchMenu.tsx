@@ -20,6 +20,7 @@ import {
   Globe,
   Trash2,
   AlertCircle,
+  Undo2,
 } from 'lucide-react';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { NewBranchModal } from './NewBranchModal';
@@ -40,6 +41,8 @@ export function BranchMenu({ onClose }: BranchMenuProps) {
     loadRepoData,
     checkoutBranch,
     mergeBranch,
+    lastMergeUndoInfo,
+    undoLastMerge,
     branchOperationLoading,
     deleteBranch,
     updateProject,
@@ -788,6 +791,41 @@ export function BranchMenu({ onClose }: BranchMenuProps) {
                     <RefreshCw className="w-3.5 h-3.5 text-sky-400 animate-spin shrink-0 ml-1.5" />
                   )}
                 </button>
+
+                {/* 8b. Undo Merge (Enabled ONLY if this exact branch was just merged into current branch; otherwise greyed out) */}
+                {(() => {
+                  const canUndoThisMerge =
+                    Boolean(lastMergeUndoInfo) &&
+                    lastMergeUndoInfo?.repoPath.toLowerCase() === currentProject?.path.toLowerCase() &&
+                    lastMergeUndoInfo?.sourceBranch === activeFlyoutBranch &&
+                    lastMergeUndoInfo?.targetBranch === currentBranchName;
+
+                  return (
+                    <button
+                      type="button"
+                      disabled={!canUndoThisMerge || Boolean(branchOperationLoading)}
+                      onClick={async () => {
+                        await undoLastMerge();
+                        onClose();
+                      }}
+                      className={`w-full text-left px-3 py-1 flex items-center justify-between whitespace-nowrap truncate transition ${
+                        canUndoThisMerge && !branchOperationLoading
+                          ? 'hover:bg-theme-hover text-rose-400 hover:text-rose-300 cursor-pointer font-medium'
+                          : 'opacity-40 text-theme-dim cursor-not-allowed select-none'
+                      }`}
+                      title={
+                        canUndoThisMerge
+                          ? `撤销刚才将 '${activeFlyoutBranch}' 合并到 '${currentBranchName}' 的操作，回滚到合并前提交 (${lastMergeUndoInfo?.preMergeHead.slice(0, 7)})`
+                          : `仅在刚刚执行过【合并 '${activeFlyoutBranch}' 到当前分支】后可用`
+                      }
+                    >
+                      <span className="truncate">
+                        {t.branchMenu.actions.undoMergeInto(activeFlyoutBranch, currentBranchName)}
+                      </span>
+                      {canUndoThisMerge && <Undo2 className="w-3.5 h-3.5 text-rose-400 shrink-0 ml-1.5" />}
+                    </button>
+                  );
+                })()}
 
                 <div className="my-0.5 border-t border-theme/60" />
 

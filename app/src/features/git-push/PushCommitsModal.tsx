@@ -177,27 +177,37 @@ export const PushCommitsModal: React.FC = () => {
     } catch {}
   };
 
-  // Derive which files to display based on selected commit (or all commits if none selected)
-  const displayedFiles = useMemo(() => {
-    if (!outgoingCommitsData || !Array.isArray(outgoingCommitsData.commits)) return [];
+  // Derive which commit is active (defaults immediately to the first commit rather than null)
+  const effectiveSelectedCommit = useMemo(() => {
+    if (!outgoingCommitsData?.commits || outgoingCommitsData.commits.length === 0) return null;
     if (selectedCommitHash) {
-      const c = outgoingCommitsData.commits.find((item) => item.hash === selectedCommitHash);
-      if (c && Array.isArray(c.files)) return c.files;
+      const found = outgoingCommitsData.commits.find((item) => item.hash === selectedCommitHash);
+      if (found) return found;
     }
-    return Array.isArray(outgoingCommitsData.allFiles) ? outgoingCommitsData.allFiles : [];
+    return outgoingCommitsData.commits[0];
   }, [outgoingCommitsData, selectedCommitHash]);
+
+  // Derive which files to display based on selected commit (or fallback to first commit's files)
+  const displayedFiles = useMemo(() => {
+    if (effectiveSelectedCommit && Array.isArray(effectiveSelectedCommit.files)) {
+      return effectiveSelectedCommit.files;
+    }
+    return Array.isArray(outgoingCommitsData?.allFiles) ? outgoingCommitsData.allFiles : [];
+  }, [effectiveSelectedCommit, outgoingCommitsData]);
 
   // Build hierarchical tree safely
   const fileTree = useMemo(() => buildFileTree(displayedFiles), [displayedFiles]);
 
-  // Auto-expand all folders when files are loaded so it matches Screenshot 3
+  // Auto-expand folders smartly (avoids DOM explosion if thousands of files)
   React.useEffect(() => {
     if (displayedFiles && displayedFiles.length > 0) {
       const allPaths = new Set<string>(['root']);
+      const isLarge = displayedFiles.length > 150;
       displayedFiles.forEach((f) => {
         if (!f || !f.path) return;
         const parts = f.path.split('/');
-        for (let i = 0; i < parts.length - 1; i++) {
+        const maxDepth = isLarge ? 1 : parts.length - 1;
+        for (let i = 0; i < Math.min(parts.length - 1, maxDepth); i++) {
           allPaths.add(parts.slice(0, i + 1).join('/'));
         }
       });
@@ -599,7 +609,7 @@ export const PushCommitsModal: React.FC = () => {
                 renderTreeNodes(fileTree)
               ) : (
                 <div className="space-y-0.5">
-                  {displayedFiles.map((file) => (
+                  {displayedFiles.slice(0, 300).map((file) => (
                     <div
                       key={file.path}
                       onClick={() => {
@@ -653,6 +663,12 @@ export const PushCommitsModal: React.FC = () => {
                       </div>
                     </div>
                   ))}
+
+                  {displayedFiles.length > 300 && (
+                    <div className="py-2 px-3 text-center text-[11px] text-theme-dim bg-theme-subbar/60 rounded border border-theme/40 my-1">
+                      已展示前 300 个变更文件（共 {displayedFiles.length} 个）以保障流畅度
+                    </div>
+                  )}
                 </div>
               )}
             </div>

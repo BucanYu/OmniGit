@@ -387,6 +387,14 @@ interface AppState {
   confirmRollback: () => Promise<void>;
   checkoutBranch: (branchName: string) => Promise<void>;
   mergeBranch: (branchName: string) => Promise<{ success: boolean; message: string }>;
+  lastMergeUndoInfo: {
+    repoPath: string;
+    sourceBranch: string;
+    targetBranch: string;
+    preMergeHead: string;
+    timestamp: number;
+  } | null;
+  undoLastMerge: () => Promise<{ success: boolean; message: string }>;
   deleteBranch: (branchName: string, force?: boolean, isRemote?: boolean) => Promise<{ success: boolean; message: string }>;
   updateProject: () => Promise<void>;
   setNotification: (notif: AppNotification | null) => void;
@@ -458,7 +466,7 @@ interface AppState {
   checkoutRevision: (hash: string) => Promise<{ success: boolean; message: string }>;
   createBranchAtCommit: (branchName: string, hash: string) => Promise<{ success: boolean; message: string }>;
   createTagAtCommit: (tagName: string, hash: string, message?: string) => Promise<{ success: boolean; message: string }>;
-  cherryPickCommit: (hash: string) => Promise<{ success: boolean; message: string }>;
+  cherryPickCommit: (hash: string) => Promise<{ success: boolean; message: string; isConflict?: boolean }>;
 
   // VS Code File Action Icons (Open, Reveal, Stage, Unstage)
   openFileInEditor: (filePath: string) => Promise<void>;
@@ -1489,6 +1497,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   conflictedCount: 0,
   conflictsDialogOpen: false,
   conflictsDialogMinimized: false,
+  lastMergeUndoInfo: null,
   openConflictsDialog: () => set({ conflictsDialogOpen: true, conflictsDialogMinimized: false }),
   closeConflictsDialog: () => set({ conflictsDialogOpen: false, conflictsDialogMinimized: false }),
   setConflictsDialogMinimized: (minimized: boolean) => set({ conflictsDialogMinimized: minimized }),
@@ -2289,6 +2298,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         return;
       }
 
+      const shouldOpenConflicts = conflictFiles.length > 0 && !get().conflictsDialogOpen && !get().conflictsDialogMinimized;
+
       set((state) => ({
         files: allFiles,
         branches: enrichedBranches,
@@ -2296,6 +2307,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         mergeMessage: status.mergeMessage || '',
         mergeSourceBranch: status.mergeSourceBranch,
         conflictedCount: status.conflictedCount || conflictFiles.length,
+        conflictsDialogOpen: shouldOpenConflicts ? true : state.conflictsDialogOpen,
         projects: state.projects.map((p) =>
           p.path.toLowerCase() === normPath
             ? {
@@ -3083,6 +3095,18 @@ export const useAppStore = create<AppState>((set, get) => ({
       const data = await res.json();
 
       if (data.success) {
+        if (data.preMergeHead) {
+          set({
+            lastMergeUndoInfo: {
+              repoPath: currentProject.path,
+              sourceBranch: branchName,
+              targetBranch: data.targetBranch || currentProject.currentBranch,
+              preMergeHead: data.preMergeHead,
+              timestamp: Date.now(),
+            },
+          });
+        }
+
         // Pop up the exact IDEA-matching notification balloon: "Merged <source> to <target>"
         set({
           notification: {
@@ -3096,19 +3120,24 @@ export const useAppStore = create<AppState>((set, get) => ({
         await get().fetchCommitLogs(true);
         get().pollWorkspaceSyncStatus();
       } else {
+        await get().loadRepoData(currentProject.path, true);
+        await get().fetchCommitLogs(true);
+        const hasConflicts = Boolean(data.isConflict) || get().files.some((f) => f.status === 'conflict') || get().isMerging;
         set({
-          conflictsDialogOpen: Boolean(data.isConflict),
+          conflictsDialogOpen: hasConflicts,
+          conflictsDialogMinimized: false,
+          activeTab: hasConflicts ? 'changes' : get().activeTab,
           notification: {
             id: Date.now(),
-            title: data.isConflict
+            title: hasConflicts
               ? (isZh ? '分支合并冲突 (Merge Conflicts)' : 'Merge Conflicts')
               : (isZh ? '分支合并失败 (Merge Failed)' : 'Merge Failed'),
-            detail: data.message,
+            detail: hasConflicts
+              ? (isZh ? '合并发生代码冲突，已自动为您打开冲突解决窗口。您可以进行三方可视化合并或放弃合并。' : data.message)
+              : data.message,
             type: 'warning',
           },
         });
-        await get().loadRepoData(currentProject.path, true);
-        await get().fetchCommitLogs(true);
       }
       return data;
     } catch (e: any) {
@@ -3124,6 +3153,52 @@ export const useAppStore = create<AppState>((set, get) => ({
       return { success: false, message: errorMsg };
     } finally {
       set({ branchOperationLoading: null });
+    }
+  },
+
+  undoLastMerge: async () => {
+    const state = get();
+    const info = state.lastMergeUndoInfo;
+    if (!info) return { success: false, message: 'No merge to undo' };
+
+    const isZh = state.language === 'zh-CN';
+    try {
+      const res = await fetch('/api/git/undo-merge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          path: info.repoPath,
+          preMergeHead: info.preMergeHead,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        set({
+          lastMergeUndoInfo: null,
+          notification: {
+            id: Date.now(),
+            title: isZh ? '已撤销合并' : 'Merge Undone',
+            detail: data.message,
+            type: 'info',
+          },
+        });
+        await get().loadRepoData(info.repoPath, true);
+        await get().fetchCommitLogs(true);
+        get().pollWorkspaceSyncStatus();
+      } else {
+        set({
+          notification: {
+            id: Date.now(),
+            title: isZh ? '撤销合并失败' : 'Failed to Undo Merge',
+            detail: data.message,
+            type: 'warning',
+          },
+        });
+      }
+      return data;
+    } catch (e: any) {
+      const errorMsg = e.message || (isZh ? '请求异常' : 'Request error');
+      return { success: false, message: errorMsg };
     }
   },
 
@@ -3895,6 +3970,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     const currentProject = state.projects.find((p) => p.id === state.activeProjectId);
     if (!currentProject) return { success: false, message: 'No active project' };
 
+    const isZh = state.language === 'zh-CN';
+
     try {
       const res = await fetch('/api/git/cherry-pick', {
         method: 'POST',
@@ -3902,12 +3979,13 @@ export const useAppStore = create<AppState>((set, get) => ({
         body: JSON.stringify({ path: currentProject.path, hash }),
       });
       const data = await res.json();
+
       if (data.success) {
         set({
           notification: {
             id: Date.now(),
-            title: 'Cherry-Pick Succeeded',
-            detail: `Cherry-picked ${hash.slice(0, 7)} into current branch`,
+            title: isZh ? 'Cherry-Pick 成功' : 'Cherry-Pick Succeeded',
+            detail: isZh ? `已将提交 ${hash.slice(0, 7)} 成功合并到当前分支` : `Cherry-picked ${hash.slice(0, 7)} into current branch`,
             type: 'success',
           },
         });
@@ -3915,20 +3993,51 @@ export const useAppStore = create<AppState>((set, get) => ({
         await get().fetchCommitLogs(true);
         get().pollWorkspaceSyncStatus();
       } else {
-        set({
-          notification: {
-            id: Date.now(),
-            title: 'Cherry-Pick Failed',
-            detail: data.message,
-            type: 'warning',
-          },
-        });
+        // Always refresh repo data so conflict status is detected in state
+        await get().loadRepoData(currentProject.path, true);
+
+        const hasConflicts = Boolean(data.isConflict) || get().files.some((f) => f.status === 'conflict') || get().isMerging;
+
+        if (hasConflicts) {
+          set({
+            conflictsDialogOpen: true,
+            conflictsDialogMinimized: false,
+            activeTab: 'changes',
+            notification: {
+              id: Date.now(),
+              title: isZh ? 'Cherry-Pick 产生代码冲突' : 'Cherry-Pick Conflict',
+              detail: isZh
+                ? `提交 ${hash.slice(0, 7)} 存在冲突，已自动为您打开冲突解决器。您可以点击【解决冲突】三方合并，或点击【放弃】中止合并。`
+                : `Cherry-pick of ${hash.slice(0, 7)} produced conflicts. The conflicts dialog has been opened.`,
+              type: 'warning',
+            },
+          });
+        } else {
+          set({
+            notification: {
+              id: Date.now(),
+              title: isZh ? 'Cherry-Pick 失败' : 'Cherry-Pick Failed',
+              detail: data.message,
+              type: 'warning',
+            },
+          });
+        }
       }
       return data;
     } catch (e: any) {
-      return { success: false, message: e.message };
+      const errorMsg = e.message || (isZh ? '请求异常' : 'Request error');
+      set({
+        notification: {
+          id: Date.now(),
+          title: isZh ? 'Cherry-Pick 异常' : 'Cherry-Pick Error',
+          detail: errorMsg,
+          type: 'warning',
+        },
+      });
+      return { success: false, message: errorMsg };
     }
   },
+
 
   // IntelliJ IDEA Style Branch Actions
   toggleBranchFavorite: (branchName: string) => {

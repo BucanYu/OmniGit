@@ -172,6 +172,68 @@ function diagnoseCloneError(errorText: string): string {
   return errorText.slice(0, 300);
 }
 
+function parseGitLogBatchOutput(raw: string): { commits: OutgoingCommitItem[]; allFiles: OutgoingCommitFile[] } {
+  const commits: OutgoingCommitItem[] = [];
+  const allFilesMap = new Map<string, OutgoingCommitFile>();
+  const chunks = raw.split('\x1e').map((c) => c.trim()).filter(Boolean);
+
+  for (const chunk of chunks) {
+    const unitSepIdx = chunk.indexOf('\x1f');
+    if (unitSepIdx === -1) continue;
+
+    const header = chunk.slice(0, unitSepIdx).trim();
+    const filesSection = chunk.slice(unitSepIdx + 1).trim();
+
+    const parts = header.split('\x00');
+    if (parts.length < 6) continue;
+    const [hash, shortHash, authorName, authorEmail, date, subject, body = ''] = parts;
+
+    const files: OutgoingCommitFile[] = [];
+    if (filesSection) {
+      const lines = filesSection.split('\n').map((l) => l.trim()).filter(Boolean);
+      for (const line of lines) {
+        const segs = line.split(/\t+/);
+        if (segs.length >= 2) {
+          const statusCode = segs[0];
+          const filePath = segs[segs.length - 1];
+          const normalizedPath = filePath.replace(/\\/g, '/');
+          const lastSlash = normalizedPath.lastIndexOf('/');
+          const fileName = lastSlash >= 0 ? normalizedPath.slice(lastSlash + 1) : normalizedPath;
+          const dirPath = lastSlash >= 0 ? normalizedPath.slice(0, lastSlash) : '';
+
+          let status: OutgoingCommitFile['status'] = 'modified';
+          if (statusCode.startsWith('A')) status = 'added';
+          else if (statusCode.startsWith('D')) status = 'deleted';
+          else if (statusCode.startsWith('R')) status = 'renamed';
+
+          const fileObj: OutgoingCommitFile = {
+            path: normalizedPath,
+            fileName,
+            dirPath,
+            status,
+            statusCode,
+          };
+          files.push(fileObj);
+          allFilesMap.set(normalizedPath, fileObj);
+        }
+      }
+    }
+
+    commits.push({
+      hash,
+      shortHash,
+      subject,
+      body: body.trim(),
+      authorName,
+      authorEmail,
+      date,
+      files,
+    });
+  }
+
+  return { commits, allFiles: Array.from(allFilesMap.values()) };
+}
+
 interface RepoWatcherEntry {
   watcher: fs.FSWatcher | null;
   callbacks: Set<() => void>;
@@ -1596,15 +1658,36 @@ export const gitService = {
     };
   },
 
-  // 23. Cherry-pick commit
+  // 23. Cherry-pick commit with comprehensive conflict detection
   async cherryPickCommit(
     repoPath: string,
     hash: string
-  ): Promise<{ success: boolean; message: string }> {
+  ): Promise<{ success: boolean; message: string; isConflict?: boolean; stdout?: string }> {
     const res = await runGit(['cherry-pick', hash], repoPath);
+    if (res.code === 0) {
+      return {
+        success: true,
+        message: res.stdout || res.stderr || `Cherry-picked ${hash.slice(0, 7)} into current branch`,
+        stdout: res.stdout,
+      };
+    }
+
+    const errText = (res.stderr || res.stdout || '').trim();
+    const gitDir = path.join(repoPath, '.git');
+    const isConflict =
+      errText.includes('CONFLICT') ||
+      errText.includes('Automatic cherry-pick failed') ||
+      errText.includes('unmerged files') ||
+      errText.includes('could not apply') ||
+      fs.existsSync(path.join(gitDir, 'CHERRY_PICK_HEAD'));
+
     return {
-      success: res.code === 0,
-      message: res.stdout || res.stderr || `Cherry-picked ${hash.slice(0, 7)} into current branch`,
+      success: false,
+      isConflict,
+      message: isConflict
+        ? `Cherry-Pick 产生代码冲突: 提交 ${hash.slice(0, 7)} 存在冲突文件，请在工作区解决冲突或放弃。`
+        : `Cherry-Pick 失败: ${errText}`,
+      stdout: errText,
     };
   },
 
@@ -1744,6 +1827,11 @@ export const gitService = {
     };
   },
 
+  // Helper: Batch parse git log --name-status output into commits and modified files safely in O(N) memory
+  parseGitLogBatchOutput(raw: string): { commits: OutgoingCommitItem[]; allFiles: OutgoingCommitFile[] } {
+    return parseGitLogBatchOutput(raw);
+  },
+
   // 31. Get outgoing commits and file list for Push Dialog (1:1 with IntelliJ IDEA Screenshot 3)
   async getOutgoingCommits(
     repoPath: string,
@@ -1765,18 +1853,17 @@ export const gitService = {
     }
 
     // 3. Query outgoing commits (upstream..HEAD)
-    const commits: OutgoingCommitItem[] = [];
-    const allFilesMap = new Map<string, OutgoingCommitFile>();
-
     const range = `${remote}/${targetBranch}..${sourceBranch}`;
     let logRes = await runGit([
       'log',
       range,
-      '--pretty=format:%H%x00%h%x00%an%x00%ae%x00%ad%x00%s%x00%b%x1f',
+      '--pretty=format:%x1e%H%x00%h%x00%an%x00%ae%x00%ad%x00%s%x00%b%x1f',
+      '--name-status',
+      '-n', '300',
     ], repoPath);
 
     // If range produced nothing (e.g. already pushed or new branch without remote),
-    // fallback to querying the latest commit on this branch so the dialog can still show context
+    // fallback to querying commits on this branch
     let rawLog = logRes.stdout.trim();
     if (!rawLog) {
       // Check if remote branch exists at all
@@ -1786,8 +1873,9 @@ export const gitService = {
         const fullLog = await runGit([
           'log',
           sourceBranch,
-          '-n', '10',
-          '--pretty=format:%H%x00%h%x00%an%x00%ae%x00%ad%x00%s%x00%b%x1f',
+          '-n', '100',
+          '--pretty=format:%x1e%H%x00%h%x00%an%x00%ae%x00%ad%x00%s%x00%b%x1f',
+          '--name-status',
         ], repoPath);
         rawLog = fullLog.stdout.trim();
       } else {
@@ -1796,70 +1884,13 @@ export const gitService = {
       }
     }
 
+    let commits: OutgoingCommitItem[] = [];
+    let allFiles: OutgoingCommitFile[] = [];
+
     if (rawLog) {
-      const records = rawLog.split('\x1f').map((r) => r.trim()).filter(Boolean);
-      const parsedCommits = await Promise.all(
-        records.map(async (record) => {
-          const parts = record.split('\x00');
-          if (parts.length < 6) return null;
-          const [hash, shortHash, authorName, authorEmail, date, subject, body = ''] = parts;
-
-          // Get files for this commit in parallel
-          const diffRes = await runGit(
-            ['diff-tree', '--no-commit-id', '--name-status', '-r', '-m', '--first-parent', hash],
-            repoPath
-          );
-          const files: OutgoingCommitFile[] = [];
-
-          if (diffRes.stdout) {
-            const lines = diffRes.stdout.split('\n').map((l) => l.trim()).filter(Boolean);
-            for (const line of lines) {
-              const segs = line.split(/\t+/);
-              if (segs.length >= 2) {
-                const statusCode = segs[0];
-                const filePath = segs[segs.length - 1];
-                const normalizedPath = filePath.replace(/\\/g, '/');
-                const lastSlash = normalizedPath.lastIndexOf('/');
-                const fileName = lastSlash >= 0 ? normalizedPath.slice(lastSlash + 1) : normalizedPath;
-                const dirPath = lastSlash >= 0 ? normalizedPath.slice(0, lastSlash) : '';
-
-                let status: OutgoingCommitFile['status'] = 'modified';
-                if (statusCode.startsWith('A')) status = 'added';
-                else if (statusCode.startsWith('D')) status = 'deleted';
-                else if (statusCode.startsWith('R')) status = 'renamed';
-
-                const fileObj: OutgoingCommitFile = {
-                  path: normalizedPath,
-                  fileName,
-                  dirPath,
-                  status,
-                  statusCode,
-                };
-                files.push(fileObj);
-              }
-            }
-          }
-
-          return {
-            hash,
-            shortHash,
-            subject,
-            body: body.trim(),
-            authorName,
-            authorEmail,
-            date,
-            files,
-          };
-        })
-      );
-
-      for (const item of parsedCommits) {
-        if (!item) continue;
-        commits.push(item);
-        for (const file of item.files) {
-          allFilesMap.set(file.path, file);
-        }
-      }
+      const parsed = parseGitLogBatchOutput(rawLog);
+      commits = parsed.commits;
+      allFiles = parsed.allFiles;
     }
 
     return {
@@ -1867,7 +1898,7 @@ export const gitService = {
       targetBranch,
       remote,
       commits,
-      allFiles: Array.from(allFilesMap.values()),
+      allFiles,
     };
   },
 
@@ -1882,6 +1913,7 @@ export const gitService = {
     sourceBranch: string;
     stdout?: string;
     isConflict?: boolean;
+    preMergeHead?: string;
   }> {
     if (!repoPath || !sourceBranch) {
       return {
@@ -1895,6 +1927,10 @@ export const gitService = {
     const curRes = await runGit(['branch', '--show-current'], repoPath);
     const targetBranch = curRes.stdout || 'HEAD';
 
+    // Record pre-merge HEAD SHA for 1-click Undo Merge
+    const headRes = await runGit(['rev-parse', 'HEAD'], repoPath);
+    const preMergeHead = (headRes.stdout || '').trim();
+
     const res = await runGit(['merge', cleanBranch, '--no-edit'], repoPath, 180000);
 
     if (res.code === 0) {
@@ -1906,11 +1942,16 @@ export const gitService = {
           : `Merged ${cleanBranch} to ${targetBranch}`,
         targetBranch,
         sourceBranch: cleanBranch,
+        preMergeHead,
         stdout: res.stdout,
       };
     } else {
       const errText = (res.stderr || res.stdout || 'Git 进程非零返回，未捕获到具体错误输出，请检查工作区或冲突文件').trim();
-      const isConflict = errText.includes('CONFLICT') || errText.includes('Automatic merge failed');
+      const isConflict =
+        errText.includes('CONFLICT') ||
+        errText.includes('Automatic merge failed') ||
+        errText.includes('unmerged files') ||
+        fs.existsSync(path.join(repoPath, '.git', 'MERGE_HEAD'));
       return {
         success: false,
         message: isConflict
@@ -1918,8 +1959,37 @@ export const gitService = {
           : `合并分支 '${cleanBranch}' 到 '${targetBranch}' 失败: ${errText}`,
         targetBranch,
         sourceBranch: cleanBranch,
+        preMergeHead,
         stdout: errText,
         isConflict,
+      };
+    }
+  },
+
+  // 32b. Undo last merge (revert HEAD to pre-merge commit)
+  async undoMerge(
+    repoPath: string,
+    preMergeHead: string
+  ): Promise<{ success: boolean; message: string }> {
+    if (!repoPath || !preMergeHead) {
+      return { success: false, message: 'Repository path and preMergeHead are required' };
+    }
+
+    const gitDir = path.join(repoPath, '.git');
+    if (fs.existsSync(path.join(gitDir, 'MERGE_HEAD'))) {
+      await runGit(['merge', '--abort'], repoPath);
+    }
+
+    const resetRes = await runGit(['reset', '--hard', preMergeHead], repoPath);
+    if (resetRes.code === 0) {
+      return {
+        success: true,
+        message: `已成功撤销本次合并，分支已回滚至合并前状态 (${preMergeHead.slice(0, 7)})`,
+      };
+    } else {
+      return {
+        success: false,
+        message: `撤销合并失败: ${resetRes.stderr || resetRes.stdout}`,
       };
     }
   },

@@ -387,7 +387,7 @@ export function ConflictsDialog() {
           </label>
 
           <div className="flex items-center gap-2">
-            {isMerging && (
+            {(isMerging || conflictFiles.length > 0) && (
               <button
                 type="button"
                 onClick={() => setShowAbortConfirm(true)}

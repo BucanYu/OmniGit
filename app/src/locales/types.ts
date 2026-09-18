@@ -329,6 +329,7 @@ export interface LocaleDictionary {
       showDiffWithWorkingTree: string;
       rebaseOnto: (source: string, target: string) => string;
       mergeInto: (source: string, target: string) => string;
+      undoMergeInto: (source: string, target: string) => string;
       newWorktreeFrom: (name: string) => string;
       update: string;
       push: string;
