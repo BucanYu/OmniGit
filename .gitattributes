@@ -1,0 +1,8 @@
+# Auto detect text files and perform LF normalization
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Exclude scripts and tools from repository language statistics so GitHub displays TypeScript
+scripts/** linguist-vendored
+docs/** linguist-documentation
