@@ -52,8 +52,8 @@ export function setupAutoUpdater(getMainWindow: () => BrowserWindow | null) {
   ipcMain.handle('update:check', async () => {
     broadcast('checking');
 
-    const currentVersion = app.getVersion() || '0.1.0';
-    const repo = 'omnigit/OmniGit';
+    const currentVersion = app.getVersion() || '0.3.0';
+    const repo = 'BucanYu/OmniGit';
 
     const req = https.get(
       `https://api.github.com/repos/${repo}/releases/latest`,
@@ -102,42 +102,61 @@ export function setupAutoUpdater(getMainWindow: () => BrowserWindow | null) {
               },
             });
 
-            // If an installer asset is found, download it in background
+            // If an installer asset is found, download it in background (with 302 redirect support)
             if (exeAsset?.browser_download_url) {
               const tempTarget = path.join(app.getPath('temp'), exeAsset.name);
-              const fileStream = fs.createWriteStream(tempTarget);
-              let receivedBytes = 0;
-              const totalBytes = exeAsset.size || 0;
-              const startTime = Date.now();
 
-              https
-                .get(exeAsset.browser_download_url, { headers: { 'User-Agent': 'OmniGit-Updater' } }, (downRes) => {
-                  downRes.on('data', (c) => {
-                    receivedBytes += c.length;
-                    fileStream.write(c);
-                    const elapsedSec = (Date.now() - startTime) / 1000;
-                    const bytesPerSecond = elapsedSec > 0 ? receivedBytes / elapsedSec : 0;
-                    const percent = totalBytes > 0 ? (receivedBytes / totalBytes) * 100 : 0;
+              const downloadWithRedirect = (url: string, hops = 0) => {
+                if (hops > 5) {
+                  broadcast('error', { error: '下载失败: 超过最大重定向次数' });
+                  return;
+                }
+                https
+                  .get(url, { headers: { 'User-Agent': 'OmniGit-Updater' } }, (downRes) => {
+                    if (downRes.statusCode && [301, 302, 303, 307, 308].includes(downRes.statusCode) && downRes.headers.location) {
+                      downloadWithRedirect(downRes.headers.location, hops + 1);
+                      return;
+                    }
 
-                    broadcast('downloading', {
-                      progress: {
-                        percent,
-                        bytesPerSecond,
-                        transferred: receivedBytes,
-                        total: totalBytes,
-                      },
+                    if (downRes.statusCode !== 200) {
+                      broadcast('error', { error: `下载服务器异常 (HTTP ${downRes.statusCode})` });
+                      return;
+                    }
+
+                    const fileStream = fs.createWriteStream(tempTarget);
+                    let receivedBytes = 0;
+                    const totalBytes = parseInt(downRes.headers['content-length'] || '0', 10) || exeAsset.size || 0;
+                    const startTime = Date.now();
+
+                    downRes.on('data', (c) => {
+                      receivedBytes += c.length;
+                      fileStream.write(c);
+                      const elapsedSec = (Date.now() - startTime) / 1000;
+                      const bytesPerSecond = elapsedSec > 0 ? receivedBytes / elapsedSec : 0;
+                      const percent = totalBytes > 0 ? (receivedBytes / totalBytes) * 100 : 0;
+
+                      broadcast('downloading', {
+                        progress: {
+                          percent,
+                          bytesPerSecond,
+                          transferred: receivedBytes,
+                          total: totalBytes,
+                        },
+                      });
                     });
-                  });
 
-                  downRes.on('end', () => {
-                    fileStream.end();
-                    downloadedInstallerPath = tempTarget;
-                    broadcast('downloaded', { info: { version: latestTag, path: tempTarget } });
+                    downRes.on('end', () => {
+                      fileStream.end();
+                      downloadedInstallerPath = tempTarget;
+                      broadcast('downloaded', { info: { version: latestTag, path: tempTarget } });
+                    });
+                  })
+                  .on('error', (err) => {
+                    broadcast('error', { error: `下载更新失败: ${err.message}` });
                   });
-                })
-                .on('error', (err) => {
-                  broadcast('error', { error: `下载更新失败: ${err.message}` });
-                });
+              };
+
+              downloadWithRedirect(exeAsset.browser_download_url);
             }
           } catch (e: any) {
             broadcast('error', { error: `解析更新数据失败: ${e.message}` });

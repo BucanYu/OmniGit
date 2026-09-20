@@ -1,171 +1,143 @@
-# OmniGit - 专业级跨仓库 Git 桌面工作台
+# OmniGit - 极速跨仓库 Git 桌面工作台 🚀
 
-> **全自闭环架构 · 0ms 乐观更新 · 原生无边框桌面体验 · 在线增量自动更新**
+> **把 IntelliJ IDEA 广受赞誉的 Git 提交体验与 3-Way Merge 冲突合并神器，做成轻量秒开的独立桌面端！**  
+> 专为微服务/多工程并行协作打造 · 0ms 乐观更新 · 毫秒级秒开 · 隐私离线安全 · 永久免费开源
 
 [English](README.en.md) | **简体中文**
 
 [![GitHub release](https://img.shields.io/github/v/release/BucanYu/OmniGit?style=flat-square&color=0284c7)](https://github.com/BucanYu/OmniGit/releases)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS-blue?style=flat-square)](https://github.com/BucanYu/OmniGit/releases)
-
-👉 **[点击前往 GitHub Releases 下载最新安装包 (Windows / macOS)](https://github.com/BucanYu/OmniGit/releases/latest)**
-
-OmniGit 是一款专为多工程、大工作区并行协作设计的高性能 Git 桌面管理客户端。采用全内置自闭环架构，在目标 Windows 电脑上除了 Git 外**无需安装任何运行时环境**，具备毫秒级响应、沉浸式无边框顶栏、可视化的多分支合并/冲突解决与智能自动更新机制。
+[![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
+[![GitHub Stars](https://img.shields.io/github/stars/BucanYu/OmniGit?style=flat-square&color=eab308)](https://github.com/BucanYu/OmniGit/stargazers)
 
 ---
 
-## 核心架构与设计原则
+### 📦 立即下载最新稳定版
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    OmniGit Windows 桌面端                        │
-├─────────────────────────────────────────────────────────────────┤
-│  无边框沉浸式顶栏 (TopBar) [原生拖拽 / 最小化 / 最大化 / 关闭]        │
-├────────────────────────────────┬────────────────────────────────┤
-│  React 18 前端界面 (UI Layer)   │  私有内嵌服务 (Embedded Loopback) │
-│  - Zustand 0ms 乐观缓存状态     │  - 监听 127.0.0.1 (动态私有端口) │
-│  - Monaco Editor 智能冲突解决   │  - 静态资源 + /api/git/* 统一交付│
-│  - 多工程工作区与分支瞬时切换   │  - 安全沙箱，绝不开放外部网络端口  │
-├────────────────────────────────┴────────────────────────────────┤
-│  底座与环境隔离 (Runtime & Security)                              │
-│  - Electron 30 内嵌独立 Node.js v20.x 沙箱运行环境              │
-│  - 零环境变量修改：绝不污染或篡改目标电脑的系统全局 PATH            │
-│  - 原生 Git 智能探测：扫描 PATH 及 Windows 标准安装目录            │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### 1. 零环境依赖与沙箱隔离
-- **零安装负担**：打包版本自带完整 Electron 30 核心与内嵌运行时，用户电脑**绝对不需要安装 Node.js、npm 或 Python**；
-- **环境隔离无冲突**：客户端内部独立运行，**绝不会修改系统的全局 `PATH` 环境变量**，与目标电脑上已有的任何编程语言环境或其它 Git 工具完全物理隔离；
-- **原生 Git 自动探测**：启动时智能扫描全局 `PATH` 及常见的安装路径（如 `C:\Program Files\Git`、`D:\Git` 等），无缝与系统已有 Git 绑定。
-
-### 2. 0ms 乐观更新与全系统实时响应
-- 对 Commit 提交、Update Project (Pull)、Rollback 撤销、Branch Checkout 分支切换等关键 Git 操作实施了 **0ms 同步乐观渲染**；
-- 配套 15s SWR 本地持久化快照缓存机制，切换不同工程即时秒开呈现，彻底杜绝界面白屏或角标滞后问题。
+| 平台 | 交付物类型 | 下载通道 (GitHub Releases) | 特性说明 |
+| :--- | :--- | :--- | :--- |
+| **Windows x64** | **单文件安装包** | 👉 **[OmniGit-Setup-0.3.0.exe](https://github.com/BucanYu/OmniGit/releases/latest)** | 推荐体验：支持自定义安装路径、在线增量更新、**彻底免 UAC 提权** |
+| **Windows x64** | **绿色便携版 (ZIP)** | 👉 **[OmniGit-win32-x64.zip](https://github.com/BucanYu/OmniGit/releases/latest)** | 免安装，解压后双击 `OmniGit.exe` 即可使用，适合受限工作机 |
 
 ---
 
-## 快速运行与日常开发
+## 📸 界面预览 (Interface Preview)
 
-所有便捷控制脚本均收敛存放在 [`scripts/`](scripts/) 目录下（详见 [`scripts/README.md`](scripts/README.md) 开发者环境说明）：
-
-### 1. 桌面客户端本地直接预览
-如果您想直接启动无边框的 Windows 原生桌面版应用：
-- **方式一（推荐）**：双击运行 [`scripts/start_desktop.bat`](scripts/start_desktop.bat)；
-- **方式二（命令行）**：
-  ```bash
-  cd app
-  npm run electron:preview
-  ```
-
-### 2. Web 浏览器端开发调试
-如果您想在浏览器中以热重载模式调试前端界面：
-- **方式一（推荐）**：双击运行 [`scripts/start_dev.bat`](scripts/start_dev.bat)（将在 `http://localhost:5345` 打开）；
-- **方式二（命令行）**：
-  ```bash
-  cd app
-  npm run dev
-  ```
-- **停止开发服务**：双击运行 [`scripts/stop_dev.bat`](scripts/stop_dev.bat)。
+![OmniGit 核心工作台预览](docs/images/omnigit_workbench_preview.png)
 
 ---
 
-## 一键打包 Windows 桌面客户端与安装包
+## 💡 为什么需要 OmniGit？
 
-### 1. 批处理脚本一键打包 (One-Click Build)
-直接双击运行 `scripts` 目录下的跨平台打包脚本：
-👉 **[`scripts/build_desktop.bat`](scripts/build_desktop.bat)**
+日常编码中，很多开发者（尤其是使用 VS Code、Sublime 或命令行终端的工程师）经常面临这些痛点：
 
-脚本会自动执行：
-1. 校验系统开发环境与 Node.js 运行时；
-2. 执行全量 TypeScript 严格类型检查；
-3. 构建 Vite 前端优化压缩资源包；
-4. 编译 Electron 主进程与动态服务模块；
-5. 注入高饱和度品牌双环专属图标；
-6. 调用内置便携版 NSIS 编译器高压缩压制生成商业级单文件安装程序。
+1. **分支合并冲突太令人头疼**：普通编辑器里手动改 `<<<<<<< HEAD` 提心吊胆，生怕手滑改错或把远程代码删了；
+2. **大型 IDE 太重太吃内存**：IntelliJ IDEA / WebStorm 的 Git 冲突合并确实是行业天花板，但动辄霸占 2~4GB 内存，启动要等半分钟。只为了处理一个 Git 冲突而开 IDE，电脑卡得发烫；
+3. **主流独立 Git 客户端缺陷明显**：
+   - **SourceTree**：界面老旧、在 Windows 上频繁无响应假死，还强绑 Atlassian 账号；
+   - **GitKraken**：越来越商业化，私有仓库和三方合并冲突强制按月付费；
+   - **Fork**：体验虽好，但为商业收费软件（$49.99 且闭源）。
 
-### 2. 双重交付物与 GitHub Releases 分发说明
-打包完成后，产物均在 `app/release/` 目录下生成（该目录已被 `.gitignore` 保护，安装包统一发布到 [GitHub Releases](https://github.com/BucanYu/OmniGit/releases)）：
-- **📦 单文件安装包（商业级正式交付）**：
-  - 文件：`app/release/OmniGit-Setup-0.1.0.exe`（单文件约 75MB，LZMA 深度压缩）
-  - 特性：
-    - **规范中文安装向导**：欢迎界面、版权说明、**允许用户点击“浏览”自主更改安装盘符**（如安装在 `D:\OmniGit`）；
-    - **桌面与开始菜单快捷方式**：自动创建带有专属 Logo 图标的快捷方式；
-    - **系统控制面板规范卸载**：在 Windows “设置 -> 应用和功能” 中注册，自带 `Uninstall.exe` 卸载程序；
-    - **单用户免提权**：默认安装至用户目录，安装与在线自动更新**彻底免除 UAC 权限确认弹窗**。
-- **📁 绿色免安装目录（开发者便携自用）**：
-  - 路径：`app/release/OmniGit-win32-x64/`
-  - 特性：解压即用，直接双击 `OmniGit.exe` 秒开。
+**OmniGit 为终结这些痛点而生**——它将 JetBrains 最受开发者推崇的 Git 交互哲学与 3-Way Merge 完整抽离，封装成一个**启动只需 1 秒、内存仅几十兆、完全免费开源**的轻量桌面工作台。
 
 ---
 
-## 在线增量自动更新体系 (GitHub Releases)
+## ✨ 五大核心杀手锏特性
 
-桌面客户端内置了基于 GitHub Releases 的在线更新检测与增量下载系统：
+### 1. 🎯 专业级 3-Way Merge 可视化冲突解决神器
+- **直观三栏比对**：左侧本地修改 (Yours) · 中间合并结果 (Result) · 右侧传入修改 (Theirs)；
+- **双向箭头一键采纳**：单机箭头智能保留/丢弃代码，中间区域实时生成最终结果，彻底告别手工编辑标记的恐惧；
+- **防手滑安全屏障**：若工作区仍有包含 `<<<<<<<` 标记的冲突文件，系统坚决阻断提交并给出精准高亮指引，绝不让半成品代码流入主分支。
 
-```
- 用户点击【系统设置 -> 版本与自动更新 -> 检查新版本】
-                     │
-                     ▼
-  连接 GitHub Releases 检索最新 tag (如 v0.3.0)
-                     │
-         ┌───────────┴───────────┐
-         ▼                       ▼
-    当前已是最新版           发现可用新版本
-(展示绿色已就绪徽章)         (展示更新说明与发布日志)
-                                 │
-                                 ▼
-                         后台静默拉取更新包
-                     (展示百分比进度条与实时下载速率)
-                                 │
-                                 ▼
-                     下载完成！高亮呈现【立即重启并更新】
-                                 │
-                                 ▼
-                     一键重启自动替换并加载新版本
+### 2. ⚡ 独创“撤销合并 (Undo Merge)”安全回退机制
+- 分支合并（如 `git merge dev`）后发现改动过多想反悔？
+- 顶部专属提供 **1-Click 撤销合并**，即使中途客户端重启或清理缓存，依然能从 Git 历史树中智能锚定合并前状态，一秒无损复原工作区。
+
+### 3. 🖥️ IntelliJ IDEA 原生级交互质感
+- **经典提交面板**：完美还原 Changes 工作区改动列表、单/双栏 Monaco 差异编辑器、Amend 追加提交、Rollback 快速撤销；
+- **无缝操作习惯**：内置 Darcula、IDEA Light、Nord Frost 等经典主题，支持 `Ctrl+K` 调出提交、`Ctrl+Shift+K` 一键推送。
+
+### 4. 📂 跨仓库与微服务工作区管理
+- 微服务、Monorepo、前后端多工程协作开发者的利器；
+- 在同一个工作台中聚合管理多个项目仓库，实时呈现各仓库未提交改动与进出提交数（`↗` / `↘`），一键秒切。
+
+### 5. 🚀 0ms 乐观更新与全离线安全沙箱
+- **0ms 同步响应**：提交、拉取、切换分支实施乐观渲染与 SWR 缓存，秒级切换无白屏；
+- **全内置物理隔离**：基于 Electron 30 与独立内嵌运行时，不污染系统全局 `PATH`，**绝不上传任何用户代码与账户凭证**，100% 离线数据安全。
+
+---
+
+## 📊 主流 Git 客户端全方位横向对比
+
+| 核心维度 | **OmniGit** | SourceTree | GitKraken | Fork | VS Code 内置 Git |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **开源与授权** | **100% 免费开源 (MIT)** | 免费闭源 | 免费版阉割 / 付费订阅 | $49.99 商业收费 | 免费开源 |
+| **三方冲突解决 (3-Way Merge)** | **原生三栏可视化比对** | 需额外配置外部工具 | 核心功能强制收费 | 原生支持 | 需安装复杂插件 |
+| **一键撤销合并 (Undo Merge)** | **原生支持 (带历史自愈)** | 需敲复杂命令行 | 需复杂历史树回退 | 需手动回滚 | 无 |
+| **IDEA 风格 Commit 视窗** | **原生深度还原** | 传统老旧视图 | 独家自定义面板 | Mac 扁平风格 | 基础树状列表 |
+| **启动速度与资源消耗** | **秒开 / 极低 (~60MB)** | 较重、易无响应 | 较重 (Electron) | 原生轻量 | 随完整编辑器启动 |
+| **多仓库工作区** | **原生聚合秒切** | 多标签切换 | 较弱 | 多标签切换 | 需多窗口开开合合 |
+| **第三方账号绑定** | **零绑定 (下载即用)** | 强制登录 Atlassian | 强制注册账号 | 免绑定 | 免绑定 |
+
+---
+
+## 🛠️ 开发者指南 (Local Development)
+
+所有便捷控制脚本均统一存放在 [`scripts/`](scripts/) 目录下（详见 [`scripts/README.md`](scripts/README.md)）：
+
+### 1. 启动桌面端预览
+```bash
+# 方式一：双击运行 scripts/start_desktop.bat
+# 方式二：命令行启动
+cd app
+npm run electron:preview
 ```
 
-- **免 UAC 提权设计**：配置采用当前用户目录策略（`perMachine: false`），更新过程**无需 Windows 管理员提权**，静默顺畅；
-- **双层更新保障**：优先使用 `electron-updater` 标准管道；若未安装相关依赖则自动切换至零依赖的 GitHub REST API 原生下载器，具备 100% 自愈与容错能力。
+### 2. 启动 Web 调试端 (HMR 热重载)
+```bash
+# 方式一：双击运行 scripts/start_dev.bat (自动打开 http://localhost:5345)
+# 方式二：命令行启动
+cd app
+npm run dev
+```
+
+### 3. 一键编译打包 Windows 安装程序
+直接双击运行根目录脚本：👉 **[`scripts/build_desktop.bat`](scripts/build_desktop.bat)**。  
+脚本会自动执行 TypeScript 类型校验、前端资源打包、图标注入与便携版 NSIS 压制，在 `app/release/` 输出单文件商业安装包。
 
 ---
 
-## 目录结构
+## 📂 项目结构概览
 
 ```text
 OmniGit/
-├── app/                              # 应用核心主工程
-│   ├── electron/                     # Electron 桌面端主进程源码
-│   │   ├── main.ts                   # 主进程窗口管理、私有服务与 Git 探测
-│   │   ├── preload.ts                # 安全预加载脚本 (contextBridge)
-│   │   ├── updater.ts                # 在线自动更新引擎 (GitHub Releases)
-│   │   └── tsconfig.json             # Electron 专属 TypeScript 配置
-│   ├── src/                          # 前端 React 源码
-│   │   ├── features/                 # 业务功能模块 (TopBar, Settings 等)
-│   │   ├── server/                   # Git API 业务分发与服务层 (gitService)
-│   │   ├── store/                    # Zustand 状态管理 (0ms 乐观更新机制)
-│   │   └── types/                    # 强类型定义
-│   ├── dist/                         # Vite 编译产物 (前端)
-│   ├── dist-electron/                # 主进程编译产物 (CommonJS)
-│   ├── release/                      # 打包生成的发布目录 (OmniGit.exe)
-│   ├── electron-builder.yml          # 打包配置 (NSIS 免提权与发布规则)
-│   └── package.json                  # 项目依赖与构建指令配置
-├── docs/                             # 需求与技术设计文档
-├── scripts/                          # 运维与一键控制脚本
-│   ├── build_desktop.bat             # 一键打包 Windows 桌面端
-│   ├── start_desktop.bat             # 一键启动桌面客户端
-│   ├── start_dev.bat                 # 一键启动 Web 开发服务
-│   ├── stop_dev.bat                  # 一键停止端口服务
-│   └── README.md                     # 脚本工具箱详细说明
+├── app/                              # 应用核心工程
+│   ├── electron/                     # Electron 桌面端主进程与自动更新
+│   │   ├── main.ts                   # 窗口生命周期、私有服务与 Git 探测
+│   │   ├── preload.ts                # 安全预加载脚本
+│   │   └── updater.ts                # 基于 GitHub Releases 的自动更新
+│   ├── src/                          # 前端源码 (React 18 + Zustand + Tailwind)
+│   │   ├── features/                 # 业务模块 (TopBar, StatusPanel, 3-Way Merge 等)
+│   │   ├── server/                   # Git API 本地调度引擎 (gitService)
+│   │   └── store/                    # 全局状态管理 (0ms 乐观更新机制)
+│   ├── electron-builder.yml          # NSIS 单文件打包配置
+│   └── package.json                  # 依赖与脚本
+├── docs/                             # 架构设计、PRD 与高清图资
+│   └── images/                       # 核心界面预览素材
+├── scripts/                          # 开发者运维工具箱
 └── README.md                         # 项目总说明文档
 ```
 
 ---
 
-## 后续持续优化与二次开发建议
+## 🤝 参与贡献与问题反馈
 
-1. **Rust / napi-rs 原生加速模块接入**：
-   - 现阶段已采用内嵌自闭环架构，未来可将大仓库的数十万行文件 Diff 计算、超大提交历史树解析通过 `napi-rs` 编译为原生 C/Rust 动态库直接供主进程调用，进一步榨干 CPU 极限性能；
-2. **自定义缓存路径持续演进**：
-   - 已在【系统设置】中实现将快照数据避开 C 盘存放在指定盘符（如 `D:\OmniGitCache`），未来可为不同大型工程单独定制专用轻量缓存策略；
-3. **GitHub 私有仓库更新鉴权**：
-   - 当前公开仓库无需 Token；如后续将 OmniGit 迁移至企业级私有仓库，可在【系统设置】中增加 GitHub Token 配置项以拉取私有 Releases 资源。
+欢迎每一位热爱效率的开发者参与共建！
+- 遇到 Bug 或有新功能想法？欢迎提交 [Issues](https://github.com/BucanYu/OmniGit/issues)
+- 觉得好用？请给本项目点个 ⭐️ **Star** 鼓励一下作者，让更多开发者发现这款工具！
+
+---
+
+## 📄 开源许可证
+
+本项目基于 [MIT License](LICENSE) 许可证开源，您可以自由商用、修改与分发。

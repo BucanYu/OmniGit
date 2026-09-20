@@ -12,7 +12,7 @@ files:
 
 publish:
   provider: github
-  owner: omnigit
+  owner: BucanYu
   repo: OmniGit
   releaseType: release
 
