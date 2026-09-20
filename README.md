@@ -18,6 +18,8 @@
 | :--- | :--- | :--- | :--- |
 | **Windows x64** | **单文件安装包** | 👉 **[OmniGit-Setup-0.3.0.exe](https://github.com/BucanYu/OmniGit/releases/latest)** | 推荐体验：支持自定义安装路径、在线增量更新、**彻底免 UAC 提权** |
 | **Windows x64** | **绿色便携版 (ZIP)** | 👉 **[OmniGit-win32-x64.zip](https://github.com/BucanYu/OmniGit/releases/latest)** | 免安装，解压后双击 `OmniGit.exe` 即可使用，适合受限工作机 |
+| **macOS (Apple Silicon)** | **便携应用包 (ZIP)** | 👉 **[OmniGit-v0.3.0-mac-arm64.zip](https://github.com/BucanYu/OmniGit/releases/latest)** | 适配 M1 / M2 / M3 / M4 芯片 Mac，解压即用 |
+| **macOS (Intel x64)** | **便携应用包 (ZIP)** | 👉 **[OmniGit-v0.3.0-mac-x64.zip](https://github.com/BucanYu/OmniGit/releases/latest)** | 适配 Intel 架构 Mac，解压即用 |
 
 ---
 
