@@ -477,6 +477,12 @@ interface AppState {
   unstageFile: (filePath: string) => Promise<void>;
 }
 
+// Path normalization helper: handles backslashes vs slashes, trailing slashes, and Windows drive letter casing
+export function normalizePath(p: string): string {
+  if (!p) return '';
+  return p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+}
+
 // Get workspace identifier from URL, e.g. ?ws=default or ?ws=ws_123, with localStorage fallback for cold start
 function getWorkspaceIdFromUrl(): string {
   if (typeof window === 'undefined') return 'default';
@@ -795,8 +801,9 @@ export function scheduleWorkspacesDiskBackup() {
 }
 
 // L1 / L2 / L3 Snapshot Persistence
-function getLocalSnapshot(normPath: string): LightRepoCache | null {
+function getLocalSnapshot(rawPath: string): LightRepoCache | null {
   if (typeof window === 'undefined') return null;
+  const normPath = normalizePath(rawPath);
   // 1. Check L1 In-Memory Cache first (0ms)
   if (repoSnapshotCache.has(normPath)) {
     return repoSnapshotCache.get(normPath)!;
@@ -817,7 +824,7 @@ function getLocalSnapshot(normPath: string): LightRepoCache | null {
 
 // Asynchronously read from L3 disk cache and promote into L1 memory (3~5ms)
 export async function loadDiskSnapshot(repoPath: string): Promise<LightRepoCache | null> {
-  const normPath = repoPath.toLowerCase();
+  const normPath = normalizePath(repoPath);
   try {
     const res = await fetch(`/api/git/cache/snapshot?path=${encodeURIComponent(repoPath)}`);
     const diskSnap = await res.json();
@@ -829,8 +836,9 @@ export async function loadDiskSnapshot(repoPath: string): Promise<LightRepoCache
   return null;
 }
 
-function saveLocalSnapshot(normPath: string, snapshot: LightRepoCache) {
+function saveLocalSnapshot(rawPath: string, snapshot: LightRepoCache) {
   if (typeof window === 'undefined') return;
+  const normPath = normalizePath(rawPath);
 
   // 1. L1 Memory: Full runtime state preserved
   repoSnapshotCache.set(normPath, snapshot);
@@ -971,13 +979,14 @@ export const useAppStore = create<AppState>((set, get) => ({
             );
             if (existingIdx >= 0) {
               const existing = list[existingIdx];
-              const existingPathSet = new Set(existing.repos.map((r) => r.path.toLowerCase()));
+              const existingPathSet = new Set(existing.repos.map((r) => normalizePath(r.path)));
               const isSame =
                 existing.repos.length === paths.length &&
-                paths.every((p) => existingPathSet.has(p.toLowerCase()));
+                paths.every((p) => existingPathSet.has(normalizePath(p)));
               if (!isSame) {
                 const updatedRepos: WorkspaceRepoItem[] = paths.map((p) => {
-                  const foundRepo = existing.repos.find((r) => r.path.toLowerCase() === p.toLowerCase());
+                  const normP = normalizePath(p);
+                  const foundRepo = existing.repos.find((r) => normalizePath(r.path) === normP);
                   const norm = p.replace(/\\/g, '/');
                   const name = foundRepo?.name || norm.split('/').filter(Boolean).pop() || 'repo';
                   return {
@@ -1017,7 +1026,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (ws.id !== 'default' && ws.repos && ws.repos.length > 1) {
         ws.repos.forEach((r) => {
           if (r.path) {
-            multiRepoPaths.add(r.path.toLowerCase().replace(/\\/g, '/'));
+            multiRepoPaths.add(normalizePath(r.path));
           }
         });
       }
@@ -1027,7 +1036,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     list = list.filter((ws) => {
       if (!ws || !ws.id || ws.id === 'default') return false;
       if (ws.repos && ws.repos.length === 1) {
-        const singlePath = (ws.repos[0].path || '').toLowerCase().replace(/\\/g, '/');
+        const singlePath = normalizePath(ws.repos[0].path || '');
         if (multiRepoPaths.has(singlePath) && (ws.id.startsWith('ws_default') || ws.id === 'default' || ws.name === ws.repos[0].name)) {
           try {
             localStorage.removeItem(`omnigit_ws_paths_${ws.id}`);
@@ -1176,9 +1185,58 @@ export const useAppStore = create<AppState>((set, get) => ({
         window.history.replaceState(null, '', url.toString());
       } catch {}
     }
-    set({ workspaceId: targetWsId, isWelcomeScreenOpen: false, isLoading: true });
+
+    // Instant local hydration (0ms perceived lag): immediately construct instantProjects so the workbench is NEVER blank!
+    const instantProjects: GitProject[] = repoPaths.map((p, idx) => {
+      const repoItem = ws.repos.find((r) => normalizePath(r.path) === normalizePath(p));
+      const norm = p.replace(/\\/g, '/');
+      const name = repoItem?.name || norm.split('/').filter(Boolean).pop() || `Repo ${idx + 1}`;
+      const normLower = normalizePath(p);
+      const cached = repoSnapshotCache.get(normLower) || getLocalSnapshot(normLower);
+      if (cached && !repoSnapshotCache.has(normLower)) {
+        repoSnapshotCache.set(normLower, cached);
+      }
+      return {
+        id: String(idx + 1),
+        name,
+        path: p,
+        currentBranch: repoItem?.branch || cached?.currentBranch || 'main',
+        upstream: cached?.upstream,
+        incoming: cached?.incoming || 0,
+        outgoing: cached?.outgoing || 0,
+        uncommittedCount: cached?.files ? cached.files.length : 0,
+      };
+    });
+
+    const savedActivePath = typeof window !== 'undefined'
+      ? localStorage.getItem(`omnigit_last_active_project_path_${targetWsId}`) || localStorage.getItem('omnigit_last_active_project_path')
+      : null;
+    let initialActive = instantProjects[0];
+    if (savedActivePath) {
+      const matched = instantProjects.find((p) => normalizePath(p.path) === normalizePath(savedActivePath));
+      if (matched) initialActive = matched;
+    }
+
+    const normActiveLower = initialActive ? normalizePath(initialActive.path) : '';
+    const activeCached = normActiveLower ? (repoSnapshotCache.get(normActiveLower) || getLocalSnapshot(normActiveLower)) : null;
+
+    set({
+      workspaceId: targetWsId,
+      isWelcomeScreenOpen: false,
+      isLoading: false,
+      workspaceProjectPaths: repoPaths,
+      projects: instantProjects,
+      activeProjectId: initialActive ? initialActive.id : '',
+      commitMessage: activeCached?.commitMessage || '',
+      files: activeCached?.files || [],
+      branches: activeCached?.branches || [],
+      commitLogs: activeCached?.commitLogs || [],
+      isMerging: activeCached?.isMerging || false,
+      mergeMessage: activeCached?.mergeMessage || '',
+      conflictedCount: activeCached?.conflictedCount || 0,
+    });
+
     await get().setWorkspaceProjects(repoPaths);
-    set({ isLoading: false });
   },
 
   syncCurrentWorkspaceToSaved: () => {
@@ -1192,9 +1250,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     const existing = currentSaved.find((w) => w.id === state.workspaceId);
 
     const repos: WorkspaceRepoItem[] = currentPaths.map((p) => {
+      const normP = normalizePath(p);
       const proj =
-        state.projects.find((pr) => pr.path.toLowerCase() === p.toLowerCase()) ||
-        state.allScannedProjects.find((pr) => pr.path.toLowerCase() === p.toLowerCase());
+        state.projects.find((pr) => normalizePath(pr.path) === normP) ||
+        state.allScannedProjects.find((pr) => normalizePath(pr.path) === normP);
       const norm = p.replace(/\\/g, '/');
       const name = proj?.name || norm.split('/').filter(Boolean).pop() || 'repo';
       return {
@@ -1418,9 +1477,35 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     // Open in current workspace:
-    set({ isWelcomeScreenOpen: false, isLoading: true });
+    const norm = projectPath.replace(/\\/g, '/');
+    const name = norm.split('/').filter(Boolean).pop() || 'repo';
+    const normLower = normalizePath(projectPath);
+    const cached = repoSnapshotCache.get(normLower) || getLocalSnapshot(normLower);
+    const instantProj: GitProject = {
+      id: '1',
+      name,
+      path: projectPath,
+      currentBranch: cached?.currentBranch || 'main',
+      upstream: cached?.upstream,
+      incoming: cached?.incoming || 0,
+      outgoing: cached?.outgoing || 0,
+      uncommittedCount: cached?.files ? cached.files.length : 0,
+    };
+    set({
+      isWelcomeScreenOpen: false,
+      isLoading: false,
+      workspaceProjectPaths: [projectPath],
+      projects: [instantProj],
+      activeProjectId: instantProj.id,
+      commitMessage: cached?.commitMessage || '',
+      files: cached?.files || [],
+      branches: cached?.branches || [],
+      commitLogs: cached?.commitLogs || [],
+      isMerging: cached?.isMerging || false,
+      mergeMessage: cached?.mergeMessage || '',
+      conflictedCount: cached?.conflictedCount || 0,
+    });
     await get().setWorkspaceProjects([projectPath]);
-    set({ isLoading: false });
   },
   activeTab: 'commit',
   setActiveTab: (tab: 'commit' | 'shelf' | 'log') => {
@@ -1931,7 +2016,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     // Ensure all paths exist in allScannedProjects
     let allProjects = [...state.allScannedProjects];
     for (const p of newPaths) {
-      if (!allProjects.some((exist) => exist.path.toLowerCase() === p.toLowerCase())) {
+      const normP = normalizePath(p);
+      if (!allProjects.some((exist) => normalizePath(exist.path) === normP)) {
         try {
           const statusRes = await fetch(`/api/git/status?path=${encodeURIComponent(p)}`);
           const status = await statusRes.json();
@@ -1957,7 +2043,21 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
     }
 
-    const resolvedProjects = allProjects.filter((p) => merged.includes(p.path));
+    const resolvedProjects: GitProject[] = merged.map((p, idx) => {
+      const normP = normalizePath(p);
+      const found = allProjects.find((exist) => normalizePath(exist.path) === normP);
+      if (found) {
+        return { ...found, path: p };
+      }
+      return {
+        id: String(Date.now() + Math.random() + idx),
+        name: p.split(/[\\/]/).filter(Boolean).pop() || `Repo ${idx + 1}`,
+        path: p,
+        currentBranch: 'main',
+        incoming: 0,
+        outgoing: 0,
+      };
+    });
 
     set({
       allScannedProjects: allProjects,
@@ -1979,7 +2079,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       let targetRepo = resolvedProjects[0];
       if (savedActivePath) {
         const matched = resolvedProjects.find(
-          (p) => p.path.toLowerCase() === savedActivePath.toLowerCase()
+          (p) => normalizePath(p.path) === normalizePath(savedActivePath)
         );
         if (matched) targetRepo = matched;
       }
@@ -2029,7 +2129,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       // 2. Switch active project to newly cloned repo
       const createdProject = get().projects.find(
-        (p) => p.path.toLowerCase() === repoPath.toLowerCase()
+        (p) => normalizePath(p.path) === normalizePath(repoPath)
       );
       if (createdProject) {
         get().setActiveProject(createdProject.id);
@@ -2060,7 +2160,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     let allProjects = [...state.allScannedProjects];
     for (const p of newPaths) {
-      if (!allProjects.some((exist) => exist.path.toLowerCase() === p.toLowerCase())) {
+      const normP = normalizePath(p);
+      if (!allProjects.some((exist) => normalizePath(exist.path) === normP)) {
         try {
           const statusRes = await fetch(`/api/git/status?path=${encodeURIComponent(p)}`);
           const status = await statusRes.json();
@@ -2086,7 +2187,21 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
     }
 
-    const resolvedProjects = allProjects.filter((p) => newPaths.includes(p.path));
+    const resolvedProjects: GitProject[] = newPaths.map((p, idx) => {
+      const normP = normalizePath(p);
+      const found = allProjects.find((exist) => normalizePath(exist.path) === normP);
+      if (found) {
+        return { ...found, path: p };
+      }
+      return {
+        id: String(Date.now() + Math.random() + idx),
+        name: p.split(/[\\/]/).filter(Boolean).pop() || `Repo ${idx + 1}`,
+        path: p,
+        currentBranch: 'main',
+        incoming: 0,
+        outgoing: 0,
+      };
+    });
 
     set({
       allScannedProjects: allProjects,
@@ -2106,7 +2221,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         ? localStorage.getItem(`omnigit_last_active_project_path_${state.workspaceId}`) || localStorage.getItem('omnigit_last_active_project_path')
         : null;
       const matched = savedActivePath
-        ? resolvedProjects.find((p) => p.path.toLowerCase() === savedActivePath.toLowerCase())
+        ? resolvedProjects.find((p) => normalizePath(p.path) === normalizePath(savedActivePath))
         : null;
       if (matched) {
         await get().setActiveProject(matched.id);
@@ -2115,7 +2230,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       } else {
         await get().loadWorkspaceAccounts();
       }
-    } else {
+    } else if (newPaths.length === 0) {
       get().removeSavedWorkspace(state.workspaceId);
       set({
         activeProjectId: '',
@@ -2134,11 +2249,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   removeProjectFromWorkspace: async (targetPath: string) => {
     const state = get();
     const storageKey = `omnigit_ws_paths_${state.workspaceId}`;
-    const filteredPaths = state.workspaceProjectPaths.filter((p) => p !== targetPath);
+    const normTarget = normalizePath(targetPath);
+    const filteredPaths = state.workspaceProjectPaths.filter((p) => normalizePath(p) !== normTarget);
 
     safeLocalStorageSetItem(storageKey, JSON.stringify(filteredPaths));
 
-    const remainingProjects = state.projects.filter((p) => p.path !== targetPath);
+    const remainingProjects = state.projects.filter((p) => normalizePath(p.path) !== normTarget);
     set({
       workspaceProjectPaths: filteredPaths,
       projects: remainingProjects,
@@ -2193,7 +2309,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // Load real status, branches, and diff for active repository
   loadRepoData: async (repoPath: string, force = false) => {
-    const normPath = repoPath.toLowerCase();
+    const normPath = normalizePath(repoPath);
     const cached = repoSnapshotCache.get(normPath) || getLocalSnapshot(normPath);
     if (cached && !repoSnapshotCache.has(normPath)) {
       repoSnapshotCache.set(normPath, cached);
@@ -2203,7 +2319,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     // 15s TTL Freshness check: if cached within 15s and not forced, do NOT fire any network request!
     if (!force && cached && now - cached.lastUpdated < 15000) {
       const currentActive = get().projects.find((p) => p.id === get().activeProjectId);
-      if (currentActive && currentActive.path.toLowerCase() === normPath) {
+      if (currentActive && normalizePath(currentActive.path) === normPath) {
         set({
           files: cached.files,
           branches: cached.branches,
@@ -2295,7 +2411,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       // Guard: Discard applying to active state if active project switched or another load began
       const nowActive = get().projects.find((p) => p.id === get().activeProjectId);
-      if (loadId !== currentRepoLoadId || !nowActive || nowActive.path.toLowerCase() !== normPath) {
+      if (loadId !== currentRepoLoadId || !nowActive || normalizePath(nowActive.path) !== normPath) {
         return;
       }
 
@@ -2310,7 +2426,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         conflictedCount: status.conflictedCount || conflictFiles.length,
         conflictsDialogOpen: shouldOpenConflicts ? true : state.conflictsDialogOpen,
         projects: state.projects.map((p) =>
-          p.path.toLowerCase() === normPath
+          normalizePath(p.path) === normPath
             ? {
                 ...p,
                 currentBranch: status.currentBranch,
@@ -2391,7 +2507,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       // Update state without resetting user interaction
       set((state) => {
-        const prevProject = state.projects.find((p) => p.path === targetPath);
+        const prevProject = state.projects.find((p) => normalizePath(p.path) === normalizePath(targetPath));
         const isProjectUnchanged =
           prevProject &&
           prevProject.currentBranch === status.currentBranch &&
@@ -2402,7 +2518,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         const updatedProjects = isProjectUnchanged
           ? state.projects
           : state.projects.map((p) =>
-              p.path === targetPath
+              normalizePath(p.path) === normalizePath(targetPath)
                 ? {
                     ...p,
                     currentBranch: status.currentBranch,
@@ -2425,7 +2541,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       });
 
       // Update snapshot cache in background
-      const cachedSnapshot = repoSnapshotCache.get(targetPath.toLowerCase());
+      const cachedSnapshot = repoSnapshotCache.get(normalizePath(targetPath));
       if (cachedSnapshot) {
         cachedSnapshot.currentBranch = status.currentBranch || cachedSnapshot.currentBranch;
         cachedSnapshot.upstream = status.upstream;
@@ -2493,7 +2609,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (msg && !get().isAmend) {
         safeLocalStorageSetItem(`omnigit_commit_draft_${currentProject.path}`, msg);
       }
-      const curCached = repoSnapshotCache.get(currentProject.path.toLowerCase());
+      const curCached = repoSnapshotCache.get(normalizePath(currentProject.path));
       if (curCached) {
         curCached.commitMessage = msg;
         curCached.files = get().files;
@@ -2515,7 +2631,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     // Invalidate any in-flight requests from the previous project!
     currentRepoLoadId++;
 
-    const normTargetPath = targetProject.path.toLowerCase();
+    const normTargetPath = normalizePath(targetProject.path);
     let cached = repoSnapshotCache.get(normTargetPath) || getLocalSnapshot(normTargetPath);
     if (!cached) {
       // 3~5ms Fast Read-Through from L3 Disk Directory!

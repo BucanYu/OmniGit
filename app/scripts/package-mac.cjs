@@ -68,7 +68,7 @@ if (!fs.existsSync(iconIcnsPath)) {
 
 // Read version from package.json
 const pkg = JSON.parse(fs.readFileSync(path.join(appDir, 'package.json'), 'utf8'));
-const appVersion = pkg.version || '0.3.0';
+const appVersion = pkg.version || '0.4.0';
 
 // Read Electron version from installed node_modules/electron
 let electronVersion = '30.0.0';

@@ -60,10 +60,10 @@ npm install
 
 ```
 app/release/
- ├── OmniGit-Setup-0.3.0.exe        <- [对外正式发布] Windows 单文件安装包 (LZMA 高压缩，约 80MB)
+ ├── OmniGit-Setup-0.4.0.exe        <- [对外正式发布] Windows 单文件安装包 (LZMA 高压缩，约 80MB)
  ├── OmniGit-win32-x64/             <- [本地便携调试] Windows 绿色免安装运行目录 (直接双击 OmniGit.exe 运行)
- ├── OmniGit-v0.3.0-mac-arm64.zip   <- [对外正式发布] macOS Apple Silicon (M系列芯片) 独立应用包
- └── OmniGit-v0.3.0-mac-x64.zip     <- [对外正式发布] macOS Intel x64 独立应用包
+ ├── OmniGit-v0.4.0-mac-arm64.zip   <- [对外正式发布] macOS Apple Silicon (M系列芯片) 独立应用包
+ └── OmniGit-v0.4.0-mac-x64.zip     <- [对外正式发布] macOS Intel x64 独立应用包
 ```
 
 > [!IMPORTANT]

@@ -27,7 +27,7 @@ cd /d "%~dp0..\app"
 :: -------------------------------------------------------
 set "PRODUCT_VERSION="
 for /f "tokens=*" %%a in ('powershell -NoProfile -Command "(Get-Content -Raw -Path '%~dp0..\app\package.json' | ConvertFrom-Json).version"') do set "PRODUCT_VERSION=%%a"
-if "%PRODUCT_VERSION%"=="" set "PRODUCT_VERSION=0.3.0"
+if "%PRODUCT_VERSION%"=="" set "PRODUCT_VERSION=0.4.0"
 echo Detected OmniGit Version: %PRODUCT_VERSION%
 echo Selected Target: [%TARGET%] (all = Windows + macOS)
 

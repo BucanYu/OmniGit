@@ -16,10 +16,10 @@
 
 | Platform | Package Format | Download Link (GitHub Releases) | Highlights |
 | :--- | :--- | :--- | :--- |
-| **Windows x64** | **Setup Installer** | 👉 **[OmniGit-Setup-0.3.0.exe](https://github.com/BucanYu/OmniGit/releases/latest)** | Recommended: customizable path, auto-updates, **Zero UAC Elevation** |
+| **Windows x64** | **Setup Installer** | 👉 **[OmniGit-Setup-0.4.0.exe](https://github.com/BucanYu/OmniGit/releases/latest)** | Recommended: customizable path, auto-updates, **Zero UAC Elevation** |
 | **Windows x64** | **Portable (ZIP)** | 👉 **[OmniGit-win32-x64.zip](https://github.com/BucanYu/OmniGit/releases/latest)** | No installation needed, extract and launch `OmniGit.exe` instantly |
-| **macOS (Apple Silicon)** | **Portable App (ZIP)** | 👉 **[OmniGit-v0.3.0-mac-arm64.zip](https://github.com/BucanYu/OmniGit/releases/latest)** | Optimized for Apple Silicon M1 / M2 / M3 / M4 Macs |
-| **macOS (Intel x64)** | **Portable App (ZIP)** | 👉 **[OmniGit-v0.3.0-mac-x64.zip](https://github.com/BucanYu/OmniGit/releases/latest)** | Compatible with Intel-based Macs |
+| **macOS (Apple Silicon)** | **Portable App (ZIP)** | 👉 **[OmniGit-v0.4.0-mac-arm64.zip](https://github.com/BucanYu/OmniGit/releases/latest)** | Optimized for Apple Silicon M1 / M2 / M3 / M4 Macs |
+| **macOS (Intel x64)** | **Portable App (ZIP)** | 👉 **[OmniGit-v0.4.0-mac-x64.zip](https://github.com/BucanYu/OmniGit/releases/latest)** | Compatible with Intel-based Macs |
 
 ---
 

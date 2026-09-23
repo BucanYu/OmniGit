@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useAppStore } from '../../store/useAppStore';
+import { useAppStore, normalizePath } from '../../store/useAppStore';
 import { useTranslation } from '../../locales';
 import {
   FolderPlus,
@@ -319,8 +319,11 @@ export function AddRepoModal({ onClose }: AddRepoModalProps) {
   );
 
   const toggleSelectScanned = (path: string) => {
+    const norm = normalizePath(path);
     setSelectedPaths((prev) =>
-      prev.includes(path) ? prev.filter((p) => p !== path) : [...prev, path]
+      prev.some((p) => normalizePath(p) === norm)
+        ? prev.filter((p) => normalizePath(p) !== norm)
+        : [...prev, path]
     );
   };
 
@@ -360,8 +363,11 @@ export function AddRepoModal({ onClose }: AddRepoModalProps) {
   };
 
   const toggleSelectDiscovered = (path: string) => {
+    const norm = normalizePath(path);
     setSelectedDiscovered((prev) =>
-      prev.includes(path) ? prev.filter((p) => p !== path) : [...prev, path]
+      prev.some((p) => normalizePath(p) === norm)
+        ? prev.filter((p) => normalizePath(p) !== norm)
+        : [...prev, path]
     );
   };
 
@@ -512,8 +518,8 @@ export function AddRepoModal({ onClose }: AddRepoModalProps) {
                 </div>
               ) : (
                 discoveredRepos.map((repo) => {
-                  const isAlreadyInWorkspace = workspaceProjectPaths.includes(repo.path);
-                  const isChecked = selectedDiscovered.includes(repo.path);
+                  const isAlreadyInWorkspace = workspaceProjectPaths.some((p) => normalizePath(p) === normalizePath(repo.path));
+                  const isChecked = selectedDiscovered.some((p) => normalizePath(p) === normalizePath(repo.path));
                   return (
                     <div
                       key={repo.path}
@@ -617,8 +623,8 @@ export function AddRepoModal({ onClose }: AddRepoModalProps) {
                 <div className="p-6 text-center text-theme-dim">{t.modals.addRepo.noLocalFound}</div>
               ) : (
                 filteredScanned.map((proj) => {
-                  const isChecked = selectedPaths.includes(proj.path);
-                  const isCurrentlyInWorkspace = workspaceProjectPaths.includes(proj.path);
+                  const isChecked = selectedPaths.some((p) => normalizePath(p) === normalizePath(proj.path));
+                  const isCurrentlyInWorkspace = workspaceProjectPaths.some((p) => normalizePath(p) === normalizePath(proj.path));
                   return (
                     <div
                       key={proj.path}

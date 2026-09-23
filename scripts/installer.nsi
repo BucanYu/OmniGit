@@ -5,7 +5,7 @@ Unicode true
 
 !define PRODUCT_NAME "OmniGit"
 !ifndef PRODUCT_VERSION
-  !define PRODUCT_VERSION "0.3.0"
+  !define PRODUCT_VERSION "0.4.0"
 !endif
 !define PRODUCT_PUBLISHER "OmniGit Team"
 !define PRODUCT_WEB_SITE "https://github.com/BucanYu/OmniGit"

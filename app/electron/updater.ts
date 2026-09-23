@@ -52,7 +52,7 @@ export function setupAutoUpdater(getMainWindow: () => BrowserWindow | null) {
   ipcMain.handle('update:check', async () => {
     broadcast('checking');
 
-    const currentVersion = app.getVersion() || '0.3.0';
+    const currentVersion = app.getVersion() || '0.4.0';
     const repo = 'BucanYu/OmniGit';
 
     const req = https.get(

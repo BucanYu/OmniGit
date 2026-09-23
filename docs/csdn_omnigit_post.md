@@ -73,7 +73,7 @@
 
 ## 四、如何获取与体验？
 
-项目在 GitHub 上完全开源，开发者非常活跃，目前最新版已经是 **v0.3.0**，发布包也相当全：
+项目在 GitHub 上完全开源，开发者非常活跃，目前最新版已经是 **v0.4.0**，发布包也相当全：
 
 - **项目开源地址**：[https://github.com/BucanYu/OmniGit](https://github.com/BucanYu/OmniGit)
 - **最新版 Releases 下载**：[https://github.com/BucanYu/OmniGit/releases/latest](https://github.com/BucanYu/OmniGit/releases/latest)
@@ -81,10 +81,10 @@
 > **下载选择指南**：
 > 1. **Windows 用户**：
 >    - 想要免安装便携体验：直接下 `OmniGit-win32-x64.zip`，解压即用，放 U 盘或受限办公机很方便；
->    - 想要标准安装包：下 `OmniGit-Setup-0.3.0.exe`（彻底免 UAC 提权）。
+>    - 想要标准安装包：下 `OmniGit-Setup-0.4.0.exe`（彻底免 UAC 提权）。
 > 2. **macOS 用户**：
->    - M 系列芯片（M1/M2/M3/M4）下载 `OmniGit-v0.3.0-mac-arm64.zip`；
->    - Intel 芯片下载 `OmniGit-v0.3.0-mac-x64.zip`。
+>    - M 系列芯片（M1/M2/M3/M4）下载 `OmniGit-v0.4.0-mac-arm64.zip`；
+>    - Intel 芯片下载 `OmniGit-v0.4.0-mac-x64.zip`。
 
 ---
 

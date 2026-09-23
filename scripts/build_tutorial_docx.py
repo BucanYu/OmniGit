@@ -308,7 +308,7 @@ def generate_full_tutorial():
     set_run_font(r_meta2, font_name="Microsoft YaHei", size_pt=9, color_rgb=RGBColor(71, 85, 105))
     r_meta3 = p_meta.add_run("【软件版本】")
     set_run_font(r_meta3, font_name="Microsoft YaHei", size_pt=9, color_rgb=RGBColor(15, 23, 42), bold=True)
-    r_meta4 = p_meta.add_run("OmniGit v0.3.0 正式版（支持 Windows 10/11 与 macOS Apple Silicon / Intel 架构）\n")
+    r_meta4 = p_meta.add_run("OmniGit v0.4.0 正式版（支持 Windows 10/11 与 macOS Apple Silicon / Intel 架构）\n")
     set_run_font(r_meta4, font_name="Microsoft YaHei", size_pt=9, color_rgb=RGBColor(71, 85, 105))
     r_meta5 = p_meta.add_run("【安全特性】")
     set_run_font(r_meta5, font_name="Microsoft YaHei", size_pt=9, color_rgb=RGBColor(15, 23, 42), bold=True)

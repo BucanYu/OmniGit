@@ -60,10 +60,10 @@ When you run `scripts/build_desktop.bat`, the output files are generated in **`a
 
 ```
 app/release/
- ├── OmniGit-Setup-0.3.0.exe        <- [Official Release] Windows single-file installer (LZMA compressed, ~80MB)
+ ├── OmniGit-Setup-0.4.0.exe        <- [Official Release] Windows single-file installer (LZMA compressed, ~80MB)
  ├── OmniGit-win32-x64/             <- [Portable Preview] Windows portable folder (run OmniGit.exe directly)
- ├── OmniGit-v0.3.0-mac-arm64.zip   <- [Official Release] macOS Apple Silicon (M-series) app bundle
- └── OmniGit-v0.3.0-mac-x64.zip     <- [Official Release] macOS Intel x64 app bundle
+ ├── OmniGit-v0.4.0-mac-arm64.zip   <- [Official Release] macOS Apple Silicon (M-series) app bundle
+ └── OmniGit-v0.4.0-mac-x64.zip     <- [Official Release] macOS Intel x64 app bundle
 ```
 
 > [!IMPORTANT]

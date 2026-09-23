@@ -10,7 +10,7 @@ echo.
 set "REPO=BucanYu/OmniGit"
 set "PRODUCT_VERSION="
 for /f "tokens=*" %%a in ('powershell -NoProfile -Command "(Get-Content -Raw -Path '%~dp0..\app\package.json' | ConvertFrom-Json).version"') do set "PRODUCT_VERSION=%%a"
-if "%PRODUCT_VERSION%"=="" set "PRODUCT_VERSION=0.3.0"
+if "%PRODUCT_VERSION%"=="" set "PRODUCT_VERSION=0.4.0"
 
 echo Current Version: v%PRODUCT_VERSION%
 echo Target Repository: %REPO%
