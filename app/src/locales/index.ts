@@ -28,26 +28,32 @@ export function useTranslation() {
 
 /**
  * Parses and renders bilingual text like "Commit (提交)" into a two-tier typography span.
- * Main term in regular/bold size, secondary Chinese explanation in lighter font & smaller size.
- * If text is plain or English, it renders as standard string.
+ * When compact (hideSub = true), it ALWAYS preserves Chinese content (never falling back to English)!
+ * Also attaches the full bilingual description to the title attribute for mouse hover preview.
  */
 export function renderDualText(text: string, hideSub = false): React.ReactNode {
   const match = text.match(/^(.+?)\s*\((.+)\)$/);
   if (!match) {
     return text;
   }
-  const [, mainPart, subPart] = match;
+  const [, part1, part2] = match;
+  const isPart1Chinese = /[\u4e00-\u9fa5]/.test(part1);
+  const isPart2Chinese = /[\u4e00-\u9fa5]/.test(part2);
+
+  // If compact/hideSub is requested, ALWAYS prioritize Chinese!
   if (hideSub) {
+    const chinesePart = isPart2Chinese ? part2 : (isPart1Chinese ? part1 : part1);
     return React.createElement(
       'span',
-      { className: 'inline-flex items-baseline truncate' },
-      React.createElement('span', { className: 'font-medium' }, mainPart)
+      { className: 'inline-flex items-baseline truncate', title: text },
+      React.createElement('span', { className: 'font-medium' }, chinesePart)
     );
   }
+
   return React.createElement(
     'span',
-    { className: 'inline-flex items-baseline truncate' },
-    React.createElement('span', { className: 'font-medium' }, mainPart),
-    React.createElement('span', { className: 'ml-1 text-[0.82em] font-normal opacity-70' }, `(${subPart})`)
+    { className: 'inline-flex items-baseline truncate', title: text },
+    React.createElement('span', { className: 'font-medium' }, part1),
+    React.createElement('span', { className: 'ml-1 text-[0.82em] font-normal opacity-70' }, `(${part2})`)
   );
 }

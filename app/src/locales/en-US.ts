@@ -346,6 +346,12 @@ export const enUS: LocaleDictionary = {
       changes: 'Changes',
       shelf: 'Shelf',
       log: 'Log',
+      changesShort: 'Changes',
+      shelfShort: 'Shelf',
+      logShort: 'Log',
+      changesTooltip: 'Local Workspace Changes',
+      shelfTooltip: 'Git Shelf',
+      logTooltip: 'Git Commit Log',
     },
     groups: {
       staged: 'Staged Changes',

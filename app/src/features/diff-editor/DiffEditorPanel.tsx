@@ -689,7 +689,7 @@ export function DiffEditorPanel() {
               title={t.diff.diffViewTooltip}
             >
               <GitCompare className="w-3.5 h-3.5 shrink-0" />
-              <span className="hidden sm:inline">{t.diff.modeDiff}</span>
+              <span>{t.diff.modeDiff}</span>
             </button>
             <button
               type="button"
@@ -702,7 +702,7 @@ export function DiffEditorPanel() {
               title={t.diff.editorViewTooltip}
             >
               <FileEdit className="w-3.5 h-3.5 shrink-0" />
-              <span className="hidden sm:inline">{t.diff.modeEditor}</span>
+              <span>{t.diff.modeEditor}</span>
             </button>
           </div>
 
@@ -833,7 +833,7 @@ export function DiffEditorPanel() {
               ) : (
                 <Save className="w-3.5 h-3.5 text-sky-400" />
               )}
-              <span className="hidden md:inline">{saved ? t.diff.saved : t.diff.save}</span>
+              <span>{saved ? t.diff.saved : t.diff.save}</span>
             </button>
           )}
 

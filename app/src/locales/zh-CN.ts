@@ -343,9 +343,15 @@ export const zhCN: LocaleDictionary = {
   },
   statusPanel: {
     tabs: {
-      changes: 'Changes (工作区改动)',
-      shelf: 'Shelf (搁置架)',
-      log: 'Log (提交日志)',
+      changes: '工作区改动',
+      shelf: '搁置架',
+      log: '提交日志',
+      changesShort: '改动',
+      shelfShort: '搁置',
+      logShort: '日志',
+      changesTooltip: '工作区改动 (Changes)',
+      shelfTooltip: '代码搁置架 (Shelf)',
+      logTooltip: 'Git 提交日志 (Log)',
     },
     groups: {
       staged: 'Staged Changes (已暂存更改)',

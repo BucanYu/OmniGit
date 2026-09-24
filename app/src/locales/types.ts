@@ -346,6 +346,12 @@ export interface LocaleDictionary {
       changes: string;
       shelf: string;
       log: string;
+      changesShort?: string;
+      shelfShort?: string;
+      logShort?: string;
+      changesTooltip?: string;
+      shelfTooltip?: string;
+      logTooltip?: string;
     };
     groups: {
       staged: string;
