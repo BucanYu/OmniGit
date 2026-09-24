@@ -369,6 +369,7 @@ export interface LocaleDictionary {
     commitBox: {
       placeholder: string;
       commitBtn: string;
+      amendBtn: string;
       commitAndPushBtn: string;
       commitAndPushShort?: string;
       amend: string;
@@ -377,6 +378,13 @@ export interface LocaleDictionary {
       noFilesSelectedWarning: string;
       emptyMessageWarning: string;
     };
+    fileCountFormat: (count: number) => string;
+    lastCommitLabel: string;
+    statsAdded: (count: number) => string;
+    statsModified: (count: number) => string;
+    statsDeleted: (count: number) => string;
+    resolveBtn: string;
+    mergeQuickBtn: string;
     author: {
       current: string;
       change: string;

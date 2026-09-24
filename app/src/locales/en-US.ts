@@ -369,6 +369,7 @@ export const enUS: LocaleDictionary = {
     commitBox: {
       placeholder: 'Enter commit message (Ctrl+Enter to commit)...',
       commitBtn: 'Commit',
+      amendBtn: 'Amend Commit',
       commitAndPushBtn: 'Commit and Push',
       commitAndPushShort: 'Commit & Push',
       amend: 'Amend',
@@ -377,6 +378,13 @@ export const enUS: LocaleDictionary = {
       noFilesSelectedWarning: 'Please select files to commit first!',
       emptyMessageWarning: 'Commit message cannot be empty!',
     },
+    fileCountFormat: (count: number) => `${count} ${count === 1 ? 'file' : 'files'}`,
+    lastCommitLabel: 'last commit',
+    statsAdded: (count: number) => `${count} added`,
+    statsModified: (count: number) => `${count} modified`,
+    statsDeleted: (count: number) => `${count} deleted`,
+    resolveBtn: 'Resolve',
+    mergeQuickBtn: 'Merge...',
     author: {
       current: 'Current Author:',
       change: 'Change Author',

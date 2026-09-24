@@ -471,7 +471,7 @@ export function StatusPanel() {
                   className="px-2 py-0.5 rounded text-[11px] text-[#3574f0] hover:bg-[#3574f0]/10 font-bold transition cursor-pointer"
                   title={t.statusPanel.conflictsDialogTooltip}
                 >
-                  Resolve
+                  {t.statusPanel.resolveBtn}
                 </button>
                 <button
                   type="button"
@@ -482,7 +482,7 @@ export function StatusPanel() {
                   className="px-2 py-0.5 rounded text-[11px] text-theme-muted hover:text-theme-main hover:bg-theme-hover font-medium transition cursor-pointer"
                   title={t.statusPanel.threeWayMergeTooltip}
                 >
-                  Merge...
+                  {t.statusPanel.mergeQuickBtn}
                 </button>
               </div>
             </div>
@@ -548,7 +548,7 @@ export function StatusPanel() {
                           className="px-2 py-0.5 rounded text-[11px] text-[#3574f0] hover:bg-[#3574f0]/10 font-semibold transition cursor-pointer"
                           title={t.statusPanel.threeWayMergeTooltip}
                         >
-                          Merge...
+                          {t.statusPanel.mergeQuickBtn}
                         </button>
                       </div>
                     </div>
@@ -603,7 +603,10 @@ export function StatusPanel() {
                   onClick={() => toggleGroupCollapsed('changes')}
                   className="font-sans font-semibold text-theme-main text-xs truncate flex-1"
                 >
-                  Changes <span className="font-normal text-theme-dim text-[11px]">{changesFiles.length} files</span>
+                  {t.statusPanel.groups.unstaged}{' '}
+                  <span className="font-normal text-theme-dim text-[11px]">
+                    {t.statusPanel.fileCountFormat(changesFiles.length)}
+                  </span>
                 </span>
               </div>
 
@@ -819,8 +822,10 @@ export function StatusPanel() {
                   onClick={() => toggleGroupCollapsed('unversioned')}
                   className="font-sans font-semibold text-theme-main text-xs truncate flex-1"
                 >
-                  Unversioned Files{' '}
-                  <span className="font-normal text-theme-dim text-[11px]">{unversionedFiles.length} files</span>
+                  {t.statusPanel.groups.untracked}{' '}
+                  <span className="font-normal text-theme-dim text-[11px]">
+                    {t.statusPanel.fileCountFormat(unversionedFiles.length)}
+                  </span>
                 </span>
               </div>
 
@@ -1031,7 +1036,7 @@ export function StatusPanel() {
                 >
                   {lastCommitDetails.subject}{' '}
                   <span className="font-normal text-theme-dim text-[11px]">
-                    {lastCommitDetails.files.length} files
+                    {t.statusPanel.fileCountFormat(lastCommitDetails.files.length)}
                   </span>
                 </span>
               </div>
@@ -1144,7 +1149,7 @@ export function StatusPanel() {
                   className="flex items-center gap-0.5 text-blue-400 hover:text-blue-300 font-medium cursor-pointer"
                   title={t.statusPanel.expandLastCommitTooltip}
                 >
-                  <span>last commit</span>
+                  <span>{t.statusPanel.lastCommitLabel}</span>
                   <ChevronDown className="w-3 h-3" />
                 </button>
 
@@ -1163,7 +1168,7 @@ export function StatusPanel() {
                       className="px-3 py-1.5 hover:bg-blue-500/15 hover:text-blue-400 cursor-pointer flex items-center gap-1.5 text-xs text-theme-main truncate"
                     >
                       <span className="text-blue-400 font-bold">✓</span>
-                      <span className="font-semibold text-theme-dim shrink-0">last commit</span>
+                      <span className="font-semibold text-theme-dim shrink-0">{t.statusPanel.lastCommitLabel}</span>
                       <span className="truncate text-theme-muted" title={lastCommitDetails?.subject}>
                         {lastCommitDetails?.subject || t.statusPanel.lastCommitTitle}
                       </span>
@@ -1172,7 +1177,7 @@ export function StatusPanel() {
                 )}
               </div>
             ) : (
-              <span className="text-theme-muted">last commit</span>
+              <span className="text-theme-muted">{t.statusPanel.lastCommitLabel}</span>
             )}
 
             {/* Commit Message History Clock Button */}
@@ -1194,10 +1199,10 @@ export function StatusPanel() {
           {/* Statistics summary */}
           <div className="flex items-center gap-1.5 font-mono text-[11px]">
             {addedCount > 0 && (
-              <span className="text-emerald-400 font-medium">{addedCount} added</span>
+              <span className="text-emerald-400 font-medium">{t.statusPanel.statsAdded(addedCount)}</span>
             )}
             {modifiedCount > 0 && (
-              <span className="text-sky-400 font-medium">{modifiedCount} modified</span>
+              <span className="text-sky-400 font-medium">{t.statusPanel.statsModified(modifiedCount)}</span>
             )}
           </div>
         </div>
@@ -1265,17 +1270,17 @@ export function StatusPanel() {
               </button>
             ) : (
               <>
-                {/* Primary Commit Button (样式与布局保持完全一致) */}
+                {/* Primary Commit Button */}
                 <button
                   disabled={!(commitMessage || '').trim() || (totalChecked.length === 0 && !isMerging)}
                   onClick={() => commit(false)}
                   className="px-4 py-2 bg-gradient-to-b from-blue-500 to-blue-600 hover:from-blue-400 hover:to-blue-500 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-xs font-semibold transition-all shadow-sm shadow-blue-500/25 cursor-pointer shrink-0 whitespace-nowrap border border-blue-400/30"
-                  title={isAmend ? t.statusPanel.commitBox.amend : t.statusPanel.commitBox.commitBtn}
+                  title={isAmend ? t.statusPanel.amendCommitTitle : t.statusPanel.commitBox.commitBtn}
                 >
-                  {isAmend ? renderDualText(t.statusPanel.commitBox.amend) : renderDualText(t.statusPanel.commitBox.commitBtn)}
+                  {isAmend ? (t.statusPanel.commitBox.amendBtn || t.statusPanel.commitBox.amend) : t.statusPanel.commitBox.commitBtn}
                 </button>
 
-                {/* Secondary Commit and Push Button (样式与布局保持完全一致) */}
+                {/* Secondary Commit and Push Button */}
                 <button
                   disabled={!(commitMessage || '').trim() || (totalChecked.length === 0 && !isMerging)}
                   onClick={() => commit(true)}
@@ -1283,7 +1288,7 @@ export function StatusPanel() {
                   title={t.statusPanel.commitBox.commitAndPushBtn}
                 >
                   <span className="whitespace-nowrap font-medium">
-                    {t.statusPanel.commitBox.commitAndPushShort || renderDualText(t.statusPanel.commitBox.commitAndPushBtn)}
+                    {t.statusPanel.commitBox.commitAndPushBtn}
                   </span>
                 </button>
               </>
