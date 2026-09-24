@@ -1620,11 +1620,17 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Layout Panel Widths & Resize Actions
   sidebarWidth:
     typeof window !== 'undefined'
-      ? parseInt(localStorage.getItem('omnigit_sidebar_width') || '256', 10)
+      ? Math.max(160, Math.min(500, parseInt(localStorage.getItem('omnigit_sidebar_width') || '256', 10)))
       : 256,
   statusPanelWidth:
     typeof window !== 'undefined'
-      ? parseInt(localStorage.getItem('omnigit_status_width') || '380', 10)
+      ? Math.max(
+          240,
+          Math.min(
+            Math.max(240, window.innerWidth - 256 - 320),
+            parseInt(localStorage.getItem('omnigit_status_width') || '380', 10)
+          )
+        )
       : 380,
   commitBoxHeight:
     typeof window !== 'undefined'
@@ -1641,7 +1647,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   lastCommitDetails: null,
 
   setSidebarWidth: (width: number) => {
-    const clamped = Math.max(160, Math.min(520, width));
+    const maxAvailable = typeof window !== 'undefined' ? Math.max(160, window.innerWidth - 450) : 500;
+    const clamped = Math.max(160, Math.min(Math.min(500, maxAvailable), width));
     if (typeof window !== 'undefined') {
       safeLocalStorageSetItem('omnigit_sidebar_width', String(clamped));
     }
@@ -1649,7 +1656,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   setStatusPanelWidth: (width: number) => {
-    const clamped = Math.max(240, Math.min(1100, width));
+    const maxAvailable =
+      typeof window !== 'undefined'
+        ? Math.max(240, window.innerWidth - get().sidebarWidth - 320)
+        : 1100;
+    const clamped = Math.max(240, Math.min(Math.min(1100, maxAvailable), width));
     if (typeof window !== 'undefined') {
       safeLocalStorageSetItem('omnigit_status_width', String(clamped));
     }

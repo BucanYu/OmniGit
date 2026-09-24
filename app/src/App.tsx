@@ -29,6 +29,27 @@ export default function App() {
     isWelcomeScreenOpen,
   } = useAppStore();
 
+  const [windowWidth, setWindowWidth] = React.useState(
+    typeof window !== 'undefined' ? window.innerWidth : 1280
+  );
+
+  // Monitor window resize to adaptively clamp panels between fullscreen and windowed modes
+  useEffect(() => {
+    const handleResize = () => {
+      const w = window.innerWidth;
+      setWindowWidth(w);
+      const store = useAppStore.getState();
+      if (store.isRightPanelOpen) {
+        const maxStatus = Math.max(260, w - store.sidebarWidth - 320);
+        if (store.statusPanelWidth > maxStatus) {
+          store.setStatusPanelWidth(maxStatus);
+        }
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   useEffect(() => {
     (window as any).__appStore = useAppStore;
     initApp();
@@ -115,7 +136,7 @@ export default function App() {
         <ResizeDivider
           currentWidth={sidebarWidth}
           minWidth={160}
-          maxWidth={500}
+          maxWidth={Math.max(160, Math.min(480, windowWidth - (isRightPanelOpen ? 580 : 260)))}
           onResize={setSidebarWidth}
           onDoubleClickReset={() => setSidebarWidth(256)}
           title={t.common.dragResizeHorizontal}
@@ -130,7 +151,7 @@ export default function App() {
             <ResizeDivider
               currentWidth={statusPanelWidth}
               minWidth={240}
-              maxWidth={1100}
+              maxWidth={Math.max(260, windowWidth - sidebarWidth - 320)}
               onResize={setStatusPanelWidth}
               onDoubleClickReset={() => setStatusPanelWidth(380)}
               title={t.common.dragResizeHorizontal}

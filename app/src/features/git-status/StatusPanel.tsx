@@ -230,37 +230,37 @@ export function StatusPanel() {
       }`}
     >
       {/* 1. Header Tabs (Commit / Shelf / Log) */}
-      <div className="h-9 px-2.5 border-b border-theme-border flex items-center justify-between bg-theme-header">
-        <div className="flex items-center gap-1 p-0.5 rounded-lg bg-theme-subbar border border-theme-border shadow-inner">
+      <div className="h-9 px-2 border-b border-theme-border flex items-center justify-between bg-theme-header overflow-hidden min-w-0">
+        <div className="flex items-center gap-1 p-0.5 rounded-lg bg-theme-subbar border border-theme-border shadow-inner max-w-full overflow-hidden">
           <button
             onClick={() => setActiveTab('commit')}
-            className={`px-3 py-0.5 font-semibold rounded-md text-xs transition-all cursor-pointer ${
+            className={`px-2 sm:px-3 py-0.5 font-semibold rounded-md text-xs transition-all cursor-pointer truncate ${
               activeTab === 'commit'
                 ? 'bg-theme-card text-theme-main shadow-xs'
                 : 'text-theme-muted hover:text-theme-main'
             }`}
           >
-            {renderDualText(t.statusPanel.tabs.changes)}
+            {renderDualText(t.statusPanel.tabs.changes, statusPanelWidth < 360)}
           </button>
           <button
             onClick={() => setActiveTab('shelf')}
-            className={`px-3 py-0.5 font-semibold rounded-md text-xs transition-all cursor-pointer ${
+            className={`px-2 sm:px-3 py-0.5 font-semibold rounded-md text-xs transition-all cursor-pointer truncate ${
               activeTab === 'shelf'
                 ? 'bg-theme-card text-theme-main shadow-xs'
                 : 'text-theme-muted hover:text-theme-main'
             }`}
           >
-            {renderDualText(t.statusPanel.tabs.shelf)}
+            {renderDualText(t.statusPanel.tabs.shelf, statusPanelWidth < 360)}
           </button>
           <button
             onClick={() => setActiveTab('log')}
-            className={`px-3 py-0.5 font-semibold rounded-md text-xs transition-all cursor-pointer flex items-center gap-1.5 ${
+            className={`px-2 sm:px-3 py-0.5 font-semibold rounded-md text-xs transition-all cursor-pointer flex items-center gap-1.5 truncate ${
               activeTab === 'log'
                 ? 'bg-theme-card text-theme-main shadow-xs'
                 : 'text-theme-muted hover:text-theme-main'
             }`}
           >
-            {renderDualText(t.statusPanel.tabs.log)}
+            {renderDualText(t.statusPanel.tabs.log, statusPanelWidth < 360)}
           </button>
         </div>
       </div>

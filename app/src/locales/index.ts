@@ -31,12 +31,19 @@ export function useTranslation() {
  * Main term in regular/bold size, secondary Chinese explanation in lighter font & smaller size.
  * If text is plain or English, it renders as standard string.
  */
-export function renderDualText(text: string): React.ReactNode {
+export function renderDualText(text: string, hideSub = false): React.ReactNode {
   const match = text.match(/^(.+?)\s*\((.+)\)$/);
   if (!match) {
     return text;
   }
   const [, mainPart, subPart] = match;
+  if (hideSub) {
+    return React.createElement(
+      'span',
+      { className: 'inline-flex items-baseline truncate' },
+      React.createElement('span', { className: 'font-medium' }, mainPart)
+    );
+  }
   return React.createElement(
     'span',
     { className: 'inline-flex items-baseline truncate' },

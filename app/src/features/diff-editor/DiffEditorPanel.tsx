@@ -518,12 +518,12 @@ export function DiffEditorPanel() {
   const fileLanguage = getLanguageFromPath(relativePath);
 
   return (
-    <div className="flex-1 bg-theme-panel flex flex-col h-full overflow-hidden">
+    <div className="flex-1 min-w-0 bg-theme-panel flex flex-col h-full overflow-hidden">
       {/* Workbench Header */}
-      <div className="h-9 px-2.5 border-b border-theme-border flex items-center justify-between bg-theme-header text-xs select-none gap-1.5 overflow-hidden">
+      <div className="h-9 px-2 border-b border-theme-border flex items-center justify-between bg-theme-header text-xs select-none gap-1 overflow-hidden min-w-0">
         {/* Left: File Path & Status Badge with Hover Full Path Preview & Copy */}
         <div
-          className="relative flex items-center gap-1 min-w-0 flex-1 max-w-[36%] shrink"
+          className="relative flex items-center gap-1 min-w-0 shrink max-w-[22%] sm:max-w-[28%] md:max-w-[36%]"
           onMouseEnter={() => {
             if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
             hoverTimeoutRef.current = setTimeout(() => setIsPathHovered(true), 250);
@@ -579,10 +579,10 @@ export function DiffEditorPanel() {
             </span>
           )}
 
-          {/* Status Badge (Only shown in non-historical mode to avoid clutter) */}
+          {/* Status Badge (Only shown on wide displays in non-historical mode to avoid clutter) */}
           {!isHistorical && selectedFile?.status && (
             <span
-              className={`hidden sm:inline-block text-[9px] px-1.5 py-0.2 rounded font-mono font-bold uppercase shrink-0 ${
+              className={`hidden 2xl:inline-block text-[9px] px-1.5 py-0.2 rounded font-mono font-bold uppercase shrink-0 ${
                 selectedFile.status === 'modified'
                   ? 'bg-blue-500/20 text-sky-400 border border-blue-500/30'
                   : selectedFile.status === 'added' || selectedFile.status === 'untracked'
@@ -675,39 +675,39 @@ export function DiffEditorPanel() {
         </div>
 
         {/* Center: View Mode Toggle Tabs & Search Box (差异对比 vs 单文件源码编辑) */}
-        <div className="flex items-center gap-1.5 shrink-0 justify-center">
+        <div className="flex items-center gap-1 min-w-0 shrink justify-center">
           {/* Mode Switcher Pills */}
           <div className="flex items-center bg-theme-input p-0.5 rounded-lg border border-theme-border text-xs shrink-0 shadow-2xs">
             <button
               type="button"
               onClick={() => setEditorViewMode('diff')}
-              className={`flex items-center gap-1 px-2.5 py-0.5 rounded-md font-medium transition cursor-pointer text-[11px] ${
+              className={`flex items-center gap-1 px-2 py-0.5 rounded-md font-medium transition cursor-pointer text-[11px] ${
                 editorViewMode === 'diff'
                   ? 'bg-sky-500 text-white shadow-xs font-semibold'
                   : 'text-theme-muted hover:text-theme-main hover:bg-theme-hover'
               }`}
               title={t.diff.diffViewTooltip}
             >
-              <GitCompare className="w-3.5 h-3.5" />
-              <span>{t.diff.modeDiff}</span>
+              <GitCompare className="w-3.5 h-3.5 shrink-0" />
+              <span className="hidden sm:inline">{t.diff.modeDiff}</span>
             </button>
             <button
               type="button"
               onClick={() => setEditorViewMode('editor')}
-              className={`flex items-center gap-1 px-2.5 py-0.5 rounded-md font-medium transition cursor-pointer text-[11px] ${
+              className={`flex items-center gap-1 px-2 py-0.5 rounded-md font-medium transition cursor-pointer text-[11px] ${
                 editorViewMode === 'editor'
                   ? 'bg-sky-500 text-white shadow-xs font-semibold'
                   : 'text-theme-muted hover:text-theme-main hover:bg-theme-hover'
               }`}
               title={t.diff.editorViewTooltip}
             >
-              <FileEdit className="w-3.5 h-3.5" />
-              <span>{t.diff.modeEditor}</span>
+              <FileEdit className="w-3.5 h-3.5 shrink-0" />
+              <span className="hidden sm:inline">{t.diff.modeEditor}</span>
             </button>
           </div>
 
           {/* Search Box - dynamic responsive elastic width */}
-          <div className="flex items-center gap-1 px-2 py-0.5 bg-theme-input border border-theme-border rounded-lg focus-within:border-sky-500 transition w-20 sm:w-28 md:w-32 lg:w-40 focus-within:w-40 shadow-2xs">
+          <div className="flex items-center gap-1 px-1.5 sm:px-2 py-0.5 bg-theme-input border border-theme-border rounded-lg focus-within:border-sky-500 transition w-16 sm:w-24 md:w-32 lg:w-36 focus-within:w-36 min-w-[50px] shrink shadow-2xs">
             <Search className="w-3.5 h-3.5 text-theme-dim shrink-0" />
             <input
               ref={searchInputRef}
@@ -720,7 +720,7 @@ export function DiffEditorPanel() {
             />
             {/* Search Match Counter Badge */}
             {searchQuery.trim() && (
-              <span className="text-[10px] font-mono text-sky-400 shrink-0 px-1.5 py-0.2 rounded-full bg-sky-500/10 font-medium">
+              <span className="text-[10px] font-mono text-sky-400 shrink-0 px-1 py-0.2 rounded-full bg-sky-500/10 font-medium">
                 {matches.length > 0 ? `${currentMatchIndex + 1}/${matches.length}` : '0/0'}
               </span>
             )}
@@ -731,7 +731,7 @@ export function DiffEditorPanel() {
                   setSearchQuery('');
                   setMatches([]);
                 }}
-                className="text-theme-dim hover:text-theme-main text-xs px-0.5 cursor-pointer"
+                className="text-theme-dim hover:text-theme-main text-xs px-0.5 cursor-pointer shrink-0"
                 title={t.diff.clearSearch}
               >
                 <X className="w-3 h-3" />
@@ -740,7 +740,7 @@ export function DiffEditorPanel() {
           </div>
 
           {/* Up & Down Navigation Buttons (向上与向下定位) */}
-          <div className="flex items-center gap-0.5 bg-theme-card border border-theme-border rounded-lg p-0.5 shrink-0 shadow-2xs">
+          <div className="hidden sm:flex items-center gap-0.5 bg-theme-card border border-theme-border rounded-lg p-0.5 shrink-0 shadow-2xs">
             <button
               type="button"
               onClick={handleGoToPrevious}
@@ -775,7 +775,7 @@ export function DiffEditorPanel() {
           {/* Diff Changes Counter Badge (when in diff mode and not actively searching) */}
           {editorViewMode === 'diff' && !searchQuery.trim() && lineChanges.length > 0 && (
             <span
-              className="hidden lg:flex text-[10px] font-mono text-theme-dim px-1.5 py-0.5 rounded bg-theme-subbar border border-theme-border shrink-0 items-center gap-1"
+              className="hidden 2xl:flex text-[10px] font-mono text-theme-dim px-1.5 py-0.5 rounded bg-theme-subbar border border-theme-border shrink-0 items-center gap-1"
               title={t.diff.diffChangesCount}
             >
               <GitCompare className="w-3 h-3 text-sky-400" />
@@ -788,8 +788,8 @@ export function DiffEditorPanel() {
           )}
         </div>
 
-        {/* Right: Actions (Diff View controls / Editor controls / Unified Historical pill / Save) */}
-        <div className="flex items-center gap-1.5 shrink-0 ml-auto">
+        {/* Right: Actions (Diff View controls / Editor controls / Unified Historical pill / Save / Close) */}
+        <div className="flex items-center gap-1 shrink-0 ml-auto">
           {/* Editor mode controls: Word Wrap toggle */}
           {editorViewMode === 'editor' && (
             <button
@@ -802,15 +802,15 @@ export function DiffEditorPanel() {
               title={t.diff.toggleWordWrapTooltip(wordWrap)}
             >
               <WrapText className="w-3.5 h-3.5" />
-              <span className="hidden xl:inline">{t.diff.wordWrap}</span>
+              <span className="hidden 2xl:inline">{t.diff.wordWrap}</span>
             </button>
           )}
 
           {/* Unified Historical mode pill OR Normal Save button */}
           {isHistorical ? (
-            <div className="flex items-center bg-purple-500/15 border border-purple-500/30 rounded-lg text-[11px] font-mono text-purple-300 px-2 py-0.5 gap-1.5 shrink-0 shadow-2xs">
+            <div className="flex items-center bg-purple-500/15 border border-purple-500/30 rounded-lg text-[11px] font-mono text-purple-300 px-1.5 sm:px-2 py-0.5 gap-1 shrink-0 shadow-2xs">
               <History className="w-3 h-3 text-purple-400 shrink-0" />
-              <span className="font-semibold text-[10px] truncate max-w-[85px]">
+              <span className="font-semibold text-[10px] truncate max-w-[85px] hidden sm:inline">
                 {historicalDiff?.commitHash ? `Commit ${historicalDiff.commitHash.slice(0, 7)}` : t.diff.snapshot}
               </span>
               <button
@@ -825,7 +825,7 @@ export function DiffEditorPanel() {
           ) : (
             <button
               onClick={handleSave}
-              className="flex items-center gap-1 bg-theme-card hover:bg-theme-card-hover text-theme-main border border-theme-border-card px-2.5 py-1 rounded-lg transition text-xs cursor-pointer shadow-2xs font-medium"
+              className="flex items-center gap-1 bg-theme-card hover:bg-theme-card-hover text-theme-main border border-theme-border-card px-2 sm:px-2.5 py-1 rounded-lg transition text-xs cursor-pointer shadow-2xs font-medium shrink-0"
               title={t.diff.saveDiskTooltip}
             >
               {saved ? (
@@ -833,7 +833,7 @@ export function DiffEditorPanel() {
               ) : (
                 <Save className="w-3.5 h-3.5 text-sky-400" />
               )}
-              <span className="hidden sm:inline">{saved ? t.diff.saved : t.diff.save}</span>
+              <span className="hidden md:inline">{saved ? t.diff.saved : t.diff.save}</span>
             </button>
           )}
 
@@ -844,7 +844,7 @@ export function DiffEditorPanel() {
           <button
             type="button"
             onClick={closeRightPanel}
-            className="p-1 rounded-lg hover:bg-theme-hover text-theme-dim hover:text-rose-400 transition cursor-pointer"
+            className="p-1 rounded-lg hover:bg-theme-hover text-theme-dim hover:text-rose-400 transition cursor-pointer shrink-0"
             title={t.diff.closeSideTooltip}
           >
             <X className="w-4 h-4" />
@@ -854,7 +854,7 @@ export function DiffEditorPanel() {
 
       {/* 1.5 Conflict Resolver Action Bar (IntelliJ IDEA style) */}
       {(selectedFile?.status === 'conflict' || (Boolean(modifiedContent) && modifiedContent.includes('<<<<<<<'))) && (
-        <div className="px-3 py-2 bg-amber-500/15 border-b border-amber-500/30 flex items-center justify-between text-xs animate-in fade-in shrink-0">
+        <div className="px-3 py-2 bg-amber-500/15 border-b border-amber-500/30 flex items-center justify-between text-xs animate-in fade-in shrink-0 overflow-hidden flex-wrap gap-1.5">
           <div className="flex items-center gap-2 text-amber-300">
             <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
             <span>
