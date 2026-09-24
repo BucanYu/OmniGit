@@ -30,6 +30,10 @@
   - 遵循界面语言严控原则，中文模式（`zh-CN`）下彻底净化全部界面元素，全面移除按钮、分组标题、面板顶栏中括号混杂的英文对照，直显纯正、自然的中文表达（如将 `Changes 1 files` 优化为 `工作区改动 1 个文件`、`Amend (追加提交)` 优化为 `追加到上次提交`、`last commit` 优化为 `上次提交`、`1 modified` 优化为 `1 个修改`、`Commit (提交)` 优化为 `提交`、`提交并推送 (Push)` 优化为 `提交并推送`、`New Window (新窗口)` 优化为 `新窗口`、`仓库列表 (Repositories)` 优化为 `仓库列表`、`三方合并 (3-Way Merge)` 优化为 `三方合并` 等）；
   - 英文专业对照（如 IDEA 快捷键 `Ctrl+K` 等）统一收敛至鼠标悬停气泡（`title` Tooltip）中按需提示，保持界面纯正干净；
   - 英文模式（`en-US`）严格保持纯正英语，杜绝中文字符混入。
+- **修复重新进入工作区后默认跳转到最后一个项目的缺陷，准确记忆并恢复退出前激活选中的项目**：
+  - **根本诱因**：在 `registerRecentProject(projectPath)` 辅助函数内部，原先包含了无差别向本地键值 `omnigit_last_active_project_path` 与 `omnigit_last_active_project_path_${wsId}` 写入的副作用。而在工作区初始化（`initApp`）、切换工作区（`openWorkspaceGroup`）和同步工作区（`syncCurrentWorkspaceToSaved`）时，代码均遍历了工作区内的全部仓库并逐一调用 `registerRecentProject`，导致数组最后一项总是覆盖前面的记录，最终每次打开工作区时系统都误以为最后一个项目是“最近激活的项目”；此外 `openWorkspaceGroup` 曾存在硬编码取 `repoPaths[0]` 覆盖状态的问题。
+  - **解耦职责与精准持久化**：将 `registerRecentProject` 职责净化为仅维护全局最近项目列表，彻底移除对当前工作区激活指针的隐式副作用；为工作区元数据 `WorkspaceGroupItem` 显式增加 `lastActiveProjectPath` 字段。
+  - **双向协同记忆**：在用户切换激活项目（`setActiveProject`）时立即将目标项目路径（结合 `normalizePath`）持久化到工作区存储与当前会话；无论冷启动或从欢迎面板再次点入该工作区，均能 100% 精确恢复用户离开时正在操作的项目。
 
 ### 🚀 体验与性能优化 (Performance & UX)
 

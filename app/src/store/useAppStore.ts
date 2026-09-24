@@ -218,6 +218,7 @@ export interface WorkspaceGroupItem {
   repos: WorkspaceRepoItem[];
   lastOpened: number;
   badgeColor?: string;
+  lastActiveProjectPath?: string;
 }
 
 export interface RecentProjectItem {
@@ -587,7 +588,8 @@ export function buildWorkspaceRecord(
   paths: string[],
   existing?: WorkspaceGroupItem,
   knownRepos?: WorkspaceRepoItem[],
-  lang: string = 'zh-CN'
+  lang: string = 'zh-CN',
+  lastActiveProjectPath?: string
 ): WorkspaceGroupItem {
   const isZh = lang === 'zh-CN';
   const repos: WorkspaceRepoItem[] =
@@ -674,6 +676,7 @@ export function buildWorkspaceRecord(
     repos,
     lastOpened: existing?.lastOpened || Date.now(),
     badgeColor,
+    lastActiveProjectPath: lastActiveProjectPath || existing?.lastActiveProjectPath,
   };
 }
 
@@ -1144,22 +1147,30 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   openWorkspaceGroup: async (ws: WorkspaceGroupItem, inNewWindow = false) => {
-    const updatedWs = { ...ws, lastOpened: Date.now() };
+    const targetWsId = ws.id;
+    const repoPaths = ws.repos.map((r) => r.path);
+
+    const savedActivePath = typeof window !== 'undefined'
+      ? ws.lastActiveProjectPath || localStorage.getItem(`omnigit_last_active_project_path_${targetWsId}`) || localStorage.getItem('omnigit_last_active_project_path')
+      : ws.lastActiveProjectPath;
+
+    const matchedActivePath = (savedActivePath && repoPaths.some((p) => normalizePath(p) === normalizePath(savedActivePath)))
+      ? savedActivePath
+      : repoPaths[0];
+
+    const updatedWs = { ...ws, lastOpened: Date.now(), lastActiveProjectPath: matchedActivePath };
     get().saveWorkspaceRecord(updatedWs);
 
     ws.repos.forEach((r) => {
       get().registerRecentProject(r.path, r.name, r.branch);
     });
 
-    const repoPaths = ws.repos.map((r) => r.path);
-    const targetWsId = ws.id;
-
     if (inNewWindow) {
       if (typeof window !== 'undefined') {
         safeLocalStorageSetItem(`omnigit_ws_paths_${targetWsId}`, JSON.stringify(repoPaths));
-        if (repoPaths[0]) {
-          safeLocalStorageSetItem(`omnigit_last_active_project_path_${targetWsId}`, repoPaths[0]);
-          safeLocalStorageSetItem('omnigit_last_closed_project_path', repoPaths[0]);
+        if (matchedActivePath) {
+          safeLocalStorageSetItem(`omnigit_last_active_project_path_${targetWsId}`, matchedActivePath);
+          safeLocalStorageSetItem('omnigit_last_closed_project_path', matchedActivePath);
         }
       }
       if (window.electronAPI?.createNewWindow) {
@@ -1174,9 +1185,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     // Open in current workspace:
     if (typeof window !== 'undefined') {
       safeLocalStorageSetItem(`omnigit_ws_paths_${targetWsId}`, JSON.stringify(repoPaths));
-      if (repoPaths[0]) {
-        safeLocalStorageSetItem(`omnigit_last_active_project_path_${targetWsId}`, repoPaths[0]);
-        safeLocalStorageSetItem('omnigit_last_closed_project_path', repoPaths[0]);
+      if (matchedActivePath) {
+        safeLocalStorageSetItem(`omnigit_last_active_project_path_${targetWsId}`, matchedActivePath);
+        safeLocalStorageSetItem('omnigit_last_closed_project_path', matchedActivePath);
       }
       safeLocalStorageSetItem('omnigit_last_active_workspace_id', targetWsId);
       try {
@@ -1208,12 +1219,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       };
     });
 
-    const savedActivePath = typeof window !== 'undefined'
-      ? localStorage.getItem(`omnigit_last_active_project_path_${targetWsId}`) || localStorage.getItem('omnigit_last_active_project_path')
-      : null;
     let initialActive = instantProjects[0];
-    if (savedActivePath) {
-      const matched = instantProjects.find((p) => normalizePath(p.path) === normalizePath(savedActivePath));
+    if (matchedActivePath) {
+      const matched = instantProjects.find((p) => normalizePath(p.path) === normalizePath(matchedActivePath));
       if (matched) initialActive = matched;
     }
 
@@ -1263,17 +1271,16 @@ export const useAppStore = create<AppState>((set, get) => ({
       };
     });
 
-    // Also register every repo into recent projects list
-    repos.forEach((r) => {
-      get().registerRecentProject(r.path, r.name, r.branch);
-    });
+    const activeProject = state.projects.find((p) => p.id === state.activeProjectId);
+    const activePath = activeProject?.path || existing?.lastActiveProjectPath;
 
     const wsRecord = buildWorkspaceRecord(
       state.workspaceId,
       currentPaths,
       existing,
       repos,
-      get().language
+      get().language,
+      activePath
     );
     get().saveWorkspaceRecord(wsRecord);
   },
@@ -1440,10 +1447,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     currentList.unshift(item);
     const truncated = currentList.slice(0, 50);
     safeLocalStorageSetItem('omnigit_global_recent_projects', JSON.stringify(truncated));
-    safeLocalStorageSetItem('omnigit_last_active_project_path', projectPath);
-    safeLocalStorageSetItem(`omnigit_last_active_project_path_${get().workspaceId}`, projectPath);
-    safeLocalStorageSetItem('omnigit_last_closed_project_path', projectPath);
-    safeLocalStorageSetItem('omnigit_last_active_workspace_id', get().workspaceId);
     set({ globalRecentProjects: truncated });
     broadcastWorkspaceChanged();
     scheduleWorkspacesDiskBackup();
@@ -1872,19 +1875,25 @@ export const useAppStore = create<AppState>((set, get) => ({
       });
 
       const savedActivePath = typeof window !== 'undefined'
-        ? localStorage.getItem(`omnigit_last_active_project_path_${activeWsId}`) || localStorage.getItem('omnigit_last_active_project_path')
-        : null;
+        ? targetWs?.lastActiveProjectPath || localStorage.getItem(`omnigit_last_active_project_path_${activeWsId}`) || localStorage.getItem('omnigit_last_active_project_path')
+        : targetWs?.lastActiveProjectPath;
       let activeProject = instantProjects[0];
       if (savedActivePath) {
         const matched = instantProjects.find(
-          (p) => p.path.toLowerCase() === savedActivePath.toLowerCase()
+          (p) => normalizePath(p.path) === normalizePath(savedActivePath)
         );
         if (matched) {
           activeProject = matched;
         }
       }
 
-      const normActiveLower = activeProject.path.toLowerCase();
+      if (typeof window !== 'undefined') {
+        safeLocalStorageSetItem('omnigit_last_active_project_path', activeProject.path);
+        safeLocalStorageSetItem(`omnigit_last_active_project_path_${activeWsId}`, activeProject.path);
+        safeLocalStorageSetItem('omnigit_last_closed_project_path', activeProject.path);
+      }
+
+      const normActiveLower = normalizePath(activeProject.path);
       const activeCached = repoSnapshotCache.get(normActiveLower) || getLocalSnapshot(normActiveLower);
       if (activeCached && !repoSnapshotCache.has(normActiveLower)) {
         repoSnapshotCache.set(normActiveLower, activeCached);
@@ -1894,11 +1903,10 @@ export const useAppStore = create<AppState>((set, get) => ({
         ? localStorage.getItem(`omnigit_commit_draft_${activeWsId}_${activeProject.path}`) || localStorage.getItem(`omnigit_commit_draft_${activeProject.path}`) || ''
         : '';
 
-      // Register all instant projects into global recent list & sync saved workspace
+      // Register all instant projects into global recent list
       instantProjects.forEach((p) => {
         get().registerRecentProject(p.path, p.name, p.currentBranch !== '...' ? p.currentBranch : undefined);
       });
-      get().syncCurrentWorkspaceToSaved();
 
       // 0ms instant UI mount: Sidebar, projects, branch, files & logs appear with ZERO waiting!
       if (activeCached) {
@@ -1926,6 +1934,8 @@ export const useAppStore = create<AppState>((set, get) => ({
           isLoading: false,
         });
       }
+
+      get().syncCurrentWorkspaceToSaved();
 
       if (typeof document !== 'undefined') {
         document.title = `OmniGit - ${activeProject.name}`;
@@ -2226,11 +2236,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
 
     if (resolvedProjects.length > 0) {
-      get().syncCurrentWorkspaceToSaved();
-
+      const currentWs = get().savedWorkspaces.find((w) => w.id === state.workspaceId);
       const savedActivePath = typeof window !== 'undefined'
-        ? localStorage.getItem(`omnigit_last_active_project_path_${state.workspaceId}`) || localStorage.getItem('omnigit_last_active_project_path')
-        : null;
+        ? currentWs?.lastActiveProjectPath || localStorage.getItem(`omnigit_last_active_project_path_${state.workspaceId}`) || localStorage.getItem('omnigit_last_active_project_path')
+        : currentWs?.lastActiveProjectPath;
       const matched = savedActivePath
         ? resolvedProjects.find((p) => normalizePath(p.path) === normalizePath(savedActivePath))
         : null;
@@ -2241,6 +2250,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       } else {
         await get().loadWorkspaceAccounts();
       }
+      get().syncCurrentWorkspaceToSaved();
     } else if (newPaths.length === 0) {
       get().removeSavedWorkspace(state.workspaceId);
       set({
@@ -2638,6 +2648,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       safeLocalStorageSetItem('omnigit_last_active_workspace_id', get().workspaceId);
     }
     get().registerRecentProject(targetProject.path, targetProject.name, targetProject.currentBranch);
+    get().syncCurrentWorkspaceToSaved();
 
     // Invalidate any in-flight requests from the previous project!
     currentRepoLoadId++;
