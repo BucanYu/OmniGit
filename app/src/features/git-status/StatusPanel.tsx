@@ -170,21 +170,25 @@ export function StatusPanel() {
     }
   }, [currentProject?.path, loadRecentCommitMessages, loadLastCommit]);
 
-  const renderFileIcon = (fileName: string) => {
-    if (fileName.endsWith('.sql')) {
+  const renderFileIcon = (fileName?: string) => {
+    if (!fileName || typeof fileName !== 'string') {
+      return <FileCode className="w-3.5 h-3.5 text-gray-400 shrink-0" />;
+    }
+    const lower = fileName.toLowerCase();
+    if (lower.endsWith('.sql')) {
       return <Database className="w-3.5 h-3.5 text-emerald-400 shrink-0" />;
     }
-    if (fileName.endsWith('.md')) {
+    if (lower.endsWith('.md')) {
       return <FileText className="w-3.5 h-3.5 text-sky-300 shrink-0" />;
     }
-    if (fileName.endsWith('.java')) {
+    if (lower.endsWith('.java')) {
       return (
         <span className="w-3.5 h-3.5 rounded bg-blue-600/90 text-white font-bold text-[9px] flex items-center justify-center shrink-0">
           C
         </span>
       );
     }
-    if (fileName.endsWith('.json') || fileName.endsWith('.ts') || fileName.endsWith('.tsx')) {
+    if (lower.endsWith('.json') || lower.endsWith('.ts') || lower.endsWith('.tsx') || lower.endsWith('.js') || lower.endsWith('.jsx') || lower.endsWith('.vue')) {
       return <FileCode className="w-3.5 h-3.5 text-sky-400 shrink-0" />;
     }
     return <FileCode className="w-3.5 h-3.5 text-gray-400 shrink-0" />;

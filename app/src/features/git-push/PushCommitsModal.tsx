@@ -272,21 +272,25 @@ export const PushCommitsModal: React.FC = () => {
     setExpandedFolders(new Set());
   };
 
-  const renderFileIcon = (fileName = '') => {
-    if (fileName.endsWith('.java')) {
+  const renderFileIcon = (fileName?: string) => {
+    if (!fileName || typeof fileName !== 'string') {
+      return <File className="w-3.5 h-3.5 text-theme-dim shrink-0" />;
+    }
+    const lower = fileName.toLowerCase();
+    if (lower.endsWith('.java')) {
       return (
         <span className="w-3.5 h-3.5 rounded bg-blue-600/90 text-white font-bold text-[9px] flex items-center justify-center shrink-0">
           C
         </span>
       );
     }
-    if (fileName.endsWith('.sql')) {
+    if (lower.endsWith('.sql')) {
       return <Database className="w-3.5 h-3.5 text-emerald-400 shrink-0" />;
     }
-    if (fileName.endsWith('.md')) {
+    if (lower.endsWith('.md')) {
       return <FileText className="w-3.5 h-3.5 text-sky-300 shrink-0" />;
     }
-    if (fileName.endsWith('.ts') || fileName.endsWith('.tsx') || fileName.endsWith('.json') || fileName.endsWith('.vue')) {
+    if (lower.endsWith('.ts') || lower.endsWith('.tsx') || lower.endsWith('.json') || lower.endsWith('.vue') || lower.endsWith('.js') || lower.endsWith('.jsx')) {
       return <FileCode className="w-3.5 h-3.5 text-sky-400 shrink-0" />;
     }
     return <File className="w-3.5 h-3.5 text-theme-dim shrink-0" />;

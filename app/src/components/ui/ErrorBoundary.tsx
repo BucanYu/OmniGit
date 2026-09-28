@@ -33,7 +33,7 @@ export class ErrorBoundary extends Component<Props, State> {
     window.location.reload();
   };
 
-  private handleClearAndReload = () => {
+  private handleClearAndReload = async () => {
     try {
       // 核心资产绝对白名单：严禁删除任何工作空间、关联仓库路径、全局最近打开记录和用户偏好！
       // 仅允许清理易失性视图快照 (omnigit_snap_*) 与提交草稿 (omnigit_commit_draft_*)
@@ -50,6 +50,7 @@ export class ErrorBoundary extends Component<Props, State> {
         }
       }
       keysToRemove.forEach((k) => localStorage.removeItem(k));
+      await fetch('/api/git/settings/clear-cache', { method: 'POST' }).catch(() => {});
     } catch {}
     window.location.reload();
   };

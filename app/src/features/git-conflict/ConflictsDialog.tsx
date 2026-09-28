@@ -101,7 +101,10 @@ export function ConflictsDialog() {
     } catch {}
   };
 
-  const getFileBadge = (fileName: string) => {
+  const getFileBadge = (fileName?: string) => {
+    if (!fileName || typeof fileName !== 'string') {
+      return <FileCode className="w-4 h-4 text-sky-400 shrink-0" />;
+    }
     const ext = fileName.split('.').pop()?.toUpperCase() || 'FILE';
     if (ext === 'TS' || ext === 'TSX') {
       return <span className="w-4 h-4 rounded bg-[#3178c6] text-white text-[9px] font-bold flex items-center justify-center shrink-0">TS</span>;

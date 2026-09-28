@@ -805,13 +805,38 @@ export function scheduleWorkspacesDiskBackup() {
   }, 800);
 }
 
+function normalizeSnapshotFiles(files: any[]): GitFileItem[] {
+  if (!Array.isArray(files)) return [];
+  return files.map((f) => {
+    const rawPath = f.path || '';
+    const norm = rawPath.replace(/\\/g, '/');
+    const fileName = f.fileName || norm.split('/').filter(Boolean).pop() || rawPath;
+    const dirPath = f.dirPath || (norm.includes('/') ? norm.substring(0, norm.lastIndexOf('/')) : '');
+    const status = f.status || 'modified';
+    const group = f.group || (status === 'conflict' ? 'conflict' : (status === 'untracked' ? 'unversioned' : 'changes'));
+    return {
+      path: rawPath,
+      fileName,
+      dirPath,
+      status,
+      group,
+      checked: Boolean(f.checked),
+      staged: Boolean(f.staged),
+    };
+  });
+}
+
 // L1 / L2 / L3 Snapshot Persistence
 function getLocalSnapshot(rawPath: string): LightRepoCache | null {
   if (typeof window === 'undefined') return null;
   const normPath = normalizePath(rawPath);
   // 1. Check L1 In-Memory Cache first (0ms)
   if (repoSnapshotCache.has(normPath)) {
-    return repoSnapshotCache.get(normPath)!;
+    const cached = repoSnapshotCache.get(normPath)!;
+    if (cached && cached.files) {
+      cached.files = normalizeSnapshotFiles(cached.files);
+    }
+    return cached;
   }
   // 2. Check L2 Web Storage
   try {
@@ -819,6 +844,9 @@ function getLocalSnapshot(rawPath: string): LightRepoCache | null {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed) {
+        if (parsed.files) {
+          parsed.files = normalizeSnapshotFiles(parsed.files);
+        }
         repoSnapshotCache.set(normPath, parsed);
         return parsed;
       }
@@ -834,6 +862,9 @@ export async function loadDiskSnapshot(repoPath: string): Promise<LightRepoCache
     const res = await fetch(`/api/git/cache/snapshot?path=${encodeURIComponent(repoPath)}`);
     const diskSnap = await res.json();
     if (diskSnap && diskSnap.repoPath) {
+      if (diskSnap.files) {
+        diskSnap.files = normalizeSnapshotFiles(diskSnap.files);
+      }
       repoSnapshotCache.set(normPath, diskSnap);
       return diskSnap;
     }
@@ -845,8 +876,10 @@ function saveLocalSnapshot(rawPath: string, snapshot: LightRepoCache) {
   if (typeof window === 'undefined') return;
   const normPath = normalizePath(rawPath);
 
-  // 1. L1 Memory: Full runtime state preserved
-  repoSnapshotCache.set(normPath, snapshot);
+  // 1. L1 Memory: Full runtime state preserved with normalized files
+  const normalizedFiles = normalizeSnapshotFiles(snapshot.files || []);
+  const safeSnapshot = { ...snapshot, files: normalizedFiles };
+  repoSnapshotCache.set(normPath, safeSnapshot);
 
   // 2. L2 Web Storage: Ultra-lightweight skeleton only (~3KB, prevents QuotaExceededError!)
   try {
@@ -864,10 +897,14 @@ function saveLocalSnapshot(rawPath: string, snapshot: LightRepoCache) {
         incoming: b.incoming,
         outgoing: b.outgoing,
       })),
-      files: (snapshot.files || []).slice(0, 30).map((f) => ({
+      files: normalizedFiles.slice(0, 50).map((f) => ({
         path: f.path,
+        fileName: f.fileName,
+        dirPath: f.dirPath,
         status: f.status,
+        group: f.group,
         staged: f.staged,
+        checked: Boolean(f.checked),
       })),
       selectedFilePath: snapshot.selectedFilePath,
       commitMessage: snapshot.commitMessage,
@@ -1238,7 +1275,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       projects: instantProjects,
       activeProjectId: initialActive ? initialActive.id : '',
       commitMessage: activeCached?.commitMessage || '',
-      files: activeCached?.files || [],
+      files: normalizeSnapshotFiles(activeCached?.files || []),
       branches: activeCached?.branches || [],
       commitLogs: activeCached?.commitLogs || [],
       isMerging: activeCached?.isMerging || false,
@@ -1917,7 +1954,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           projects: instantProjects,
           activeProjectId: activeProject.id,
           commitMessage: initialDraft || activeCached.commitMessage || '',
-          files: activeCached.files || [],
+          files: normalizeSnapshotFiles(activeCached.files || []),
           branches: activeCached.branches || [],
           commitLogs: activeCached.commitLogs || [],
           isMerging: activeCached.isMerging || false,
@@ -2344,7 +2381,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const currentActive = get().projects.find((p) => p.id === get().activeProjectId);
       if (currentActive && normalizePath(currentActive.path) === normPath) {
         set({
-          files: cached.files,
+          files: normalizeSnapshotFiles(cached.files || []),
           branches: cached.branches,
           commitLogs: cached.commitLogs || get().commitLogs,
           isMerging: cached.isMerging,
@@ -2400,7 +2437,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           isFavorite: savedFavs.includes(b.name) || Boolean(b.isCurrent),
         }));
 
-      const allFiles: GitFileItem[] = Array.isArray(status?.files) ? status.files : [];
+      const allFiles: GitFileItem[] = normalizeSnapshotFiles(Array.isArray(status?.files) ? status.files : []);
       const conflictFiles = allFiles.filter((f) => f.status === 'conflict');
 
       const localDraft = typeof window !== 'undefined' ? localStorage.getItem(`omnigit_commit_draft_${repoPath}`) || '' : '';
@@ -2533,7 +2570,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           isFavorite: savedFavs.includes(b.name) || Boolean(b.isCurrent),
         }));
 
-      const allFiles: GitFileItem[] = Array.isArray(status?.files) ? status.files : [];
+      const allFiles: GitFileItem[] = normalizeSnapshotFiles(Array.isArray(status?.files) ? status.files : []);
       const conflictFiles = allFiles.filter((f) => f.status === 'conflict');
 
       // Update state without resetting user interaction
@@ -2688,7 +2725,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({
         activeProjectId: id,
         isRepoLoading: false,
-        files: Array.isArray(cached.files) ? cached.files : [],
+        files: normalizeSnapshotFiles(Array.isArray(cached.files) ? cached.files : []),
         branches: Array.isArray(cached.branches) ? cached.branches : [],
         selectedFilePath: cached.selectedFilePath,
         selectedFileDiff: { oldContent: '', newContent: '' }, // Loaded on demand below

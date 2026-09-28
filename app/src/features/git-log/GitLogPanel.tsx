@@ -157,9 +157,11 @@ export function GitLogPanel() {
     });
   };
 
-  const renderFileIcon = (fileName: string) => {
-    if (fileName.endsWith('.sql')) return <Database className="w-3.5 h-3.5 text-emerald-400 shrink-0" />;
-    if (fileName.endsWith('.md')) return <FileText className="w-3.5 h-3.5 text-sky-300 shrink-0" />;
+  const renderFileIcon = (fileName?: string) => {
+    if (!fileName || typeof fileName !== 'string') return <FileCode className="w-3.5 h-3.5 text-indigo-300 shrink-0" />;
+    const lower = fileName.toLowerCase();
+    if (lower.endsWith('.sql')) return <Database className="w-3.5 h-3.5 text-emerald-400 shrink-0" />;
+    if (lower.endsWith('.md')) return <FileText className="w-3.5 h-3.5 text-sky-300 shrink-0" />;
     return <FileCode className="w-3.5 h-3.5 text-indigo-300 shrink-0" />;
   };
 

@@ -39,6 +39,10 @@
   - **智能识别外部已消除冲突并自动暂存**：服务端在状态解析（`getRepoStatus`）、三方合并数据提取（`getConflict3Way`）及源码保存（`saveFileContent`）时，自动探测冲突文件磁盘内容。若冲突标记已完全消除，自动执行安全暂存（`git add`）使 Git 索引与已解决的工作副本同步，文件即刻自动移入“工作区改动”，冲突警报自动解除，顶栏秒变“完成合并”。
   - **核心 Git 变更事件放行与多维度实时监听**：放行文件监视器对核心 Git 状态文件（`.git/index`、`.git/HEAD`、`.git/MERGE_HEAD` 等）的监听，并全时注入 `GIT_OPTIONAL_LOCKS: '0'` 防止锁循环；前端增加 `visibilitychange`、窗口焦点联动及冲突状态下 2 秒自适应无感轮询，即使左右分屏在外部编辑器修改，工具端亦能实时无缝自动加载。
   - **差异比对操作栏新增“标记解决”**：在差异面板冲突栏中新增快捷绿色的“标记为已解决”按钮，支持一键手动确认并暂存。
+- **修复本地快照序列化遗漏 `fileName` 导致冲突工程水合加载抛出 `endsWith of undefined` 黑屏的缺陷**：
+  - **根本诱因**：在 `saveLocalSnapshot`（本地视图快照持久化）中，向缓存序列化写入文件元数据时仅挑选了 `{ path, status, staged }`，未持久化 `fileName`、`dirPath` 和 `group` 字段；导致二次打开或切换到冲突仓库时，快照中 `file.fileName` 为 `undefined`，状态面板 `renderFileIcon` 执行 `fileName.endsWith()` 抛出未捕获异常触发全局错误隔离屏；
+  - **全链路快照自愈与结构补全**：新增 `normalizeSnapshotFiles()`，在 L1 内存、L2 本地存储及 L3 磁盘快照的保存与读取各环节，自动根据路径解析补齐 `fileName`、`dirPath`、`group` 字段；
+  - **全量图标渲染空安全防卫**：对 `StatusPanel`、`GitLogPanel`、`PushCommitsModal` 与 `ConflictsDialog` 中的 `renderFileIcon` 及 `getFileBadge` 增加空值拦截与类型防卫，彻底杜绝渲染崩溃。
 
 ### 🚀 体验与性能优化 (Performance & UX)
 
