@@ -77,17 +77,34 @@ export default function App() {
       console.warn('SSE watch error:', e);
     }
 
-    // 2. Window focus sync (instant refresh when user returns from external IDE or file manager)
-    const handleFocus = () => {
+    // 2. Window focus & visibility sync (instant refresh when user returns from external IDE or file manager)
+    const handleSync = () => {
       useAppStore.getState().syncRepoStatusSilently(repoPath);
     };
-    window.addEventListener('focus', handleFocus);
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        handleSync();
+      }
+    };
+    window.addEventListener('focus', handleSync);
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    // 3. Adaptive conflict poll: while repo is in merge or conflict state, auto-sync every 2s so external edits show in real-time
+    const conflictTimer = setInterval(() => {
+      const state = useAppStore.getState();
+      const hasConflicts = state.isMerging || state.files.some((f) => f.status === 'conflict');
+      if (hasConflicts) {
+        state.syncRepoStatusSilently(repoPath);
+      }
+    }, 2000);
 
     return () => {
       if (eventSource) {
         eventSource.close();
       }
-      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('focus', handleSync);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      clearInterval(conflictTimer);
     };
   }, [activeProjectId]);
 

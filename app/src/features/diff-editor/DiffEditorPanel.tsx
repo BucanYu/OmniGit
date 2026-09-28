@@ -113,6 +113,7 @@ export function DiffEditorPanel() {
     closeRightPanel,
     openThreeWayMerge,
     resolveConflictQuick,
+    markConflictResolved,
     openConflictsDialog,
     revealFileInOS,
     isRepoLoading,
@@ -872,6 +873,17 @@ export function DiffEditorPanel() {
             >
               <FileCode className="w-3.5 h-3.5 text-amber-400" />
               <span>{t.diff.conflictList}</span>
+            </button>
+
+            {/* 1.5 Mark as Resolved */}
+            <button
+              type="button"
+              onClick={() => selectedFile && markConflictResolved(selectedFile.path)}
+              className="px-2.5 py-1 rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-[11px] font-semibold transition cursor-pointer flex items-center gap-1"
+              title={t.diff.markResolvedTooltip}
+            >
+              <Check className="w-3.5 h-3.5 text-emerald-400" />
+              <span>{t.diff.markResolved}</span>
             </button>
 
             {/* 2. Accept Yours */}

@@ -464,6 +464,8 @@ export interface LocaleDictionary {
     conflictList: string;
     acceptYours: string;
     acceptTheirs: string;
+    markResolved: string;
+    markResolvedTooltip: string;
     mergeModal: string;
     modeDiff: string;
     modeEditor: string;

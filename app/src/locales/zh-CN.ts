@@ -464,6 +464,8 @@ export const zhCN: LocaleDictionary = {
     conflictList: '冲突文件列表',
     acceptYours: '采纳本地',
     acceptTheirs: '采纳传入',
+    markResolved: '标记为已解决',
+    markResolvedTooltip: '将当前文件标记为已解决并同步到暂存区',
     mergeModal: '三方合并',
     modeDiff: '差异',
     modeEditor: '源码',

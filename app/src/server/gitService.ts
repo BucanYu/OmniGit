@@ -256,6 +256,10 @@ function runGit(
         encoding: 'utf8',
         windowsHide: true,
         timeout,
+        env: {
+          ...process.env,
+          GIT_OPTIONAL_LOCKS: '0',
+        },
       },
       (error, stdout, stderr) => {
         let cleanStdout = stdout ? stdout.replace(/\r?\n$/, '') : '';
@@ -430,6 +434,7 @@ export interface Conflict3WayData {
   result: string;
   cleanResult?: string;
   conflictBlocks: ConflictBlockInfo[];
+  alreadyResolved?: boolean;
 }
 
 export interface GitCommitItem {
@@ -750,14 +755,48 @@ export const gitService = {
           code === 'DU';
 
         if (isConflict) {
-          files.push({
-            path: rawPath,
-            fileName,
-            dirPath: dirPath === '.' ? '' : dirPath,
-            status: 'conflict',
-            group: 'conflict',
-            checked: false,
-          });
+          const fullPath = path.resolve(repoPath, rawPath);
+          let conflictResolvedExternally = false;
+          if (fs.existsSync(fullPath)) {
+            try {
+              const stats = fs.statSync(fullPath);
+              if (stats.size < 5 * 1024 * 1024) {
+                const content = fs.readFileSync(fullPath, 'utf8');
+                const hasConflictMarkers =
+                  content.includes('<<<<<<<') ||
+                  content.includes('=======') ||
+                  content.includes('>>>>>>>');
+                if (!hasConflictMarkers) {
+                  // Conflict markers were resolved externally in another editor/tool!
+                  // Auto-stage with `git add` to synchronize Git index with the resolved working copy.
+                  await runGit(['add', '--', rawPath], repoPath);
+                  conflictResolvedExternally = true;
+                }
+              }
+            } catch {
+              // Binary or unreadable file: keep default conflict behavior
+            }
+          }
+
+          if (conflictResolvedExternally) {
+            files.push({
+              path: rawPath,
+              fileName,
+              dirPath: dirPath === '.' ? '' : dirPath,
+              status: 'modified',
+              group: 'changes',
+              checked: true,
+            });
+          } else {
+            files.push({
+              path: rawPath,
+              fileName,
+              dirPath: dirPath === '.' ? '' : dirPath,
+              status: 'conflict',
+              group: 'conflict',
+              checked: false,
+            });
+          }
         } else if (code === '??') {
           files.push({
             path: rawPath,
@@ -957,6 +996,13 @@ export const gitService = {
     const fullPath = path.join(repoPath, filePath);
     try {
       fs.writeFileSync(fullPath, content, 'utf8');
+      // If the file was in conflict, and now has no conflict markers, auto-mark as resolved via git add!
+      if (!content.includes('<<<<<<<') && !content.includes('=======') && !content.includes('>>>>>>>')) {
+        const statusRes = await runGit(['status', '--porcelain=v1', '--', filePath], repoPath);
+        if (statusRes.stdout && (statusRes.stdout.includes('U') || statusRes.stdout.startsWith('AA'))) {
+          await runGit(['add', '--', filePath], repoPath);
+        }
+      }
       return true;
     } catch {
       return false;
@@ -2362,7 +2408,7 @@ export const gitService = {
     };
   },
 
-  // 31. Get 3-way conflict data (Yours, Result, Theirs, Base)
+    // 31. Get 3-way conflict data (Yours, Result, Theirs, Base)
   async getConflict3Way(repoPath: string, filePath: string): Promise<Conflict3WayData> {
     const fullPath = path.resolve(repoPath, filePath);
     let result = '';
@@ -2371,6 +2417,27 @@ export const gitService = {
         result = fs.readFileSync(fullPath, 'utf8');
       }
     } catch {}
+
+    const hasConflictMarkers =
+      result.includes('<<<<<<<') ||
+      result.includes('=======') ||
+      result.includes('>>>>>>>');
+
+    // If file on disk has no conflict markers, it was resolved outside or manually!
+    if (!hasConflictMarkers && fs.existsSync(fullPath)) {
+      await runGit(['add', '--', filePath], repoPath);
+      return {
+        filePath,
+        repoPath,
+        yours: result,
+        theirs: result,
+        base: result,
+        result,
+        cleanResult: result,
+        conflictBlocks: [],
+        alreadyResolved: true,
+      };
+    }
 
     // Stage 1, 2, 3: Fetch Base, Yours, and Theirs concurrently in parallel for 3x speedup
     const [baseRes, yoursRes, theirsRes] = await Promise.all([
@@ -2413,14 +2480,31 @@ export const gitService = {
     };
   },
 
-  // 32. Resolve conflict for a single file (yours, theirs, or custom merged content)
+  // 32. Resolve conflict for a single file (yours, theirs, custom merged content, or mark-resolved)
   async resolveConflict(
     repoPath: string,
     filePath: string,
-    resolution: 'yours' | 'theirs' | 'content',
+    resolution: 'yours' | 'theirs' | 'content' | 'mark-resolved',
     content?: string
   ): Promise<{ success: boolean; message: string }> {
     const fullPath = path.resolve(repoPath, filePath);
+
+    if (resolution === 'mark-resolved') {
+      let currentFileContent = '';
+      if (fs.existsSync(fullPath)) {
+        try {
+          currentFileContent = fs.readFileSync(fullPath, 'utf8');
+        } catch {}
+      }
+      if (currentFileContent.includes('<<<<<<<') && currentFileContent.includes('=======')) {
+        return {
+          success: false,
+          message: '标记解决失败: 文件中仍包含未解决的代码冲突标记 (<<<<<<< 或 =======)，请先清除冲突标记',
+        };
+      }
+      await runGit(['add', '--', filePath], repoPath);
+      return { success: true, message: `冲突已标记为已解决并已暂存: ${filePath}` };
+    }
 
     if (resolution === 'yours') {
       const res = await runGit(['checkout', '--ours', '--', filePath], repoPath);
@@ -2533,10 +2617,30 @@ export const gitService = {
           if (!filename) return;
           const fn = filename.toString().replace(/\\/g, '/');
 
-          // 严格忽略 .git 目录内所有文件、node_modules、临时文件等噪音，防止与 Git 底层操作形成自激死循环
-          if (
-            fn.startsWith('.git') ||
-            fn.includes('/.git') ||
+          // 针对 .git 目录：只关心能体现外部 Git 变更的核心标记文件，忽略内部自增临时文件与日志
+          if (fn.startsWith('.git') || fn.includes('/.git')) {
+            const isSignificantGitChange =
+              fn === '.git/index' ||
+              fn.endsWith('/.git/index') ||
+              fn === '.git/HEAD' ||
+              fn.endsWith('/.git/HEAD') ||
+              fn === '.git/MERGE_HEAD' ||
+              fn.endsWith('/.git/MERGE_HEAD') ||
+              fn === '.git/MERGE_MSG' ||
+              fn.endsWith('/.git/MERGE_MSG') ||
+              fn === '.git/ORIG_HEAD' ||
+              fn.endsWith('/.git/ORIG_HEAD') ||
+              fn === '.git/REBASE_HEAD' ||
+              fn.endsWith('/.git/REBASE_HEAD') ||
+              fn.startsWith('.git/refs/heads/') ||
+              fn.includes('/.git/refs/heads/') ||
+              fn.startsWith('.git/refs/remotes/') ||
+              fn.includes('/.git/refs/remotes/');
+
+            if (!isSignificantGitChange) {
+              return;
+            }
+          } else if (
             fn.includes('node_modules') ||
             fn.includes('.vscode') ||
             fn.includes('.idea') ||

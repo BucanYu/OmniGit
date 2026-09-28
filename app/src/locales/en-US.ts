@@ -464,6 +464,8 @@ export const enUS: LocaleDictionary = {
     conflictList: 'Conflicts',
     acceptYours: 'Accept Yours',
     acceptTheirs: 'Accept Theirs',
+    markResolved: 'Mark Resolved',
+    markResolvedTooltip: 'Mark this file as resolved and stage changes',
     mergeModal: '3-Way Merge',
     modeDiff: 'Diff',
     modeEditor: 'Source',

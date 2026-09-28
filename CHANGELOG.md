@@ -34,6 +34,11 @@
   - **根本诱因**：在 `registerRecentProject(projectPath)` 辅助函数内部，原先包含了无差别向本地键值 `omnigit_last_active_project_path` 与 `omnigit_last_active_project_path_${wsId}` 写入的副作用。而在工作区初始化（`initApp`）、切换工作区（`openWorkspaceGroup`）和同步工作区（`syncCurrentWorkspaceToSaved`）时，代码均遍历了工作区内的全部仓库并逐一调用 `registerRecentProject`，导致数组最后一项总是覆盖前面的记录，最终每次打开工作区时系统都误以为最后一个项目是“最近激活的项目”；此外 `openWorkspaceGroup` 曾存在硬编码取 `repoPaths[0]` 覆盖状态的问题。
   - **解耦职责与精准持久化**：将 `registerRecentProject` 职责净化为仅维护全局最近项目列表，彻底移除对当前工作区激活指针的隐式副作用；为工作区元数据 `WorkspaceGroupItem` 显式增加 `lastActiveProjectPath` 字段。
   - **双向协同记忆**：在用户切换激活项目（`setActiveProject`）时立即将目标项目路径（结合 `normalizePath`）持久化到工作区存储与当前会话；无论冷启动或从欢迎面板再次点入该工作区，均能 100% 精确恢复用户离开时正在操作的项目。
+- **彻底解决外部解决代码冲突后工具端卡在合并冲突页面的缺陷，实现实时感知与自动同步**：
+  - **根本诱因**：开发者在外部编辑器（如 VS Code、Sublime 等）手动清理冲突标记（`<<<<<<<` / `=======` / `>>>>>>>`）并保存后，由于 Git 底层索引（Index）在执行 `git add` 之前仍保持阶段 1/2/3 的未合并状态（`UU`），工具端仅根据 Git 原始输出标记为 `conflict`，未校验磁盘文件是否已无冲突标记，导致界面一直卡在“代码合并冲突待解决”状态；且原文件监视器完全忽略了 `.git`，外部执行的 `git add` 亦无法触发 SSE 变更通知。
+  - **智能识别外部已消除冲突并自动暂存**：服务端在状态解析（`getRepoStatus`）、三方合并数据提取（`getConflict3Way`）及源码保存（`saveFileContent`）时，自动探测冲突文件磁盘内容。若冲突标记已完全消除，自动执行安全暂存（`git add`）使 Git 索引与已解决的工作副本同步，文件即刻自动移入“工作区改动”，冲突警报自动解除，顶栏秒变“完成合并”。
+  - **核心 Git 变更事件放行与多维度实时监听**：放行文件监视器对核心 Git 状态文件（`.git/index`、`.git/HEAD`、`.git/MERGE_HEAD` 等）的监听，并全时注入 `GIT_OPTIONAL_LOCKS: '0'` 防止锁循环；前端增加 `visibilitychange`、窗口焦点联动及冲突状态下 2 秒自适应无感轮询，即使左右分屏在外部编辑器修改，工具端亦能实时无缝自动加载。
+  - **差异比对操作栏新增“标记解决”**：在差异面板冲突栏中新增快捷绿色的“标记为已解决”按钮，支持一键手动确认并暂存。
 
 ### 🚀 体验与性能优化 (Performance & UX)
 

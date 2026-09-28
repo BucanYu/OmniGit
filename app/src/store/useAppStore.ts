@@ -67,6 +67,7 @@ export interface Conflict3WayData {
   result: string;
   cleanResult?: string;
   conflictBlocks: ConflictBlockInfo[];
+  alreadyResolved?: boolean;
 }
 
 export interface BranchItem {
@@ -316,6 +317,7 @@ interface AppState {
   closeThreeWayMerge: () => void;
   setThreeWayMergeMinimized: (minimized: boolean) => void;
   resolveConflictQuick: (filePath: string, resolution: 'yours' | 'theirs') => Promise<void>;
+  markConflictResolved: (filePath: string) => Promise<void>;
   resolveAllConflictsQuick: (resolution: 'yours' | 'theirs') => Promise<void>;
   applyThreeWayMergeResult: (filePath: string, finalContent: string) => Promise<boolean>;
   abortCurrentMerge: () => Promise<void>;
@@ -2437,6 +2439,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
 
       const shouldOpenConflicts = conflictFiles.length > 0 && !get().conflictsDialogOpen && !get().conflictsDialogMinimized;
+      const isThreeWayFileResolved = Boolean(
+        get().threeWayMergeOpen &&
+        get().threeWayData?.filePath &&
+        !conflictFiles.some((f) => f.path === get().threeWayData!.filePath)
+      );
 
       set((state) => ({
         files: allFiles,
@@ -2445,7 +2452,10 @@ export const useAppStore = create<AppState>((set, get) => ({
         mergeMessage: status.mergeMessage || '',
         mergeSourceBranch: status.mergeSourceBranch,
         conflictedCount: status.conflictedCount || conflictFiles.length,
-        conflictsDialogOpen: shouldOpenConflicts ? true : state.conflictsDialogOpen,
+        conflictsDialogOpen: shouldOpenConflicts ? true : (conflictFiles.length === 0 ? false : state.conflictsDialogOpen),
+        threeWayMergeOpen: isThreeWayFileResolved ? false : state.threeWayMergeOpen,
+        threeWayData: isThreeWayFileResolved ? null : state.threeWayData,
+        threeWayLoading: isThreeWayFileResolved ? false : state.threeWayLoading,
         projects: state.projects.map((p) =>
           normalizePath(p.path) === normPath
             ? {
@@ -2550,6 +2560,12 @@ export const useAppStore = create<AppState>((set, get) => ({
                 : p
             );
 
+        const isThreeWayFileResolved = Boolean(
+          state.threeWayMergeOpen &&
+          state.threeWayData?.filePath &&
+          !conflictFiles.some((f) => f.path === state.threeWayData!.filePath)
+        );
+
         return {
           files: allFiles,
           branches: enrichedBranches,
@@ -2557,6 +2573,10 @@ export const useAppStore = create<AppState>((set, get) => ({
           mergeMessage: status.mergeMessage || state.mergeMessage,
           mergeSourceBranch: status.mergeSourceBranch,
           conflictedCount: status.conflictedCount || conflictFiles.length,
+          conflictsDialogOpen: conflictFiles.length === 0 ? false : state.conflictsDialogOpen,
+          threeWayMergeOpen: isThreeWayFileResolved ? false : state.threeWayMergeOpen,
+          threeWayData: isThreeWayFileResolved ? null : state.threeWayData,
+          threeWayLoading: isThreeWayFileResolved ? false : state.threeWayLoading,
           projects: updatedProjects,
         };
       });
@@ -4974,6 +4994,18 @@ export const useAppStore = create<AppState>((set, get) => ({
         body: JSON.stringify({ path: currentProject.path, file: filePath }),
       });
       const data: Conflict3WayData = await res.json();
+      if (data.alreadyResolved) {
+        set({ threeWayMergeOpen: false, threeWayLoading: false });
+        const isZh = get().language === 'zh-CN';
+        get().setNotification({
+          id: Date.now(),
+          title: isZh ? '该文件冲突已在外部解决' : 'Conflict already resolved externally',
+          detail: filePath,
+          type: 'success',
+        });
+        await get().loadRepoData(currentProject.path, true);
+        return;
+      }
       set({
         threeWayData: data,
         threeWayLoading: false,
@@ -5011,8 +5043,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         get().setNotification({
           id: Date.now(),
           title: resolution === 'yours'
-            ? (isZh ? '已接受本地版本 (Accept Yours)' : 'Accepted Local Version (Yours)')
-            : (isZh ? '已接受传入版本 (Accept Theirs)' : 'Accepted Incoming Version (Theirs)'),
+            ? (isZh ? '已接受本地版本' : 'Accepted Local Version (Yours)')
+            : (isZh ? '已接受传入版本' : 'Accepted Incoming Version (Theirs)'),
           detail: filePath,
           type: 'success',
         });
@@ -5022,7 +5054,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         // Check if any conflicts remain
         const remainingConflicts = get().files.filter((f) => f.status === 'conflict');
         if (remainingConflicts.length === 0) {
-          set({ conflictsDialogOpen: false });
+          set({ conflictsDialogOpen: false, threeWayMergeOpen: false });
         }
       } else {
         const isZh = get().language === 'zh-CN';
@@ -5035,6 +5067,51 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
     } catch (e: any) {
       console.error('Failed to resolve conflict:', e);
+    }
+  },
+
+  markConflictResolved: async (filePath: string) => {
+    const currentProject = get().projects.find((p) => p.id === get().activeProjectId);
+    if (!currentProject || !filePath) return;
+
+    try {
+      const res = await fetch('/api/git/resolve-conflict', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          path: currentProject.path,
+          file: filePath,
+          resolution: 'mark-resolved',
+        }),
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        const isZh = get().language === 'zh-CN';
+        get().setNotification({
+          id: Date.now(),
+          title: isZh ? '已标记为解决并暂存' : 'Marked as Resolved & Staged',
+          detail: filePath,
+          type: 'success',
+        });
+        await get().loadRepoData(currentProject.path, true);
+        get().pollWorkspaceSyncStatus();
+
+        const remainingConflicts = get().files.filter((f) => f.status === 'conflict');
+        if (remainingConflicts.length === 0) {
+          set({ conflictsDialogOpen: false, threeWayMergeOpen: false });
+        }
+      } else {
+        const isZh = get().language === 'zh-CN';
+        get().setNotification({
+          id: Date.now(),
+          title: isZh ? '标记解决失败' : 'Failed to Mark Resolved',
+          detail: data.message,
+          type: 'warning',
+        });
+      }
+    } catch (e: any) {
+      console.error('Failed to mark conflict resolved:', e);
     }
   },
 
