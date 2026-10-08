@@ -3650,7 +3650,14 @@ export const useAppStore = create<AppState>((set, get) => ({
         });
       }
     } catch (e: any) {
-      alert(`Pull error: ${e.message}`);
+      set({
+        notification: {
+          id: Date.now(),
+          title: isZh ? '拉取更新失败' : 'Pull Failed',
+          detail: e.message,
+          type: 'warning',
+        },
+      });
     } finally {
       set({ branchOperationLoading: null });
     }

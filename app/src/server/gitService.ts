@@ -2030,36 +2030,85 @@ export const gitService = {
       allFiles = parsed.allFiles;
     }
 
-    // Precise patch-id cross verification:
+    // Precise multi-dimensional cross verification:
     // If remote tracking branch exists, check whether any of the candidate commits' patches
     // already exist on the target branch (e.g. cherry-picked or already merged)
     if (checkRemote.code === 0 && commits.length > 0) {
       try {
-        const [targetPatchMap, outgoingPatchMap] = await Promise.all([
+        const [targetPatchMap, outgoingPatchMap, remoteLogRes] = await Promise.all([
           getPatchIdsForRange(['-n', '80', `${remote}/${targetBranch}`], repoPath),
           getPatchIdsForRange(['-n', String(commits.length + 10), `${remote}/${targetBranch}..${sourceBranch}`], repoPath),
+          runGit([
+            'log',
+            `${remote}/${targetBranch}`,
+            '-n', '100',
+            '--pretty=format:%x1e%H%x00%s%x00%b%x00%ae%x00%an%x1f',
+          ], repoPath),
         ]);
 
         const targetPatchIds = new Set(targetPatchMap.values());
-        if (targetPatchIds.size > 0 && outgoingPatchMap.size > 0) {
-          const filteredCommits = commits.filter((c) => {
-            const pId = outgoingPatchMap.get(c.hash);
-            if (pId && targetPatchIds.has(pId)) {
-              return false; // Patch already exists in target remote branch!
-            }
-            return true;
-          });
 
-          if (filteredCommits.length !== commits.length) {
-            commits = filteredCommits;
-            const fileMap = new Map<string, OutgoingCommitFile>();
-            commits.forEach((c) => {
-              (c.files || []).forEach((f) => {
-                if (!fileMap.has(f.path)) fileMap.set(f.path, f);
-              });
-            });
-            allFiles = Array.from(fileMap.values());
+        // Parse remote log to extract cherry-pick references and subject+author signatures
+        const remoteCherryPickedSources = new Set<string>();
+        const remoteSubjectAuthors = new Set<string>();
+
+        if (remoteLogRes.code === 0 && remoteLogRes.stdout) {
+          const records = remoteLogRes.stdout.split('\x1f').filter(Boolean);
+          for (const rec of records) {
+            const cleanRec = rec.replace(/^\x1e/, '');
+            const parts = cleanRec.split('\x00');
+            if (parts.length >= 2) {
+              const rSub = (parts[1] || '').trim();
+              const rBody = parts[2] || '';
+              const rEmail = (parts[3] || '').trim();
+              const rName = (parts[4] || '').trim();
+
+              if (rSub) {
+                if (rEmail) remoteSubjectAuthors.add(`${rSub}:::${rEmail}`);
+                if (rName) remoteSubjectAuthors.add(`${rSub}:::${rName}`);
+              }
+
+              // Extract "(cherry picked from commit <hash>)"
+              const cpMatches = rBody.match(/cherry picked from commit ([a-f0-9]+)/gi);
+              if (cpMatches) {
+                for (const m of cpMatches) {
+                  const h = m.replace(/cherry picked from commit /i, '').trim();
+                  if (h) remoteCherryPickedSources.add(h);
+                }
+              }
+            }
           }
+        }
+
+        const filteredCommits = commits.filter((c) => {
+          const pId = outgoingPatchMap.get(c.hash);
+          if (pId && targetPatchIds.has(pId)) {
+            return false; // Patch already exists in target remote branch!
+          }
+          if (
+            remoteCherryPickedSources.has(c.hash) ||
+            remoteCherryPickedSources.has(c.shortHash)
+          ) {
+            return false; // Explicit cherry-pick source match!
+          }
+          if (
+            (c.authorEmail && remoteSubjectAuthors.has(`${c.subject}:::${c.authorEmail}`)) ||
+            (c.authorName && remoteSubjectAuthors.has(`${c.subject}:::${c.authorName}`))
+          ) {
+            return false; // Subject and author match!
+          }
+          return true;
+        });
+
+        if (filteredCommits.length !== commits.length) {
+          commits = filteredCommits;
+          const fileMap = new Map<string, OutgoingCommitFile>();
+          commits.forEach((c) => {
+            (c.files || []).forEach((f) => {
+              if (!fileMap.has(f.path)) fileMap.set(f.path, f);
+            });
+          });
+          allFiles = Array.from(fileMap.values());
         }
       } catch {}
     }
@@ -2121,7 +2170,8 @@ export const gitService = {
       let alreadyAppliedCount = 0;
 
       for (const hash of sortedHashes) {
-        const cpRes = await runGit(['cherry-pick', hash], tempDir);
+        // Step 1: Standard cherry-pick with -x (records source hash in commit message)
+        let cpRes = await runGit(['cherry-pick', '-x', hash], tempDir);
         if (cpRes.code !== 0) {
           const out = (cpRes.stdout + '\n' + cpRes.stderr).toLowerCase();
           if (
@@ -2135,6 +2185,42 @@ export const gitService = {
             continue;
           }
 
+          // Step 2: Fallback to ORT merge strategy favoring incoming commit hunks (-X theirs)
+          await runGit(['cherry-pick', '--abort'], tempDir);
+          const retryRes = await runGit(['cherry-pick', '-x', '--strategy=ort', '-X', 'theirs', hash], tempDir);
+          if (retryRes.code === 0) {
+            newlyPickedCount++;
+            continue;
+          }
+
+          // Step 3: Check if retry became empty
+          const retryOut = (retryRes.stdout + '\n' + retryRes.stderr).toLowerCase();
+          if (
+            retryOut.includes('previous cherry-pick is now empty') ||
+            retryOut.includes('nothing to commit') ||
+            retryOut.includes('is now empty')
+          ) {
+            await runGit(['cherry-pick', '--skip'], tempDir);
+            alreadyAppliedCount++;
+            continue;
+          }
+
+          // Step 4: Check if remaining conflict is modify/delete (where a file introduced in predecessor commits was kept in tree)
+          const statusRes = await runGit(['status', '--porcelain'], tempDir);
+          const statusLines = (statusRes.stdout || '').split(/\r?\n/).filter(Boolean);
+          const hasUnresolvedConflict = statusLines.some((l) => l.startsWith('UU') || l.startsWith('AA') || l.startsWith('DD'));
+          const hasModifyDelete = statusLines.some((l) => l.startsWith('UD') || l.startsWith('DU') || l.startsWith('MD'));
+
+          if (!hasUnresolvedConflict && hasModifyDelete) {
+            await runGit(['add', '-A'], tempDir);
+            const contRes = await runGit(['-c', 'core.editor=true', 'cherry-pick', '--continue'], tempDir);
+            if (contRes.code === 0) {
+              newlyPickedCount++;
+              continue;
+            }
+          }
+
+          // Step 5: True unresolvable conflict
           await runGit(['cherry-pick', '--abort'], tempDir);
           return {
             success: false,
@@ -2179,7 +2265,14 @@ export const gitService = {
 
       // Immediately fetch into local workspace so origin/${finalTargetBranch} is updated locally!
       try {
-        await runGit(['fetch', remote, finalTargetBranch], repoPath);
+        await runGit(['fetch', remote, `${finalTargetBranch}:refs/remotes/${remote}/${finalTargetBranch}`], repoPath);
+      } catch {
+        try {
+          await runGit(['fetch', remote, finalTargetBranch], repoPath);
+        } catch {}
+      }
+      try {
+        await runGit(['fetch', remote], repoPath);
       } catch {}
 
       // If created a new branch, update local branch reference to point to the new pushed commit
@@ -2256,7 +2349,8 @@ export const gitService = {
       let alreadyAppliedCount = 0;
 
       for (const hash of sortedHashes) {
-        const cpRes = await runGit(['cherry-pick', hash], tempDir);
+        // Step 1: Standard cherry-pick with -x (records source hash in commit message)
+        let cpRes = await runGit(['cherry-pick', '-x', hash], tempDir);
         if (cpRes.code !== 0) {
           const out = (cpRes.stdout + '\n' + cpRes.stderr).toLowerCase();
           if (
@@ -2269,6 +2363,42 @@ export const gitService = {
             continue;
           }
 
+          // Step 2: Fallback to ORT merge strategy favoring incoming commit hunks (-X theirs)
+          await runGit(['cherry-pick', '--abort'], tempDir);
+          const retryRes = await runGit(['cherry-pick', '-x', '--strategy=ort', '-X', 'theirs', hash], tempDir);
+          if (retryRes.code === 0) {
+            newlyPickedCount++;
+            continue;
+          }
+
+          // Step 3: Check if retry became empty
+          const retryOut = (retryRes.stdout + '\n' + retryRes.stderr).toLowerCase();
+          if (
+            retryOut.includes('previous cherry-pick is now empty') ||
+            retryOut.includes('nothing to commit') ||
+            retryOut.includes('is now empty')
+          ) {
+            await runGit(['cherry-pick', '--skip'], tempDir);
+            alreadyAppliedCount++;
+            continue;
+          }
+
+          // Step 4: Check if remaining conflict is modify/delete (where a file introduced in predecessor commits was kept in tree)
+          const statusRes = await runGit(['status', '--porcelain'], tempDir);
+          const statusLines = (statusRes.stdout || '').split(/\r?\n/).filter(Boolean);
+          const hasUnresolvedConflict = statusLines.some((l) => l.startsWith('UU') || l.startsWith('AA') || l.startsWith('DD'));
+          const hasModifyDelete = statusLines.some((l) => l.startsWith('UD') || l.startsWith('DU') || l.startsWith('MD'));
+
+          if (!hasUnresolvedConflict && hasModifyDelete) {
+            await runGit(['add', '-A'], tempDir);
+            const contRes = await runGit(['-c', 'core.editor=true', 'cherry-pick', '--continue'], tempDir);
+            if (contRes.code === 0) {
+              newlyPickedCount++;
+              continue;
+            }
+          }
+
+          // Step 5: True unresolvable conflict
           await runGit(['cherry-pick', '--abort'], tempDir);
           return {
             success: false,
