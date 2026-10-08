@@ -473,10 +473,13 @@ export const PushCommitsModal: React.FC = () => {
   };
 
   const handlePush = async () => {
-    await executePush({
+    const res = await executePush({
       force: forcePushMode,
       tags: pushTags,
     });
+    if (res && res.success) {
+      closePushModal();
+    }
   };
 
   return (
@@ -1273,8 +1276,9 @@ export const PushCommitsModal: React.FC = () => {
                     createNewBranch: selectiveModal.mode === 'patch',
                     newBranchName: selectiveModal.patchBranchName.trim(),
                   });
-                  if (res.success) {
+                  if (res && res.success) {
                     setSelectiveModal(null);
+                    closePushModal();
                   }
                 }}
                 className="px-4 py-1.5 rounded bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs shadow-xs transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
@@ -1336,10 +1340,13 @@ export const PushCommitsModal: React.FC = () => {
             onClick={async () => {
               const hash = commitContextMenu.commit.hash;
               setCommitContextMenu(null);
-              await executePush({
+              const res = await executePush({
                 targetCommit: hash,
                 targetBranch,
               });
+              if (res && res.success) {
+                closePushModal();
+              }
             }}
             className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-theme-main hover:bg-theme-card hover:text-sky-400 transition cursor-pointer"
           >

@@ -648,7 +648,7 @@ export const gitService = {
       let incoming = 0;
       let outgoing = 0;
       if (upstream) {
-        const countsRes = await runGit(['rev-list', '--left-right', '--count', `HEAD...${upstream}`], repoPath);
+        const countsRes = await runGit(['rev-list', '--left-right', '--count', '--cherry-pick', `HEAD...${upstream}`], repoPath);
         if (countsRes.code === 0 && countsRes.stdout) {
           const parts = countsRes.stdout.trim().split(/\s+/);
           outgoing = parseInt(parts[0], 10) || 0;
@@ -736,7 +736,7 @@ export const gitService = {
     let incoming = 0;
     let outgoing = 0;
     if (upstream) {
-      const countsRes = await runGit(['rev-list', '--left-right', '--count', `HEAD...${upstream}`], repoPath);
+      const countsRes = await runGit(['rev-list', '--left-right', '--count', '--cherry-pick', `HEAD...${upstream}`], repoPath);
       if (countsRes.code === 0 && countsRes.stdout) {
         const parts = countsRes.stdout.split(/\s+/);
         outgoing = parseInt(parts[0], 10) || 0;
@@ -1928,36 +1928,36 @@ export const gitService = {
       }
     }
 
-    // 3. Query outgoing commits (upstream..HEAD)
-    const range = `${remote}/${targetBranch}..${sourceBranch}`;
-    let logRes = await runGit([
-      'log',
-      range,
-      '--pretty=format:%x1e%H%x00%h%x00%an%x00%ae%x00%ad%x00%s%x00%b%x1f',
-      '--name-status',
-      '-n', '300',
-    ], repoPath);
+    // 3. Query outgoing commits
+    // Check if remote tracking branch exists
+    const checkRemote = await runGit(['rev-parse', '--verify', '--quiet', `${remote}/${targetBranch}`], repoPath);
+    let rawLog = '';
 
-    // If range produced nothing (e.g. already pushed or new branch without remote),
-    // fallback to querying commits on this branch
-    let rawLog = logRes.stdout.trim();
-    if (!rawLog) {
-      // Check if remote branch exists at all
-      const checkRemote = await runGit(['rev-parse', '--verify', '--quiet', `${remote}/${targetBranch}`], repoPath);
-      if (checkRemote.code !== 0) {
-        // Remote branch doesn't exist yet, so all commits on sourceBranch are outgoing
-        const fullLog = await runGit([
-          'log',
-          sourceBranch,
-          '-n', '100',
-          '--pretty=format:%x1e%H%x00%h%x00%an%x00%ae%x00%ad%x00%s%x00%b%x1f',
-          '--name-status',
-        ], repoPath);
-        rawLog = fullLog.stdout.trim();
-      } else {
-        // Remote branch exists and range produced nothing: EVERYTHING IS UP TO DATE!
-        rawLog = '';
-      }
+    if (checkRemote.code === 0) {
+      // Remote tracking ref exists!
+      // Use --cherry-pick --right-only remote...local to automatically exclude commits whose patches
+      // have already been selectively pushed / cherry-picked into the remote branch
+      const range = `${remote}/${targetBranch}...${sourceBranch}`;
+      const logRes = await runGit([
+        'log',
+        '--cherry-pick',
+        '--right-only',
+        range,
+        '--pretty=format:%x1e%H%x00%h%x00%an%x00%ae%x00%ad%x00%s%x00%b%x1f',
+        '--name-status',
+        '-n', '300',
+      ], repoPath);
+      rawLog = (logRes.stdout || '').trim();
+    } else {
+      // Remote branch doesn't exist yet: all commits on sourceBranch are outgoing
+      const fullLog = await runGit([
+        'log',
+        sourceBranch,
+        '-n', '100',
+        '--pretty=format:%x1e%H%x00%h%x00%an%x00%ae%x00%ad%x00%s%x00%b%x1f',
+        '--name-status',
+      ], repoPath);
+      rawLog = (fullLog.stdout || '').trim();
     }
 
     let commits: OutgoingCommitItem[] = [];
@@ -2053,9 +2053,18 @@ export const gitService = {
         };
       }
 
-      // If created a new branch, also update local branch reference so it shows in local branches
+      // Get the pushed commit hash from tempDir
+      const headRes = await runGit(['rev-parse', 'HEAD'], tempDir);
+      const pushedCommit = headRes.code === 0 && headRes.stdout.trim() ? headRes.stdout.trim() : 'HEAD';
+
+      // Immediately fetch into local workspace so origin/${finalTargetBranch} is updated locally!
+      try {
+        await runGit(['fetch', remote, finalTargetBranch], repoPath);
+      } catch {}
+
+      // If created a new branch, update local branch reference to point to the new pushed commit
       if (newBranch) {
-        await runGit(['branch', '-f', newBranch, 'HEAD'], repoPath);
+        await runGit(['branch', '-f', newBranch, pushedCommit], repoPath);
       }
 
       return {
@@ -2156,6 +2165,9 @@ export const gitService = {
             message: `提交已同步到本地 '${targetBranch}'，但推送到远端 ${remote}/${targetBranch} 失败: ${pushRes.stderr || pushRes.stdout}`,
           };
         }
+        try {
+          await runGit(['fetch', remote, targetBranch], repoPath);
+        } catch {}
         pushMsg = ' 并已成功推送到远端';
       }
 

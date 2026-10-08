@@ -39,8 +39,8 @@ export function NotificationToast() {
   };
 
   return (
-    <div className="fixed bottom-4 left-5 z-[999] animate-in fade-in slide-in-from-bottom-3 duration-200">
-      <div className="bg-[#2b2d30] text-gray-200 border border-[#3e434a] rounded-lg shadow-2xl p-3 max-w-md min-w-[260px] flex items-start gap-2.5 text-xs select-none">
+    <div className="fixed bottom-5 right-5 z-[99999] animate-in fade-in slide-in-from-bottom-3 duration-200 pointer-events-auto">
+      <div className="bg-[#2b2d30] text-gray-200 border border-[#3e434a] rounded-lg shadow-2xl p-3 max-w-md min-w-[280px] flex items-start gap-2.5 text-xs select-none">
         {renderIcon()}
         <div className="flex-1 pr-1 min-w-0">
           <div className="font-semibold text-gray-100 text-xs flex items-center justify-between">

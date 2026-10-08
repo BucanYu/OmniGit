@@ -2450,6 +2450,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         .map((b) => ({
           ...b,
           isFavorite: savedFavs.includes(b.name) || Boolean(b.isCurrent),
+          outgoing: b.isCurrent && status.outgoing !== undefined ? status.outgoing : b.outgoing,
+          incoming: b.isCurrent && status.incoming !== undefined ? status.incoming : b.incoming,
         }));
 
       const allFiles: GitFileItem[] = normalizeSnapshotFiles(Array.isArray(status?.files) ? status.files : []);
