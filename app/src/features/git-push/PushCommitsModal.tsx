@@ -134,6 +134,9 @@ export const PushCommitsModal: React.FC = () => {
     patchBranchName: string;
   } | null>(null);
 
+  // Pulling loading state for inline banner
+  const [isPulling, setIsPulling] = useState(false);
+
   // Commit context menu state
   const [commitContextMenu, setCommitContextMenu] = useState<{
     x: number;
@@ -472,6 +475,11 @@ export const PushCommitsModal: React.FC = () => {
     );
   };
 
+  const isAllChecked = commits.length > 0 && checkedCommitHashes.size === commits.length;
+  const isNoneChecked = checkedCommitHashes.size === 0;
+  const isSubsetChecked = checkedCommitHashes.size > 0 && checkedCommitHashes.size < commits.length;
+  const isPushDisabled = pushingLoading || (isNoneChecked && !pushTags);
+
   const handlePush = async () => {
     const res = await executePush({
       force: forcePushMode,
@@ -482,12 +490,30 @@ export const PushCommitsModal: React.FC = () => {
     }
   };
 
+  const handlePrimaryPush = async () => {
+    if (isPushDisabled) return;
+
+    if (isSubsetChecked) {
+      // User only checked a subset of commits: open selective push confirmation for ONLY the checked commits!
+      setSelectiveModal({
+        isOpen: true,
+        hashes: Array.from(checkedCommitHashes),
+        mode: 'target',
+        targetBranch,
+        patchBranchName: `patch/selected-${checkedCommitHashes.size}-commits`,
+      });
+      return;
+    }
+
+    await handlePush();
+  };
+
   return (
     <div
       className="fixed inset-0 z-[999] bg-black/60 backdrop-blur-xs flex items-center justify-center select-none"
       onKeyDown={(e) => {
         if (e.key === 'Escape') closePushModal();
-        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') handlePush();
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') handlePrimaryPush();
       }}
     >
       <div className="bg-theme-card border border-theme-border-card rounded-lg shadow-2xl w-[860px] max-w-[95vw] h-[580px] max-h-[92vh] flex flex-col font-sans text-xs text-theme-main overflow-hidden">
@@ -972,17 +998,23 @@ export const PushCommitsModal: React.FC = () => {
             <div className="flex items-center gap-2 shrink-0">
               <button
                 type="button"
+                disabled={isPulling}
                 onClick={async () => {
-                  await updateProject();
-                  if (outgoingCommitsData) {
-                    useAppStore.getState().openPushModal(sourceBranch);
+                  setIsPulling(true);
+                  try {
+                    await updateProject();
+                    if (outgoingCommitsData) {
+                      await useAppStore.getState().openPushModal(sourceBranch);
+                    }
+                  } finally {
+                    setIsPulling(false);
                   }
                 }}
-                className="px-3 py-1.5 rounded bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white font-semibold text-xs shadow-xs transition cursor-pointer flex items-center gap-1.5"
+                className="px-3 py-1.5 rounded bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white font-semibold text-xs shadow-xs transition cursor-pointer flex items-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed"
                 title={t.modals.push.pullMergeTooltip}
               >
-                <RefreshCw className="w-3.5 h-3.5" />
-                <span>{t.modals.push.updateProjectPull}</span>
+                <RefreshCw className={`w-3.5 h-3.5 ${isPulling ? 'animate-spin' : ''}`} />
+                <span>{isPulling ? '正在拉取远端更新...' : t.modals.push.updateProjectPull}</span>
               </button>
 
               <button
@@ -1037,37 +1069,24 @@ export const PushCommitsModal: React.FC = () => {
 
           {/* Right: Push & Cancel Buttons */}
           <div className="flex items-center gap-2">
-            {/* If subset of commits is checked: Show "单独推送所选 (N)" button */}
-            {checkedCommitHashes.size > 0 && checkedCommitHashes.size < commits.length && (
-              <button
-                type="button"
-                disabled={pushingLoading}
-                onClick={() => {
-                  setSelectiveModal({
-                    isOpen: true,
-                    hashes: Array.from(checkedCommitHashes),
-                    mode: 'target',
-                    targetBranch,
-                    patchBranchName: `patch/selected-${checkedCommitHashes.size}-commits`,
-                  });
-                }}
-                className="px-4 py-1.5 rounded text-xs font-semibold flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs transition cursor-pointer"
-                title="仅将当前勾选的提交推送到远端分支"
-              >
-                <Rocket className="w-3.5 h-3.5" />
-                <span>单独推送所选 ({checkedCommitHashes.size})</span>
-              </button>
-            )}
-
             <button
               type="button"
-              disabled={pushingLoading || (commits.length === 0 && !pushTags)}
-              onClick={handlePush}
+              disabled={isPushDisabled}
+              onClick={handlePrimaryPush}
               className={`px-5 py-1.5 rounded text-xs font-semibold flex items-center gap-1.5 shadow-sm transition cursor-pointer ${
                 forcePushMode
                   ? 'bg-rose-600 hover:bg-rose-500 text-white font-bold'
+                  : isSubsetChecked
+                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white font-bold shadow-xs'
                   : 'bg-sky-600 hover:bg-sky-500 text-white'
-              } disabled:opacity-50 disabled:cursor-not-allowed`}
+              } disabled:opacity-40 disabled:cursor-not-allowed`}
+              title={
+                isNoneChecked
+                  ? '请勾选至少一个待推送提交'
+                  : isSubsetChecked
+                  ? `仅推送当前勾选的 ${checkedCommitHashes.size} 个提交到远端`
+                  : '推送当前分支的所有待推送提交'
+              }
             >
               {pushingLoading ? (
                 <>
@@ -1075,13 +1094,20 @@ export const PushCommitsModal: React.FC = () => {
                   <span>{t.modals.push.pushing}</span>
                 </>
               ) : (
-                <span>
-                  {forcePushMode
-                    ? t.modals.push.forcePush
-                    : checkedCommitHashes.size > 0 && checkedCommitHashes.size < commits.length
-                    ? `全量推送分支 (${commits.length})`
-                    : t.modals.push.pushButton}
-                </span>
+                <>
+                  {isSubsetChecked && <Rocket className="w-3.5 h-3.5" />}
+                  <span>
+                    {forcePushMode
+                      ? t.modals.push.forcePush
+                      : isNoneChecked
+                      ? (pushTags ? '仅推送标签' : '请勾选要推送的提交 (0)')
+                      : isSubsetChecked
+                      ? `推送所选提交 (${checkedCommitHashes.size})`
+                      : commits.length > 0
+                      ? `推送分支 (${commits.length})`
+                      : t.modals.push.pushButton}
+                  </span>
+                </>
               )}
             </button>
 

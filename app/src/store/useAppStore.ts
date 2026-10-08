@@ -3587,8 +3587,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       },
       notification: {
         id: Date.now(),
-        title: 'Updating Project...',
-        detail: 'Running git pull from remote...',
+        title: isZh ? '正在拉取远端更新...' : 'Updating Project...',
+        detail: isZh ? '正在执行 git pull 获取远程最新代码...' : 'Running git pull from remote...',
         type: 'info',
       },
     });
@@ -3615,9 +3615,11 @@ export const useAppStore = create<AppState>((set, get) => ({
           ),
           notification: {
             id: Date.now(),
-            title: 'Project Updated',
-            detail: result.message || 'Already up to date.',
-            linkText: 'View Commits',
+            title: isZh ? '项目拉取完成' : 'Project Updated',
+            detail: result.message?.includes('Already up to date')
+              ? (isZh ? '本地分支已经是最新状态，无需合并。' : 'Already up to date.')
+              : (result.message || (isZh ? '已成功拉取最新提交。' : 'Project updated.')),
+            linkText: isZh ? '查看提交' : 'View Commits',
             type: 'success',
           },
         }));
@@ -3641,8 +3643,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         set({
           notification: {
             id: Date.now(),
-            title: 'Update Notice',
-            detail: result.message || 'Pull encountered an issue.',
+            title: isZh ? '拉取更新提醒' : 'Update Notice',
+            detail: result.message || (isZh ? '拉取过程遇到问题，请检查网络或冲突。' : 'Pull encountered an issue.'),
             type: 'warning',
           },
         });

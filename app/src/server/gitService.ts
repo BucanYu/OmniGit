@@ -286,6 +286,67 @@ function runGit(
   });
 }
 
+function getPatchIdsForRange(
+  revArgs: string[],
+  repoPath: string,
+  timeout = 10000
+): Promise<Map<string, string>> {
+  return new Promise((resolve) => {
+    try {
+      const gitLog = spawn('git', ['log', '-p', ...revArgs], {
+        cwd: repoPath,
+        windowsHide: true,
+      });
+      const gitPatchId = spawn('git', ['patch-id', '--stable'], {
+        cwd: repoPath,
+        windowsHide: true,
+      });
+
+      gitLog.stdout.pipe(gitPatchId.stdin);
+      let output = '';
+      gitPatchId.stdout.on('data', (data) => {
+        output += data.toString();
+      });
+
+      const timer = setTimeout(() => {
+        try {
+          gitLog.kill();
+          gitPatchId.kill();
+        } catch {}
+        resolve(new Map());
+      }, timeout);
+
+      gitPatchId.on('close', () => {
+        clearTimeout(timer);
+        const map = new Map<string, string>(); // commitHash -> patchId
+        for (const line of output.split(/\r?\n/)) {
+          const trimmed = line.trim();
+          if (trimmed) {
+            const parts = trimmed.split(/\s+/);
+            if (parts.length >= 2) {
+              const patchId = parts[0];
+              const commitHash = parts[1];
+              map.set(commitHash, patchId);
+            }
+          }
+        }
+        resolve(map);
+      });
+
+      gitLog.on('error', () => {
+        clearTimeout(timer);
+        resolve(new Map());
+      });
+      gitPatchId.on('error', () => {
+        clearTimeout(timer);
+        resolve(new Map());
+      });
+    } catch {
+      resolve(new Map());
+    }
+  });
+}
+
 function getSystemGitCredentials(): Promise<Array<{ target: string; host: string; username: string }>> {
   return new Promise((resolve) => {
     const credentials: Array<{ target: string; host: string; username: string }> = [];
@@ -1969,6 +2030,40 @@ export const gitService = {
       allFiles = parsed.allFiles;
     }
 
+    // Precise patch-id cross verification:
+    // If remote tracking branch exists, check whether any of the candidate commits' patches
+    // already exist on the target branch (e.g. cherry-picked or already merged)
+    if (checkRemote.code === 0 && commits.length > 0) {
+      try {
+        const [targetPatchMap, outgoingPatchMap] = await Promise.all([
+          getPatchIdsForRange(['-n', '80', `${remote}/${targetBranch}`], repoPath),
+          getPatchIdsForRange(['-n', String(commits.length + 10), `${remote}/${targetBranch}..${sourceBranch}`], repoPath),
+        ]);
+
+        const targetPatchIds = new Set(targetPatchMap.values());
+        if (targetPatchIds.size > 0 && outgoingPatchMap.size > 0) {
+          const filteredCommits = commits.filter((c) => {
+            const pId = outgoingPatchMap.get(c.hash);
+            if (pId && targetPatchIds.has(pId)) {
+              return false; // Patch already exists in target remote branch!
+            }
+            return true;
+          });
+
+          if (filteredCommits.length !== commits.length) {
+            commits = filteredCommits;
+            const fileMap = new Map<string, OutgoingCommitFile>();
+            commits.forEach((c) => {
+              (c.files || []).forEach((f) => {
+                if (!fileMap.has(f.path)) fileMap.set(f.path, f);
+              });
+            });
+            allFiles = Array.from(fileMap.values());
+          }
+        }
+      } catch {}
+    }
+
     return {
       sourceBranch,
       targetBranch,
@@ -2022,16 +2117,41 @@ export const gitService = {
 
     try {
       // Cherry-pick commits in order
+      let newlyPickedCount = 0;
+      let alreadyAppliedCount = 0;
+
       for (const hash of sortedHashes) {
         const cpRes = await runGit(['cherry-pick', hash], tempDir);
         if (cpRes.code !== 0) {
+          const out = (cpRes.stdout + '\n' + cpRes.stderr).toLowerCase();
+          if (
+            out.includes('previous cherry-pick is now empty') ||
+            out.includes('nothing to commit') ||
+            out.includes('is now empty')
+          ) {
+            // Already applied on target branch!
+            await runGit(['cherry-pick', '--skip'], tempDir);
+            alreadyAppliedCount++;
+            continue;
+          }
+
           await runGit(['cherry-pick', '--abort'], tempDir);
           return {
             success: false,
             isConflict: true,
             message: `单独推送失败: 提交 ${hash.slice(0, 7)} 在目标基准 (${baseRef}) 上产生了冲突，无法自动拣选。`,
           };
+        } else {
+          newlyPickedCount++;
         }
+      }
+
+      // If all selected commits are already present on target branch
+      if (newlyPickedCount === 0 && alreadyAppliedCount > 0) {
+        return {
+          success: true,
+          message: `所选提交的改动已全部存在于目标分支 (${remote}/${finalTargetBranch})，无需重复推送。`,
+        };
       }
 
       // Push to remote
@@ -2069,7 +2189,9 @@ export const gitService = {
 
       return {
         success: true,
-        message: `已成功将 ${sortedHashes.length} 个提交推送到远端 ${remote}/${finalTargetBranch}`,
+        message: alreadyAppliedCount > 0
+          ? `已成功将 ${newlyPickedCount} 个提交推送到远端 ${remote}/${finalTargetBranch}（另有 ${alreadyAppliedCount} 个提交此前已存在）`
+          : `已成功将 ${newlyPickedCount} 个提交推送到远端 ${remote}/${finalTargetBranch}`,
         rawOutput: pushRes.stdout || pushRes.stderr,
       };
     } finally {
@@ -2130,16 +2252,39 @@ export const gitService = {
 
     try {
       // Cherry-pick each commit
+      let newlyPickedCount = 0;
+      let alreadyAppliedCount = 0;
+
       for (const hash of sortedHashes) {
         const cpRes = await runGit(['cherry-pick', hash], tempDir);
         if (cpRes.code !== 0) {
+          const out = (cpRes.stdout + '\n' + cpRes.stderr).toLowerCase();
+          if (
+            out.includes('previous cherry-pick is now empty') ||
+            out.includes('nothing to commit') ||
+            out.includes('is now empty')
+          ) {
+            await runGit(['cherry-pick', '--skip'], tempDir);
+            alreadyAppliedCount++;
+            continue;
+          }
+
           await runGit(['cherry-pick', '--abort'], tempDir);
           return {
             success: false,
             isConflict: true,
             message: `同步失败: 提交 ${hash.slice(0, 7)} 同步到 '${targetBranch}' 分支时产生代码冲突，无法自动拣选。`,
           };
+        } else {
+          newlyPickedCount++;
         }
+      }
+
+      if (newlyPickedCount === 0 && alreadyAppliedCount > 0) {
+        return {
+          success: true,
+          message: `所选提交的改动已全部存在于 '${targetBranch}' 分支，无需重复同步。`,
+        };
       }
 
       // Get new HEAD commit
@@ -2173,7 +2318,9 @@ export const gitService = {
 
       return {
         success: true,
-        message: `已成功将 ${sortedHashes.length} 个提交同步到 '${targetBranch}' 分支${pushMsg}`,
+        message: alreadyAppliedCount > 0
+          ? `已成功将 ${newlyPickedCount} 个提交同步到 '${targetBranch}' 分支${pushMsg}（另有 ${alreadyAppliedCount} 个提交此前已存在）`
+          : `已成功将 ${newlyPickedCount} 个提交同步到 '${targetBranch}' 分支${pushMsg}`,
       };
     } finally {
       await runGit(['worktree', 'remove', '--force', tempDir], repoPath);
