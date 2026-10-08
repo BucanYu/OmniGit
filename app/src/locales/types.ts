@@ -584,6 +584,7 @@ export interface LocaleDictionary {
       checkoutRevision: string;
       newTag: string;
       cherryPick: string;
+      syncToBranch: string;
       resetBranchHere: string;
       newBranchHere: string;
       copyRevision: string;
@@ -659,6 +660,12 @@ export interface LocaleDictionary {
       pushTags: string;
       currentBranchTags: string;
       noChangedFiles: string;
+      switchSourceBranchTooltip: string;
+      pushSelectedCommitsBtn: (count: number) => string;
+      selectAllCommitsTooltip: string;
+      deselectAllCommitsTooltip: string;
+      selectedCommitsBadge: (count: number) => string;
+      pushWholeBranchBtn: (count: number) => string;
     };
     pushDiff: {
       title: string;

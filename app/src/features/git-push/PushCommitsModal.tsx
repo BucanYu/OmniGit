@@ -21,6 +21,12 @@ import {
   ExternalLink,
   GitCompare,
   Copy,
+  CheckSquare,
+  Square,
+  MinusSquare,
+  Search,
+  Rocket,
+  Check,
 } from 'lucide-react';
 import { useAppStore, type OutgoingCommitFile, type OutgoingCommitItem } from '../../store/useAppStore';
 import { useTranslation } from '../../locales';
@@ -81,6 +87,7 @@ export const PushCommitsModal: React.FC = () => {
   const { t } = useTranslation();
   const {
     isPushModalOpen,
+    pushModalSourceBranch,
     pushModalTargetBranch,
     outgoingCommitsData,
     outgoingCommitsLoading,
@@ -88,7 +95,10 @@ export const PushCommitsModal: React.FC = () => {
     pushError,
     closePushModal,
     executePush,
+    switchPushSourceBranch,
+    pushSelectedCommits,
     projects,
+    branches,
     activeProjectId,
     updateProject,
     setSelectedFile,
@@ -106,6 +116,31 @@ export const PushCommitsModal: React.FC = () => {
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
   const [forcePushMode, setForcePushMode] = useState(false);
 
+  // Multi-select checked commits
+  const [checkedCommitHashes, setCheckedCommitHashes] = useState<Set<string>>(new Set());
+
+  // Source & Target branch selector states
+  const [isSourceBranchDropdownOpen, setIsSourceBranchDropdownOpen] = useState(false);
+  const [sourceBranchSearch, setSourceBranchSearch] = useState('');
+  const [isTargetBranchDropdownOpen, setIsTargetBranchDropdownOpen] = useState(false);
+  const [targetBranchSearch, setTargetBranchSearch] = useState('');
+
+  // Mode B: Selective Push Popover state
+  const [selectiveModal, setSelectiveModal] = useState<{
+    isOpen: boolean;
+    hashes: string[];
+    mode: 'target' | 'patch';
+    targetBranch: string;
+    patchBranchName: string;
+  } | null>(null);
+
+  // Commit context menu state
+  const [commitContextMenu, setCommitContextMenu] = useState<{
+    x: number;
+    y: number;
+    commit: OutgoingCommitItem;
+  } | null>(null);
+
   // Dedicated diff modal & right-click context menu states
   const [diffModalState, setDiffModalState] = useState<{
     isOpen: boolean;
@@ -122,11 +157,19 @@ export const PushCommitsModal: React.FC = () => {
   } | null>(null);
 
   useEffect(() => {
-    const handleClose = () => setContextMenu(null);
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setContextMenu(null);
+    const handleClose = () => {
+      setContextMenu(null);
+      setCommitContextMenu(null);
     };
-    if (contextMenu) {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setContextMenu(null);
+        setCommitContextMenu(null);
+        setIsSourceBranchDropdownOpen(false);
+        setIsTargetBranchDropdownOpen(false);
+      }
+    };
+    if (contextMenu || commitContextMenu || isSourceBranchDropdownOpen || isTargetBranchDropdownOpen) {
       window.addEventListener('click', handleClose);
       window.addEventListener('contextmenu', handleClose);
       window.addEventListener('keydown', handleKeyDown);
@@ -136,7 +179,7 @@ export const PushCommitsModal: React.FC = () => {
       window.removeEventListener('contextmenu', handleClose);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [contextMenu]);
+  }, [contextMenu, commitContextMenu, isSourceBranchDropdownOpen, isTargetBranchDropdownOpen]);
 
   const getCommitHashForFile = (file: OutgoingCommitFile) => {
     if (selectedCommitHash) return selectedCommitHash;
@@ -215,14 +258,16 @@ export const PushCommitsModal: React.FC = () => {
     }
   }, [displayedFiles]);
 
-  // Auto-select first commit when outgoing commits load (matching IntelliJ IDEA Screenshot 3)
+  // Auto-select first commit and check all commits when outgoing commits load
   React.useEffect(() => {
     if (outgoingCommitsData?.commits && outgoingCommitsData.commits.length > 0) {
       if (!selectedCommitHash || !outgoingCommitsData.commits.some((c) => c.hash === selectedCommitHash)) {
         setSelectedCommitHash(outgoingCommitsData.commits[0].hash);
       }
+      setCheckedCommitHashes(new Set(outgoingCommitsData.commits.map((c) => c.hash)));
     } else {
       setSelectedCommitHash(null);
+      setCheckedCommitHashes(new Set());
     }
   }, [outgoingCommitsData]);
 
@@ -234,15 +279,35 @@ export const PushCommitsModal: React.FC = () => {
       setForcePushMode(false);
       setDiffModalState(null);
       setContextMenu(null);
+      setCommitContextMenu(null);
+      setSelectiveModal(null);
+      setIsSourceBranchDropdownOpen(false);
+      setIsTargetBranchDropdownOpen(false);
+      setSourceBranchSearch('');
+      setTargetBranchSearch('');
     }
   }, [isPushModalOpen]);
 
-  if (!isPushModalOpen) return null;
-
-  const sourceBranch = pushModalTargetBranch || outgoingCommitsData?.sourceBranch || currentProject?.currentBranch || 'dev';
-  const targetBranch = outgoingCommitsData?.targetBranch || sourceBranch;
+  const sourceBranch = pushModalSourceBranch || outgoingCommitsData?.sourceBranch || currentProject?.currentBranch || 'dev';
+  const targetBranch = pushModalTargetBranch || outgoingCommitsData?.targetBranch || sourceBranch;
   const remoteName = outgoingCommitsData?.remote || 'origin';
   const commits = (outgoingCommitsData && Array.isArray(outgoingCommitsData.commits)) ? outgoingCommitsData.commits : [];
+
+  const localBranches = useMemo(() => (Array.isArray(branches) ? branches.filter((b) => b && b.category === 'local') : []), [branches]);
+  const filteredLocalBranches = useMemo(() => {
+    if (!sourceBranchSearch.trim()) return localBranches;
+    return localBranches.filter((b) => b.name.toLowerCase().includes(sourceBranchSearch.toLowerCase()));
+  }, [localBranches, sourceBranchSearch]);
+
+  const remoteBranches = useMemo(() => (Array.isArray(branches) ? branches.filter((b) => b && b.category === 'remote') : []), [branches]);
+  const filteredRemoteBranches = useMemo(() => {
+    const clean = remoteBranches.map((b) => b.name.replace(/^origin\//, ''));
+    const unique = Array.from(new Set(clean));
+    if (!targetBranchSearch.trim()) return unique;
+    return unique.filter((name) => name.toLowerCase().includes(targetBranchSearch.toLowerCase()));
+  }, [remoteBranches, targetBranchSearch]);
+
+  if (!isPushModalOpen) return null;
 
   const toggleFolder = (folderPath: string) => {
     setExpandedFolders((prev) => {
@@ -438,13 +503,141 @@ export const PushCommitsModal: React.FC = () => {
           </button>
         </div>
 
-        {/* 2. Target Routing Bar (dev → origin: dev) */}
-        <div className="px-3 py-2 bg-theme-header border-b border-theme flex items-center justify-between text-xs shrink-0">
+        {/* 2. Target Routing Bar (Interactive Source Branch → Remote: Target Branch) */}
+        <div className="px-3 py-2 bg-theme-header border-b border-theme flex items-center justify-between text-xs shrink-0 relative">
           <div className="flex items-center gap-2 font-medium min-w-0">
-            <span className="text-sky-400 font-bold truncate max-w-[200px]" title={sourceBranch}>{sourceBranch}</span>
+            {/* Source Branch Selector */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSourceBranchDropdownOpen(!isSourceBranchDropdownOpen);
+                  setIsTargetBranchDropdownOpen(false);
+                }}
+                className="flex items-center gap-1.5 px-2 py-1 rounded bg-theme-card hover:bg-theme-card-hover border border-theme-border-card text-sky-400 font-bold transition cursor-pointer"
+                title="选择本地推送源分支"
+              >
+                <GitBranch className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                <span className="truncate max-w-[160px]">{sourceBranch}</span>
+                <ChevronDown className="w-3 h-3 text-theme-dim shrink-0" />
+              </button>
+
+              {/* Source Branch Dropdown */}
+              {isSourceBranchDropdownOpen && (
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  className="absolute left-0 top-full mt-1 w-64 bg-theme-panel border border-theme-border-card rounded-lg shadow-2xl z-[1050] py-1 text-xs animate-in fade-in zoom-in-95 duration-75"
+                >
+                  <div className="p-1.5 border-b border-theme">
+                    <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-theme-input border border-theme-border-card">
+                      <Search className="w-3 h-3 text-theme-dim shrink-0" />
+                      <input
+                        type="text"
+                        value={sourceBranchSearch}
+                        onChange={(e) => setSourceBranchSearch(e.target.value)}
+                        placeholder="搜索本地分支..."
+                        className="bg-transparent border-none text-xs text-theme-main focus:outline-none w-full"
+                        autoFocus
+                      />
+                    </div>
+                  </div>
+                  <div className="max-h-48 overflow-y-auto py-1">
+                    {filteredLocalBranches.length === 0 ? (
+                      <div className="px-3 py-2 text-center text-theme-dim text-[11px]">无匹配分支</div>
+                    ) : (
+                      filteredLocalBranches.map((b) => (
+                        <button
+                          key={b.name}
+                          type="button"
+                          onClick={async () => {
+                            setIsSourceBranchDropdownOpen(false);
+                            if (b.name !== sourceBranch) {
+                              await switchPushSourceBranch(b.name);
+                            }
+                          }}
+                          className={`w-full px-3 py-1.5 flex items-center justify-between text-left hover:bg-theme-card hover:text-sky-400 cursor-pointer transition ${
+                            b.name === sourceBranch ? 'text-sky-400 font-bold bg-sky-500/10' : 'text-theme-main'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 truncate">
+                            <GitBranch className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                            <span className="truncate">{b.name}</span>
+                          </div>
+                          {b.outgoing > 0 && (
+                            <span className="text-[10px] bg-sky-500/20 text-sky-400 px-1.5 py-0.2 rounded font-mono shrink-0">
+                              ↗ {b.outgoing}
+                            </span>
+                          )}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
             <span className="text-theme-dim shrink-0">→</span>
-            <span className="text-sky-400 font-semibold shrink-0">{remoteName}:</span>
-            <span className="text-sky-400 font-bold truncate max-w-[200px]" title={targetBranch}>{targetBranch}</span>
+
+            {/* Target Branch Selector */}
+            <div className="relative flex items-center gap-1">
+              <span className="text-sky-400 font-semibold shrink-0">{remoteName}:</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsTargetBranchDropdownOpen(!isTargetBranchDropdownOpen);
+                  setIsSourceBranchDropdownOpen(false);
+                }}
+                className="flex items-center gap-1.5 px-2 py-1 rounded bg-theme-card hover:bg-theme-card-hover border border-theme-border-card text-sky-400 font-bold transition cursor-pointer"
+                title="选择或修改目标远端分支"
+              >
+                <span className="truncate max-w-[160px]">{targetBranch}</span>
+                <ChevronDown className="w-3 h-3 text-theme-dim shrink-0" />
+              </button>
+
+              {/* Target Branch Dropdown */}
+              {isTargetBranchDropdownOpen && (
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  className="absolute left-0 top-full mt-1 w-64 bg-theme-panel border border-theme-border-card rounded-lg shadow-2xl z-[1050] py-1 text-xs animate-in fade-in zoom-in-95 duration-75"
+                >
+                  <div className="p-1.5 border-b border-theme">
+                    <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-theme-input border border-theme-border-card">
+                      <Search className="w-3 h-3 text-theme-dim shrink-0" />
+                      <input
+                        type="text"
+                        value={targetBranchSearch}
+                        onChange={(e) => setTargetBranchSearch(e.target.value)}
+                        placeholder="搜索目标远程分支..."
+                        className="bg-transparent border-none text-xs text-theme-main focus:outline-none w-full"
+                        autoFocus
+                      />
+                    </div>
+                  </div>
+                  <div className="max-h-48 overflow-y-auto py-1">
+                    {filteredRemoteBranches.map((name) => (
+                      <button
+                        key={name}
+                        type="button"
+                        onClick={async () => {
+                          setIsTargetBranchDropdownOpen(false);
+                          if (name !== targetBranch) {
+                            await switchPushSourceBranch(sourceBranch, name);
+                          }
+                        }}
+                        className={`w-full px-3 py-1.5 flex items-center justify-between text-left hover:bg-theme-card hover:text-sky-400 cursor-pointer transition ${
+                          name === targetBranch ? 'text-sky-400 font-bold bg-sky-500/10' : 'text-theme-main'
+                        }`}
+                      >
+                        <span className="truncate">{name}</span>
+                        {name === sourceBranch && (
+                          <span className="text-[10px] text-theme-dim">同名分支</span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="text-[11px] text-theme-dim flex items-center gap-2">
@@ -472,9 +665,39 @@ export const PushCommitsModal: React.FC = () => {
             }}
             className="flex flex-col bg-theme-panel shrink-0"
           >
+            {/* Header with Select All Checkbox */}
             <div className="px-3 py-1.5 border-b border-theme bg-theme-header text-[11px] font-semibold text-theme-muted flex items-center justify-between">
-              <span>{t.modals.push.commitsHeader}</span>
-              <span className="text-theme-dim text-[10px] font-mono">{commits.length}</span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={commits.length === 0}
+                  onClick={() => {
+                    if (checkedCommitHashes.size === commits.length) {
+                      setCheckedCommitHashes(new Set());
+                    } else {
+                      setCheckedCommitHashes(new Set(commits.map((c) => c.hash)));
+                    }
+                  }}
+                  className="p-0.5 hover:text-sky-400 transition cursor-pointer flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+                  title={checkedCommitHashes.size === commits.length ? '取消全选' : '全选所有待推送提交'}
+                >
+                  {checkedCommitHashes.size === commits.length && commits.length > 0 ? (
+                    <CheckSquare className="w-3.5 h-3.5 text-sky-400" />
+                  ) : checkedCommitHashes.size > 0 ? (
+                    <MinusSquare className="w-3.5 h-3.5 text-sky-400" />
+                  ) : (
+                    <Square className="w-3.5 h-3.5 text-theme-dim" />
+                  )}
+                  <span>{t.modals.push.commitsHeader}</span>
+                </button>
+                <span className="text-theme-dim text-[10px] font-mono">({commits.length})</span>
+              </div>
+
+              {checkedCommitHashes.size > 0 && checkedCommitHashes.size < commits.length && (
+                <span className="text-[10px] text-sky-400 bg-sky-500/10 px-1.5 py-0.2 rounded font-mono">
+                  已选 {checkedCommitHashes.size} 项
+                </span>
+              )}
             </div>
 
             <div className="flex-1 overflow-y-auto p-1 space-y-1">
@@ -491,29 +714,85 @@ export const PushCommitsModal: React.FC = () => {
               ) : (
                 commits.map((commit: OutgoingCommitItem) => {
                   const isSelected = selectedCommitHash === commit.hash;
+                  const isChecked = checkedCommitHashes.has(commit.hash);
                   return (
                     <div
                       key={commit.hash}
                       onClick={() =>
                         setSelectedCommitHash(isSelected ? null : commit.hash)
                       }
-                      className={`p-2 rounded border cursor-pointer transition text-xs select-none ${
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setCommitContextMenu({
+                          x: e.clientX,
+                          y: e.clientY,
+                          commit,
+                        });
+                      }}
+                      className={`group p-2 rounded border cursor-pointer transition text-xs select-none ${
                         isSelected
                           ? 'bg-sky-500/15 border-sky-500/40 text-theme-main shadow-xs'
                           : 'bg-theme-card hover:bg-theme-card-hover border-theme-border-card text-theme-main'
                       }`}
                     >
                       <div className="flex items-start gap-1.5">
+                        {/* Commit Item Checkbox */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCheckedCommitHashes((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(commit.hash)) {
+                                next.delete(commit.hash);
+                              } else {
+                                next.add(commit.hash);
+                              }
+                              return next;
+                            });
+                          }}
+                          className="p-0.5 mt-0.5 hover:text-sky-400 transition cursor-pointer shrink-0"
+                          title={isChecked ? '取消勾选此提交' : '勾选此提交'}
+                        >
+                          {isChecked ? (
+                            <CheckSquare className="w-3.5 h-3.5 text-sky-400" />
+                          ) : (
+                            <Square className="w-3.5 h-3.5 text-theme-dim group-hover:text-theme-main" />
+                          )}
+                        </button>
+
                         <GitCommit className="w-3.5 h-3.5 text-sky-400 shrink-0 mt-0.5" />
                         <div className="min-w-0 flex-1">
                           <p className="font-medium text-theme-main leading-tight line-clamp-2" title={commit.subject}>
                             {commit.subject}
                           </p>
                           <div className="mt-1 flex items-center justify-between text-[10px] text-theme-dim font-mono">
-                            <span className="truncate max-w-[140px]" title={commit.authorName}>{commit.authorName}</span>
-                            <span className="text-theme-dim hover:text-theme-main" title={commit.hash}>
-                              {commit.shortHash}
-                            </span>
+                            <span className="truncate max-w-[120px]" title={commit.authorName}>{commit.authorName}</span>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <span className="text-theme-dim hover:text-theme-main" title={commit.hash}>
+                                {commit.shortHash}
+                              </span>
+                              {/* Quick Selective Push Button */}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectiveModal({
+                                    isOpen: true,
+                                    hashes: [commit.hash],
+                                    mode: 'target',
+                                    targetBranch,
+                                    patchBranchName: `patch/fix-${commit.shortHash}`,
+                                  });
+                                }}
+                                className="opacity-0 group-hover:opacity-100 px-1.5 py-0.5 rounded bg-sky-500/20 hover:bg-sky-500/30 text-sky-400 text-[10px] transition cursor-pointer flex items-center gap-1"
+                                title="单独将此提交推送到远端"
+                              >
+                                <Rocket className="w-2.5 h-2.5" />
+                                <span>单独推送</span>
+                              </button>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -755,6 +1034,28 @@ export const PushCommitsModal: React.FC = () => {
 
           {/* Right: Push & Cancel Buttons */}
           <div className="flex items-center gap-2">
+            {/* If subset of commits is checked: Show "单独推送所选 (N)" button */}
+            {checkedCommitHashes.size > 0 && checkedCommitHashes.size < commits.length && (
+              <button
+                type="button"
+                disabled={pushingLoading}
+                onClick={() => {
+                  setSelectiveModal({
+                    isOpen: true,
+                    hashes: Array.from(checkedCommitHashes),
+                    mode: 'target',
+                    targetBranch,
+                    patchBranchName: `patch/selected-${checkedCommitHashes.size}-commits`,
+                  });
+                }}
+                className="px-4 py-1.5 rounded text-xs font-semibold flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs transition cursor-pointer"
+                title="仅将当前勾选的提交推送到远端分支"
+              >
+                <Rocket className="w-3.5 h-3.5" />
+                <span>单独推送所选 ({checkedCommitHashes.size})</span>
+              </button>
+            )}
+
             <button
               type="button"
               disabled={pushingLoading || (commits.length === 0 && !pushTags)}
@@ -771,7 +1072,13 @@ export const PushCommitsModal: React.FC = () => {
                   <span>{t.modals.push.pushing}</span>
                 </>
               ) : (
-                <span>{forcePushMode ? t.modals.push.forcePush : t.modals.push.pushButton}</span>
+                <span>
+                  {forcePushMode
+                    ? t.modals.push.forcePush
+                    : checkedCommitHashes.size > 0 && checkedCommitHashes.size < commits.length
+                    ? `全量推送分支 (${commits.length})`
+                    : t.modals.push.pushButton}
+                </span>
               )}
             </button>
 
@@ -879,6 +1186,185 @@ export const PushCommitsModal: React.FC = () => {
           initialFilePath={diffModalState.filePath}
           files={displayedFiles}
         />
+      )}
+
+      {/* 7. Mode B: Selective Push Popover Modal */}
+      {selectiveModal && selectiveModal.isOpen && (
+        <div
+          className="fixed inset-0 z-[1100] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 select-none"
+          onClick={() => setSelectiveModal(null)}
+        >
+          <div
+            className="bg-theme-panel border border-theme-border-card rounded-lg shadow-2xl w-[460px] max-w-full p-4 flex flex-col gap-3.5 animate-in fade-in zoom-in-95 duration-100 text-xs text-theme-main font-sans"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-theme pb-2.5">
+              <div className="flex items-center gap-2 font-bold text-sm text-theme-main">
+                <Rocket className="w-4 h-4 text-sky-400" />
+                <span>单独推送到远端 ({selectiveModal.hashes.length} 个提交)</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectiveModal(null)}
+                className="p-1 text-theme-dim hover:text-theme-main rounded transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-theme-dim text-[11px] leading-relaxed">
+              将所选提交安全抽取并推送到远端仓库，本地原始开发分支与其他未完成提交不受任何影响。
+            </p>
+
+            <div className="space-y-2.5 bg-theme-card p-3 rounded border border-theme-border-card">
+              <label className="flex items-start gap-2.5 cursor-pointer">
+                <input
+                  type="radio"
+                  name="selectiveMode"
+                  checked={selectiveModal.mode === 'target'}
+                  onChange={() => setSelectiveModal({ ...selectiveModal, mode: 'target' })}
+                  className="mt-0.5 text-sky-500 focus:ring-0 cursor-pointer"
+                />
+                <div className="flex-1 min-w-0">
+                  <span className="font-semibold text-theme-main">直接推送到目标远端分支</span>
+                  <p className="text-[11px] text-theme-dim mt-0.5">直接将提交合并推送到远端 {remoteName}:{targetBranch}</p>
+                </div>
+              </label>
+
+              <label className="flex items-start gap-2.5 cursor-pointer pt-2 border-t border-theme/60">
+                <input
+                  type="radio"
+                  name="selectiveMode"
+                  checked={selectiveModal.mode === 'patch'}
+                  onChange={() => setSelectiveModal({ ...selectiveModal, mode: 'patch' })}
+                  className="mt-0.5 text-sky-500 focus:ring-0 cursor-pointer"
+                />
+                <div className="flex-1 min-w-0">
+                  <span className="font-semibold text-theme-main">新建补丁分支并推送 (推荐用于提审/PR)</span>
+                  <p className="text-[11px] text-theme-dim mt-0.5">在远端创建独立分支，便于发起审查或合并请求</p>
+                  {selectiveModal.mode === 'patch' && (
+                    <input
+                      type="text"
+                      value={selectiveModal.patchBranchName}
+                      onChange={(e) => setSelectiveModal({ ...selectiveModal, patchBranchName: e.target.value })}
+                      placeholder="补丁分支名，例如 patch/fix-bug-123"
+                      className="mt-2 w-full px-2.5 py-1.5 rounded bg-theme-input border border-theme-border-card text-xs text-theme-main focus:outline-none focus:border-sky-500 font-mono"
+                    />
+                  )}
+                </div>
+              </label>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setSelectiveModal(null)}
+                className="px-3.5 py-1.5 rounded bg-theme-card hover:bg-theme-card-hover border border-theme-border-card text-theme-main text-xs transition cursor-pointer"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                disabled={pushingLoading || (selectiveModal.mode === 'patch' && !selectiveModal.patchBranchName.trim())}
+                onClick={async () => {
+                  const res = await pushSelectedCommits({
+                    hashes: selectiveModal.hashes,
+                    targetBranch: selectiveModal.targetBranch,
+                    createNewBranch: selectiveModal.mode === 'patch',
+                    newBranchName: selectiveModal.patchBranchName.trim(),
+                  });
+                  if (res.success) {
+                    setSelectiveModal(null);
+                  }
+                }}
+                className="px-4 py-1.5 rounded bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs shadow-xs transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+              >
+                {pushingLoading ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>正在推送...</span>
+                  </>
+                ) : (
+                  <>
+                    <Rocket className="w-3.5 h-3.5" />
+                    <span>确认独立推送</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 8. Commit Card Right-Click Context Menu */}
+      {commitContextMenu && (
+        <div
+          style={{
+            left: `${Math.min(commitContextMenu.x, window.innerWidth - 220)}px`,
+            top: `${Math.min(commitContextMenu.y, window.innerHeight - 160)}px`,
+          }}
+          onClick={(e) => e.stopPropagation()}
+          className="fixed z-[1070] bg-theme-panel border border-theme rounded-lg shadow-2xl py-1 min-w-[200px] text-xs select-none backdrop-blur-md animate-in fade-in zoom-in-95 duration-75 font-sans"
+        >
+          <div className="px-3 py-1.5 border-b border-theme/60 bg-theme-header/50 mb-1 flex items-center justify-between">
+            <span className="font-mono text-[11px] font-semibold text-sky-400">
+              {commitContextMenu.commit.shortHash}
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              const hash = commitContextMenu.commit.hash;
+              setCommitContextMenu(null);
+              setSelectiveModal({
+                isOpen: true,
+                hashes: [hash],
+                mode: 'target',
+                targetBranch,
+                patchBranchName: `patch/fix-${commitContextMenu.commit.shortHash}`,
+              });
+            }}
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-theme-main hover:bg-theme-card hover:text-sky-400 transition cursor-pointer"
+          >
+            <Rocket className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+            <span>单独推送此提交到远端...</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={async () => {
+              const hash = commitContextMenu.commit.hash;
+              setCommitContextMenu(null);
+              await executePush({
+                targetCommit: hash,
+                targetBranch,
+              });
+            }}
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-theme-main hover:bg-theme-card hover:text-sky-400 transition cursor-pointer"
+          >
+            <ArrowUpRight className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            <span>仅推送截止到此提交</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              navigator.clipboard.writeText(commitContextMenu.commit.hash);
+              setCommitContextMenu(null);
+              setNotification({
+                id: Date.now(),
+                title: '已复制版本号',
+                detail: commitContextMenu.commit.hash,
+                type: 'info',
+              });
+            }}
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-theme-muted hover:bg-theme-card hover:text-theme-main transition cursor-pointer"
+          >
+            <Copy className="w-3.5 h-3.5 text-theme-dim shrink-0" />
+            <span>复制提交哈希</span>
+          </button>
+        </div>
       )}
     </div>
   );

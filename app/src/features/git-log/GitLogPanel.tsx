@@ -24,6 +24,7 @@ import { LogFilterBar } from './LogFilterBar';
 import { CommitContextMenu } from './CommitContextMenu';
 import { ResetBranchModal } from './ResetBranchModal';
 import { CreateBranchOrTagModal } from './CreateBranchOrTagModal';
+import { SyncCommitModal } from './SyncCommitModal';
 import { VerticalResizeDivider } from '../../components/ui/VerticalResizeDivider';
 import { ResizeDivider } from '../../components/ui/ResizeDivider';
 
@@ -76,6 +77,7 @@ export function GitLogPanel() {
     createBranchAtCommit,
     createTagAtCommit,
     cherryPickCommit,
+    syncCommitsToBranch,
     setNotification,
     logInspectorHeight,
     setLogInspectorHeight,
@@ -97,6 +99,7 @@ export function GitLogPanel() {
     commit: GitCommitItem;
     mode: 'branch' | 'tag';
   } | null>(null);
+  const [syncModalCommit, setSyncModalCommit] = useState<GitCommitItem | null>(null);
 
   // Copy feedback
   const [copiedHash, setCopiedHash] = useState<string | null>(null);
@@ -502,6 +505,7 @@ export function GitLogPanel() {
           onCherryPick={async (commit) => {
             await cherryPickCommit(commit.hash);
           }}
+          onSyncToBranch={(commit) => setSyncModalCommit(commit)}
           onCopyHash={handleCopyHash}
           onCopyMessage={handleCopyMessage}
         />
@@ -532,6 +536,18 @@ export function GitLogPanel() {
           }}
           onCreateTag={async (tagName, message) => {
             await createTagAtCommit(tagName, branchOrTagModal.commit.hash, message);
+          }}
+        />
+      )}
+
+      {/* 7. Sync Commit to Other Branch Modal */}
+      {syncModalCommit && (
+        <SyncCommitModal
+          isOpen={Boolean(syncModalCommit)}
+          commit={syncModalCommit}
+          onClose={() => setSyncModalCommit(null)}
+          onConfirmSync={async (opts) => {
+            return await syncCommitsToBranch(opts);
           }}
         />
       )}

@@ -417,14 +417,28 @@ interface AppState {
 
   // Push Commits Modal (IntelliJ IDEA Style)
   isPushModalOpen: boolean;
+  pushModalSourceBranch: string | null;
   pushModalTargetBranch: string | null;
   outgoingCommitsData: OutgoingCommitsData | null;
   outgoingCommitsLoading: boolean;
   pushingLoading: boolean;
   pushError: string | null;
-  openPushModal: (branchName?: string) => Promise<void>;
+  openPushModal: (branchName?: string, targetBranchName?: string) => Promise<void>;
   closePushModal: () => void;
-  executePush: (options?: { force?: boolean; tags?: boolean }) => Promise<{ success: boolean; message: string }>;
+  switchPushSourceBranch: (sourceBranch: string, targetBranch?: string) => Promise<void>;
+  executePush: (options?: { force?: boolean; tags?: boolean; targetCommit?: string; targetBranch?: string }) => Promise<{ success: boolean; message: string }>;
+  pushSelectedCommits: (options: {
+    hashes: string[];
+    targetBranch: string;
+    createNewBranch?: boolean;
+    newBranchName?: string;
+    force?: boolean;
+  }) => Promise<{ success: boolean; message: string; isConflict?: boolean }>;
+  syncCommitsToBranch: (options: {
+    hashes: string[];
+    targetBranch: string;
+    pushToRemote?: boolean;
+  }) => Promise<{ success: boolean; message: string; isConflict?: boolean }>;
 
   // User & Author Filter Actions
   loadRepoAuthors: (repoPath?: string) => Promise<void>;
@@ -1653,6 +1667,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   isAddRepoModalOpen: false,
   isSettingsModalOpen: false,
   isPushModalOpen: false,
+  pushModalSourceBranch: null,
   pushModalTargetBranch: null,
   outgoingCommitsData: null,
   outgoingCommitsLoading: false,
@@ -4570,13 +4585,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  openPushModal: async (branchName?: string) => {
+  openPushModal: async (branchName?: string, targetBranchName?: string) => {
     const currentProject = get().projects.find((p) => p.id === get().activeProjectId);
     if (!currentProject) return;
 
-    const target = branchName || currentProject.currentBranch;
+    const source = branchName || currentProject.currentBranch;
+    const target = targetBranchName || source;
     set({
       isPushModalOpen: true,
+      pushModalSourceBranch: source,
       pushModalTargetBranch: target,
       outgoingCommitsData: null,
       outgoingCommitsLoading: true,
@@ -4585,12 +4602,41 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
 
     try {
-      const res = await fetch(
-        `/api/git/outgoing-commits?path=${encodeURIComponent(currentProject.path)}&branch=${encodeURIComponent(target)}`
-      );
+      const url = `/api/git/outgoing-commits?path=${encodeURIComponent(currentProject.path)}&branch=${encodeURIComponent(source)}&targetBranch=${encodeURIComponent(target)}`;
+      const res = await fetch(url);
       const data: OutgoingCommitsData = await res.json();
       set({
         outgoingCommitsData: data,
+        pushModalTargetBranch: data.targetBranch || target,
+        outgoingCommitsLoading: false,
+      });
+    } catch (e: any) {
+      set({
+        outgoingCommitsLoading: false,
+        pushError: `Failed to load outgoing commits: ${e.message}`,
+      });
+    }
+  },
+
+  switchPushSourceBranch: async (sourceBranch: string, targetBranch?: string) => {
+    const currentProject = get().projects.find((p) => p.id === get().activeProjectId);
+    if (!currentProject) return;
+
+    const target = targetBranch || sourceBranch;
+    set({
+      pushModalSourceBranch: sourceBranch,
+      pushModalTargetBranch: target,
+      outgoingCommitsLoading: true,
+      pushError: null,
+    });
+
+    try {
+      const url = `/api/git/outgoing-commits?path=${encodeURIComponent(currentProject.path)}&branch=${encodeURIComponent(sourceBranch)}&targetBranch=${encodeURIComponent(target)}`;
+      const res = await fetch(url);
+      const data: OutgoingCommitsData = await res.json();
+      set({
+        outgoingCommitsData: data,
+        pushModalTargetBranch: data.targetBranch || target,
         outgoingCommitsLoading: false,
       });
     } catch (e: any) {
@@ -4604,16 +4650,18 @@ export const useAppStore = create<AppState>((set, get) => ({
   closePushModal: () => {
     set({
       isPushModalOpen: false,
+      pushModalSourceBranch: null,
       pushModalTargetBranch: null,
       pushError: null,
       pushingLoading: false,
     });
   },
 
-  executePush: async (options?: { force?: boolean; tags?: boolean }) => {
+  executePush: async (options?: { force?: boolean; tags?: boolean; targetCommit?: string; targetBranch?: string }) => {
     const currentProject = get().projects.find((p) => p.id === get().activeProjectId);
-    const targetBranch = get().pushModalTargetBranch || currentProject?.currentBranch || '';
-    if (!currentProject || !targetBranch) {
+    const sourceBranch = get().pushModalSourceBranch || currentProject?.currentBranch || '';
+    const targetBranch = options?.targetBranch || get().pushModalTargetBranch || sourceBranch;
+    if (!currentProject || !sourceBranch) {
       return { success: false, message: 'No active project or branch' };
     }
 
@@ -4625,7 +4673,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           path: currentProject.path,
-          branch: targetBranch,
+          branch: sourceBranch,
+          targetBranch,
+          targetCommit: options?.targetCommit,
           force: options?.force,
           tags: options?.tags,
         }),
@@ -4641,11 +4691,11 @@ export const useAppStore = create<AppState>((set, get) => ({
             p.id === currentProject.id ? { ...p, outgoing: 0 } : p
           ),
           branches: state.branches.map((b) =>
-            b.name === targetBranch || b.isCurrent ? { ...b, outgoing: 0 } : b
+            b.name === sourceBranch || b.name === targetBranch || b.isCurrent ? { ...b, outgoing: 0 } : b
           ),
           notification: {
             id: Date.now(),
-            title: 'Push Succeeded',
+            title: '推送成功',
             detail: data.message,
             type: 'success',
           },
@@ -4656,7 +4706,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         if (cached) {
           cached.outgoing = 0;
           cached.branches = cached.branches.map((b) =>
-            b.name === targetBranch || b.isCurrent ? { ...b, outgoing: 0 } : b
+            b.name === sourceBranch || b.name === targetBranch || b.isCurrent ? { ...b, outgoing: 0 } : b
           );
           cached.lastUpdated = Date.now();
           saveLocalSnapshot(currentProject.path.toLowerCase(), cached);
@@ -4671,7 +4721,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           pushError: data.message,
           notification: {
             id: Date.now(),
-            title: 'Push Failed',
+            title: '推送失败',
             detail: data.message,
             type: 'warning',
           },
@@ -4680,6 +4730,120 @@ export const useAppStore = create<AppState>((set, get) => ({
       return data;
     } catch (e: any) {
       set({ pushingLoading: false, pushError: e.message });
+      return { success: false, message: e.message };
+    }
+  },
+
+  pushSelectedCommits: async (options: {
+    hashes: string[];
+    targetBranch: string;
+    createNewBranch?: boolean;
+    newBranchName?: string;
+    force?: boolean;
+  }) => {
+    const currentProject = get().projects.find((p) => p.id === get().activeProjectId);
+    const sourceBranch = get().pushModalSourceBranch || currentProject?.currentBranch || '';
+    if (!currentProject || !options.hashes || options.hashes.length === 0) {
+      return { success: false, message: '未选择有效工程或提交' };
+    }
+
+    set({ pushingLoading: true, pushError: null });
+
+    try {
+      const res = await fetch('/api/git/push-commits-selective', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          path: currentProject.path,
+          hashes: options.hashes,
+          sourceBranch,
+          targetBranch: options.targetBranch,
+          createNewBranch: options.createNewBranch,
+          newBranchName: options.newBranchName,
+          force: options.force,
+        }),
+      });
+      const data = await res.json();
+      set({ pushingLoading: false });
+
+      if (data.success) {
+        set({
+          isPushModalOpen: false,
+          notification: {
+            id: Date.now(),
+            title: '独立推送成功',
+            detail: data.message,
+            type: 'success',
+          },
+        });
+
+        await get().loadRepoData(currentProject.path, true);
+        await get().fetchCommitLogs(true);
+        get().pollWorkspaceSyncStatus();
+      } else {
+        set({
+          pushError: data.message,
+          notification: {
+            id: Date.now(),
+            title: '独立推送失败',
+            detail: data.message,
+            type: 'warning',
+          },
+        });
+      }
+      return data;
+    } catch (e: any) {
+      set({ pushingLoading: false, pushError: e.message });
+      return { success: false, message: e.message };
+    }
+  },
+
+  syncCommitsToBranch: async (options: {
+    hashes: string[];
+    targetBranch: string;
+    pushToRemote?: boolean;
+  }) => {
+    const currentProject = get().projects.find((p) => p.id === get().activeProjectId);
+    if (!currentProject || !options.hashes || options.hashes.length === 0) {
+      return { success: false, message: '未选择有效工程或提交' };
+    }
+
+    try {
+      const res = await fetch('/api/git/sync-commits-to-branch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          path: currentProject.path,
+          hashes: options.hashes,
+          targetBranch: options.targetBranch,
+          pushToRemote: options.pushToRemote,
+        }),
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        set({
+          notification: {
+            id: Date.now(),
+            title: '分支同步成功',
+            detail: data.message,
+            type: 'success',
+          },
+        });
+        await get().loadRepoData(currentProject.path, true);
+        await get().fetchCommitLogs(true);
+      } else {
+        set({
+          notification: {
+            id: Date.now(),
+            title: '分支同步失败',
+            detail: data.message,
+            type: 'warning',
+          },
+        });
+      }
+      return data;
+    } catch (e: any) {
       return { success: false, message: e.message };
     }
   },

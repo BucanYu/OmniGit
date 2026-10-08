@@ -1,6 +1,7 @@
 import { execFile, exec, spawn, type ChildProcess } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 
 export interface CloneProgressEvent {
   phase: 'counting' | 'compressing' | 'receiving' | 'resolving' | 'checkout' | 'completing' | 'unknown';
@@ -501,9 +502,28 @@ export interface OutgoingCommitsData {
 
 export interface PushBranchOptions {
   branch: string;
+  targetBranch?: string;
+  targetCommit?: string;
   force?: boolean;
   tags?: boolean;
   setUpstream?: boolean;
+}
+
+export interface SelectivePushOptions {
+  hashes: string[];
+  sourceBranch?: string;
+  targetBranch: string;
+  remote?: string;
+  createNewBranch?: boolean;
+  newBranchName?: string;
+  force?: boolean;
+}
+
+export interface SyncCommitsOptions {
+  hashes: string[];
+  targetBranch: string;
+  remote?: string;
+  pushToRemote?: boolean;
 }
 
 // OmniGit Global Settings & Custom Cache Configuration
@@ -1817,7 +1837,14 @@ export const gitService = {
     if (opts.tags) {
       args.push('--follow-tags');
     }
-    args.push('origin', cleanBranch);
+    const cleanTargetBranch = (opts.targetBranch || cleanBranch).replace(/^origin\//, '');
+    let refspec = cleanBranch;
+    if (opts.targetCommit) {
+      refspec = `${opts.targetCommit}:${cleanTargetBranch}`;
+    } else if (opts.targetBranch && cleanTargetBranch !== cleanBranch) {
+      refspec = `${cleanBranch}:${cleanTargetBranch}`;
+    }
+    args.push('origin', refspec);
 
     const res = await runGit(args, repoPath);
 
@@ -1881,7 +1908,8 @@ export const gitService = {
   // 31. Get outgoing commits and file list for Push Dialog (1:1 with IntelliJ IDEA Screenshot 3)
   async getOutgoingCommits(
     repoPath: string,
-    branchName?: string
+    branchName?: string,
+    targetBranchName?: string
   ): Promise<OutgoingCommitsData> {
     // 1. Resolve source branch
     let sourceBranch = branchName ? branchName.replace(/^origin\//, '') : '';
@@ -1892,10 +1920,12 @@ export const gitService = {
 
     // 2. Resolve upstream and remote
     const remote = 'origin';
-    let targetBranch = sourceBranch;
-    const upRes = await runGit(['rev-parse', '--abbrev-ref', `${sourceBranch}@{upstream}`], repoPath);
-    if (upRes.code === 0 && upRes.stdout) {
-      targetBranch = upRes.stdout.replace(/^origin\//, '');
+    let targetBranch = targetBranchName ? targetBranchName.replace(/^origin\//, '') : sourceBranch;
+    if (!targetBranchName) {
+      const upRes = await runGit(['rev-parse', '--abbrev-ref', `${sourceBranch}@{upstream}`], repoPath);
+      if (upRes.code === 0 && upRes.stdout) {
+        targetBranch = upRes.stdout.replace(/^origin\//, '');
+      }
     }
 
     // 3. Query outgoing commits (upstream..HEAD)
@@ -1946,6 +1976,201 @@ export const gitService = {
       commits,
       allFiles,
     };
+  },
+
+  // 31b. Selectively cherry-pick and push commits (Push Dialog selective push)
+  async cherryPickAndPushCommits(
+    repoPath: string,
+    options: SelectivePushOptions
+  ): Promise<{ success: boolean; message: string; rawOutput?: string; isConflict?: boolean }> {
+    const remote = options.remote || 'origin';
+    const targetBranch = options.targetBranch ? options.targetBranch.replace(/^origin\//, '') : 'dev';
+    const newBranch = options.createNewBranch && options.newBranchName ? options.newBranchName.trim() : null;
+    const finalTargetBranch = newBranch || targetBranch;
+
+    if (!options.hashes || options.hashes.length === 0) {
+      return { success: false, message: '未指定要推送的提交' };
+    }
+
+    // Determine base ref
+    let baseRef = `${remote}/${targetBranch}`;
+    const checkRemote = await runGit(['rev-parse', '--verify', '--quiet', baseRef], repoPath);
+    if (checkRemote.code !== 0) {
+      const checkLocal = await runGit(['rev-parse', '--verify', '--quiet', targetBranch], repoPath);
+      if (checkLocal.code === 0) {
+        baseRef = targetBranch;
+      } else {
+        baseRef = 'HEAD';
+      }
+    }
+
+    // Sort hashes in chronological order (oldest first)
+    let sortedHashes = [...options.hashes];
+    const topoRes = await runGit(['rev-list', '--reverse', '--no-walk', ...options.hashes], repoPath);
+    if (topoRes.code === 0 && topoRes.stdout.trim()) {
+      sortedHashes = topoRes.stdout.trim().split(/\r?\n/).filter(Boolean);
+    }
+
+    const tempDir = path.join(os.tmpdir(), `omnigit-push-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`);
+    const addRes = await runGit(['worktree', 'add', '--detach', tempDir, baseRef], repoPath);
+    if (addRes.code !== 0) {
+      return {
+        success: false,
+        message: `创建安全推送沙箱失败: ${addRes.stderr || addRes.stdout}`,
+      };
+    }
+
+    try {
+      // Cherry-pick commits in order
+      for (const hash of sortedHashes) {
+        const cpRes = await runGit(['cherry-pick', hash], tempDir);
+        if (cpRes.code !== 0) {
+          await runGit(['cherry-pick', '--abort'], tempDir);
+          return {
+            success: false,
+            isConflict: true,
+            message: `单独推送失败: 提交 ${hash.slice(0, 7)} 在目标基准 (${baseRef}) 上产生了冲突，无法自动拣选。`,
+          };
+        }
+      }
+
+      // Push to remote
+      const pushArgs = ['push'];
+      if (options.force) {
+        pushArgs.push('--force-with-lease');
+      }
+      if (newBranch) {
+        pushArgs.push('-u');
+      }
+      pushArgs.push(remote, `HEAD:refs/heads/${finalTargetBranch}`);
+
+      const pushRes = await runGit(pushArgs, tempDir);
+      if (pushRes.code !== 0) {
+        return {
+          success: false,
+          message: pushRes.stderr || pushRes.stdout || '推送远程仓库失败',
+          rawOutput: pushRes.stderr || pushRes.stdout,
+        };
+      }
+
+      // If created a new branch, also update local branch reference so it shows in local branches
+      if (newBranch) {
+        await runGit(['branch', '-f', newBranch, 'HEAD'], repoPath);
+      }
+
+      return {
+        success: true,
+        message: `已成功将 ${sortedHashes.length} 个提交推送到远端 ${remote}/${finalTargetBranch}`,
+        rawOutput: pushRes.stdout || pushRes.stderr,
+      };
+    } finally {
+      // Safely cleanup worktree
+      await runGit(['worktree', 'remove', '--force', tempDir], repoPath);
+      try {
+        if (fs.existsSync(tempDir)) {
+          fs.rmSync(tempDir, { recursive: true, force: true });
+        }
+      } catch {}
+    }
+  },
+
+  // 31c. Sync commits to other branch (Commit Log context menu sync)
+  async syncCommitsToBranch(
+    repoPath: string,
+    options: SyncCommitsOptions
+  ): Promise<{ success: boolean; message: string; rawOutput?: string; isConflict?: boolean }> {
+    const remote = options.remote || 'origin';
+    const targetBranch = options.targetBranch ? options.targetBranch.replace(/^origin\//, '') : '';
+
+    if (!targetBranch) {
+      return { success: false, message: '未指定目标同步分支' };
+    }
+    if (!options.hashes || options.hashes.length === 0) {
+      return { success: false, message: '未指定要同步的提交' };
+    }
+
+    // Check if targetBranch exists locally or remotely
+    let baseRef = targetBranch;
+    const checkLocal = await runGit(['rev-parse', '--verify', '--quiet', targetBranch], repoPath);
+    if (checkLocal.code !== 0) {
+      const checkRemote = await runGit(['rev-parse', '--verify', '--quiet', `${remote}/${targetBranch}`], repoPath);
+      if (checkRemote.code === 0) {
+        // Create local branch tracking remote
+        await runGit(['branch', targetBranch, `${remote}/${targetBranch}`], repoPath);
+        baseRef = targetBranch;
+      } else {
+        return { success: false, message: `目标分支 '${targetBranch}' 在本地和远程均不存在` };
+      }
+    }
+
+    // Sort hashes chronologically
+    let sortedHashes = [...options.hashes];
+    const topoRes = await runGit(['rev-list', '--reverse', '--no-walk', ...options.hashes], repoPath);
+    if (topoRes.code === 0 && topoRes.stdout.trim()) {
+      sortedHashes = topoRes.stdout.trim().split(/\r?\n/).filter(Boolean);
+    }
+
+    const tempDir = path.join(os.tmpdir(), `omnigit-sync-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`);
+    const addRes = await runGit(['worktree', 'add', '--detach', tempDir, baseRef], repoPath);
+    if (addRes.code !== 0) {
+      return {
+        success: false,
+        message: `创建安全同步沙箱失败: ${addRes.stderr || addRes.stdout}`,
+      };
+    }
+
+    try {
+      // Cherry-pick each commit
+      for (const hash of sortedHashes) {
+        const cpRes = await runGit(['cherry-pick', hash], tempDir);
+        if (cpRes.code !== 0) {
+          await runGit(['cherry-pick', '--abort'], tempDir);
+          return {
+            success: false,
+            isConflict: true,
+            message: `同步失败: 提交 ${hash.slice(0, 7)} 同步到 '${targetBranch}' 分支时产生代码冲突，无法自动拣选。`,
+          };
+        }
+      }
+
+      // Get new HEAD commit
+      const headRes = await runGit(['rev-parse', 'HEAD'], tempDir);
+      const newHead = headRes.stdout.trim();
+
+      // Update local branch to new HEAD
+      const branchRes = await runGit(['branch', '-f', targetBranch, newHead], repoPath);
+      if (branchRes.code !== 0) {
+        return {
+          success: false,
+          message: `更新本地 '${targetBranch}' 分支引用失败: ${branchRes.stderr}`,
+        };
+      }
+
+      // Optionally push to remote
+      let pushMsg = '';
+      if (options.pushToRemote) {
+        const pushRes = await runGit(['push', remote, `${targetBranch}:${targetBranch}`], repoPath);
+        if (pushRes.code !== 0) {
+          return {
+            success: false,
+            message: `提交已同步到本地 '${targetBranch}'，但推送到远端 ${remote}/${targetBranch} 失败: ${pushRes.stderr || pushRes.stdout}`,
+          };
+        }
+        pushMsg = ' 并已成功推送到远端';
+      }
+
+      return {
+        success: true,
+        message: `已成功将 ${sortedHashes.length} 个提交同步到 '${targetBranch}' 分支${pushMsg}`,
+      };
+    } finally {
+      await runGit(['worktree', 'remove', '--force', tempDir], repoPath);
+      try {
+        if (fs.existsSync(tempDir)) {
+          fs.rmSync(tempDir, { recursive: true, force: true });
+        }
+      } catch {}
+    }
   },
 
   // 32. Merge branch into current HEAD

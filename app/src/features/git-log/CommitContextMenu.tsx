@@ -7,6 +7,7 @@ import {
   GitBranch,
   Tag,
   GitPullRequest,
+  GitFork,
   Copy,
   MessageSquare,
   Check,
@@ -23,6 +24,7 @@ export interface CommitContextMenuProps {
   onNewBranch: (commit: GitCommitItem) => void;
   onNewTag: (commit: GitCommitItem) => void;
   onCherryPick: (commit: GitCommitItem) => void;
+  onSyncToBranch: (commit: GitCommitItem) => void;
   onCopyHash: (commit: GitCommitItem) => void;
   onCopyMessage: (commit: GitCommitItem) => void;
 }
@@ -37,6 +39,7 @@ export function CommitContextMenu({
   onNewBranch,
   onNewTag,
   onCherryPick,
+  onSyncToBranch,
   onCopyHash,
   onCopyMessage,
 }: CommitContextMenuProps) {
@@ -165,6 +168,19 @@ export function CommitContextMenu({
       >
         <GitPullRequest className="w-3.5 h-3.5 text-rose-400 shrink-0" />
         <span className="flex-1 truncate">{t.gitLog.contextMenu.cherryPick}</span>
+      </button>
+
+      {/* 6b. Sync Commit to Other Branch */}
+      <button
+        type="button"
+        onClick={() => {
+          onClose();
+          onSyncToBranch(commit);
+        }}
+        className="w-full flex items-center gap-2.5 px-3 py-1.5 text-left text-theme-main hover:bg-theme-card hover:text-sky-400 transition-colors cursor-pointer group"
+      >
+        <GitFork className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+        <span className="flex-1 truncate">{t.gitLog.contextMenu.syncToBranch || '同步此提交到其他分支...'}</span>
       </button>
 
       <div className="my-1 border-t border-theme/60" />

@@ -235,8 +235,29 @@ export async function handleGitApiRequest(req: IncomingMessage, res: ServerRespo
     } else if (pathname === '/api/git/push-branch') {
       const result = await gitService.pushBranch(body.path, {
         branch: body.branch,
+        targetBranch: body.targetBranch,
+        targetCommit: body.targetCommit,
         force: body.force,
         tags: body.tags,
+      });
+      res.end(JSON.stringify(result));
+    } else if (pathname === '/api/git/push-commits-selective') {
+      const result = await gitService.cherryPickAndPushCommits(body.path, {
+        hashes: body.hashes,
+        sourceBranch: body.sourceBranch,
+        targetBranch: body.targetBranch,
+        remote: body.remote,
+        createNewBranch: body.createNewBranch,
+        newBranchName: body.newBranchName,
+        force: body.force,
+      });
+      res.end(JSON.stringify(result));
+    } else if (pathname === '/api/git/sync-commits-to-branch') {
+      const result = await gitService.syncCommitsToBranch(body.path, {
+        hashes: body.hashes,
+        targetBranch: body.targetBranch,
+        remote: body.remote,
+        pushToRemote: body.pushToRemote,
       });
       res.end(JSON.stringify(result));
     } else if (pathname === '/api/git/merge') {
@@ -255,7 +276,7 @@ export async function handleGitApiRequest(req: IncomingMessage, res: ServerRespo
       const result = await gitService.getMergeUndoStatus(repoPath, activeBranch);
       res.end(JSON.stringify(result || { canUndo: false }));
     } else if (pathname === '/api/git/outgoing-commits') {
-      const data = await gitService.getOutgoingCommits(query.path || '', query.branch || '');
+      const data = await gitService.getOutgoingCommits(query.path || '', query.branch || '', query.targetBranch || '');
       res.end(JSON.stringify(data));
     } else if (pathname === '/api/git/checkout-tag-revision') {
       const result = await gitService.checkoutTagOrRevision(body.path, body.target, body.newBranchName);
