@@ -256,7 +256,7 @@ interface AppState {
   renameSavedWorkspace: (id: string, newName: string) => void;
   openWorkspaceGroup: (ws: WorkspaceGroupItem, inNewWindow?: boolean) => Promise<void>;
   createWorkspaceFromFolder: (folderPath: string) => Promise<WorkspaceGroupItem | null>;
-  syncCurrentWorkspaceToSaved: () => void;
+  syncCurrentWorkspaceToSaved: (activePathOverride?: string) => void;
 
   globalRecentProjects: RecentProjectItem[];
   loadRecentProjects: () => void;
@@ -1060,7 +1060,10 @@ export const useAppStore = create<AppState>((set, get) => ({
                 );
               }
             } else {
-              const newWs = buildWorkspaceRecord(wsId, paths, undefined, undefined, get().language);
+              const lastActive = typeof window !== 'undefined'
+                ? localStorage.getItem(`omnigit_last_active_project_path_${wsId}`)
+                : undefined;
+              const newWs = buildWorkspaceRecord(wsId, paths, undefined, undefined, get().language, lastActive || undefined);
               list.push(newWs);
             }
           }
@@ -1203,13 +1206,24 @@ export const useAppStore = create<AppState>((set, get) => ({
     const targetWsId = ws.id;
     const repoPaths = ws.repos.map((r) => r.path);
 
-    const savedActivePath = typeof window !== 'undefined'
-      ? ws.lastActiveProjectPath || localStorage.getItem(`omnigit_last_active_project_path_${targetWsId}`) || localStorage.getItem('omnigit_last_active_project_path')
-      : ws.lastActiveProjectPath;
+    const candidatePaths = typeof window !== 'undefined'
+      ? [
+          localStorage.getItem(`omnigit_last_active_project_path_${targetWsId}`),
+          ws.lastActiveProjectPath,
+          localStorage.getItem('omnigit_last_active_project_path'),
+        ].filter(Boolean) as string[]
+      : (ws.lastActiveProjectPath ? [ws.lastActiveProjectPath] : []);
 
-    const matchedActivePath = (savedActivePath && repoPaths.some((p) => normalizePath(p) === normalizePath(savedActivePath)))
-      ? savedActivePath
-      : repoPaths[0];
+    let matchedActivePath: string | undefined;
+    for (const cand of candidatePaths) {
+      if (repoPaths.some((p) => normalizePath(p) === normalizePath(cand))) {
+        matchedActivePath = cand;
+        break;
+      }
+    }
+    if (!matchedActivePath && repoPaths.length > 0) {
+      matchedActivePath = repoPaths[0];
+    }
 
     const updatedWs = { ...ws, lastOpened: Date.now(), lastActiveProjectPath: matchedActivePath };
     get().saveWorkspaceRecord(updatedWs);
@@ -1300,7 +1314,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     await get().setWorkspaceProjects(repoPaths);
   },
 
-  syncCurrentWorkspaceToSaved: () => {
+  syncCurrentWorkspaceToSaved: (activePathOverride?: string) => {
     if (typeof window === 'undefined') return;
     const state = get();
     const currentPaths = state.workspaceProjectPaths;
@@ -1325,7 +1339,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
 
     const activeProject = state.projects.find((p) => p.id === state.activeProjectId);
-    const activePath = activeProject?.path || existing?.lastActiveProjectPath;
+    const activePath = activePathOverride || activeProject?.path || existing?.lastActiveProjectPath;
 
     const wsRecord = buildWorkspaceRecord(
       state.workspaceId,
@@ -1928,13 +1942,26 @@ export const useAppStore = create<AppState>((set, get) => ({
         };
       });
 
-      const savedActivePath = typeof window !== 'undefined'
-        ? targetWs?.lastActiveProjectPath || localStorage.getItem(`omnigit_last_active_project_path_${activeWsId}`) || localStorage.getItem('omnigit_last_active_project_path')
-        : targetWs?.lastActiveProjectPath;
       let activeProject = instantProjects[0];
-      if (savedActivePath) {
+      if (typeof window !== 'undefined') {
+        const candidatePaths = [
+          localStorage.getItem(`omnigit_last_active_project_path_${activeWsId}`),
+          targetWs?.lastActiveProjectPath,
+          localStorage.getItem('omnigit_last_active_project_path'),
+        ].filter(Boolean) as string[];
+
+        for (const cand of candidatePaths) {
+          const matched = instantProjects.find(
+            (p) => normalizePath(p.path) === normalizePath(cand)
+          );
+          if (matched) {
+            activeProject = matched;
+            break;
+          }
+        }
+      } else if (targetWs?.lastActiveProjectPath) {
         const matched = instantProjects.find(
-          (p) => normalizePath(p.path) === normalizePath(savedActivePath)
+          (p) => normalizePath(p.path) === normalizePath(targetWs.lastActiveProjectPath!)
         );
         if (matched) {
           activeProject = matched;
@@ -1989,7 +2016,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         });
       }
 
-      get().syncCurrentWorkspaceToSaved();
+      get().syncCurrentWorkspaceToSaved(activeProject.path);
 
       if (typeof document !== 'undefined') {
         document.title = `OmniGit - ${activeProject.name}`;
@@ -2159,6 +2186,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         if (matched) targetRepo = matched;
       }
       set({ activeProjectId: targetRepo.id });
+      get().syncCurrentWorkspaceToSaved(targetRepo.path);
       await get().loadRepoData(targetRepo.path);
     } else {
       await get().loadWorkspaceAccounts();
@@ -2291,12 +2319,19 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (resolvedProjects.length > 0) {
       const currentWs = get().savedWorkspaces.find((w) => w.id === state.workspaceId);
-      const savedActivePath = typeof window !== 'undefined'
-        ? currentWs?.lastActiveProjectPath || localStorage.getItem(`omnigit_last_active_project_path_${state.workspaceId}`) || localStorage.getItem('omnigit_last_active_project_path')
-        : currentWs?.lastActiveProjectPath;
-      const matched = savedActivePath
-        ? resolvedProjects.find((p) => normalizePath(p.path) === normalizePath(savedActivePath))
-        : null;
+      const candidatePaths = typeof window !== 'undefined'
+        ? [
+            localStorage.getItem(`omnigit_last_active_project_path_${state.workspaceId}`),
+            currentWs?.lastActiveProjectPath,
+            localStorage.getItem('omnigit_last_active_project_path'),
+          ].filter(Boolean) as string[]
+        : (currentWs?.lastActiveProjectPath ? [currentWs.lastActiveProjectPath] : []);
+
+      let matched: GitProject | undefined;
+      for (const cand of candidatePaths) {
+        matched = resolvedProjects.find((p) => normalizePath(p.path) === normalizePath(cand));
+        if (matched) break;
+      }
       if (matched) {
         await get().setActiveProject(matched.id);
       } else if (!resolvedProjects.some((p) => p.id === state.activeProjectId)) {
@@ -2722,7 +2757,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       safeLocalStorageSetItem('omnigit_last_active_workspace_id', get().workspaceId);
     }
     get().registerRecentProject(targetProject.path, targetProject.name, targetProject.currentBranch);
-    get().syncCurrentWorkspaceToSaved();
+    get().syncCurrentWorkspaceToSaved(targetProject.path);
 
     // Invalidate any in-flight requests from the previous project!
     currentRepoLoadId++;
@@ -2761,6 +2796,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         mergeSourceBranch: cached.mergeSourceBranch,
         conflictedCount: Number(cached.conflictedCount) || 0,
       });
+
+      get().syncCurrentWorkspaceToSaved(targetProject.path);
 
       if (typeof document !== 'undefined') {
         document.title = `OmniGit - ${targetProject.name}`;
@@ -2825,6 +2862,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         mergeSourceBranch: undefined,
         conflictedCount: 0,
       });
+
+      get().syncCurrentWorkspaceToSaved(targetProject.path);
 
       if (typeof document !== 'undefined') {
         document.title = `OmniGit - ${targetProject.name}`;
