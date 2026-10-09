@@ -2171,7 +2171,7 @@ export const gitService = {
 
       for (const hash of sortedHashes) {
         // Step 1: Standard cherry-pick with -x (records source hash in commit message)
-        let cpRes = await runGit(['cherry-pick', '-x', hash], tempDir);
+        const cpRes = await runGit(['cherry-pick', '-x', hash], tempDir);
         if (cpRes.code !== 0) {
           const out = (cpRes.stdout + '\n' + cpRes.stderr).toLowerCase();
           if (
@@ -2185,47 +2185,14 @@ export const gitService = {
             continue;
           }
 
-          // Step 2: Fallback to ORT merge strategy favoring incoming commit hunks (-X theirs)
-          await runGit(['cherry-pick', '--abort'], tempDir);
-          const retryRes = await runGit(['cherry-pick', '-x', '--strategy=ort', '-X', 'theirs', hash], tempDir);
-          if (retryRes.code === 0) {
-            newlyPickedCount++;
-            continue;
-          }
-
-          // Step 3: Check if retry became empty
-          const retryOut = (retryRes.stdout + '\n' + retryRes.stderr).toLowerCase();
-          if (
-            retryOut.includes('previous cherry-pick is now empty') ||
-            retryOut.includes('nothing to commit') ||
-            retryOut.includes('is now empty')
-          ) {
-            await runGit(['cherry-pick', '--skip'], tempDir);
-            alreadyAppliedCount++;
-            continue;
-          }
-
-          // Step 4: Check if remaining conflict is modify/delete (where a file introduced in predecessor commits was kept in tree)
-          const statusRes = await runGit(['status', '--porcelain'], tempDir);
-          const statusLines = (statusRes.stdout || '').split(/\r?\n/).filter(Boolean);
-          const hasUnresolvedConflict = statusLines.some((l) => l.startsWith('UU') || l.startsWith('AA') || l.startsWith('DD'));
-          const hasModifyDelete = statusLines.some((l) => l.startsWith('UD') || l.startsWith('DU') || l.startsWith('MD'));
-
-          if (!hasUnresolvedConflict && hasModifyDelete) {
-            await runGit(['add', '-A'], tempDir);
-            const contRes = await runGit(['-c', 'core.editor=true', 'cherry-pick', '--continue'], tempDir);
-            if (contRes.code === 0) {
-              newlyPickedCount++;
-              continue;
-            }
-          }
-
-          // Step 5: True unresolvable conflict
+          // If cherry-picking fails, it means the commit depends on predecessor unselected commits.
+          // We DO NOT force -X theirs, because forcing -X theirs mutates code context on remote,
+          // creating divergent history that causes fatal conflicts on future 'git pull'.
           await runGit(['cherry-pick', '--abort'], tempDir);
           return {
             success: false,
             isConflict: true,
-            message: `单独推送失败: 提交 ${hash.slice(0, 7)} 在目标基准 (${baseRef}) 上产生了冲突，无法自动拣选。`,
+            message: `单独推送失败: 提交 ${hash.slice(0, 7)} 与未勾选的前置提交存在代码依赖，无法直接单独推送到主分支 (${remote}/${targetBranch})。建议连同前置提交一起勾选推送，或选择【新建补丁分支推送】。`,
           };
         } else {
           newlyPickedCount++;
@@ -2278,6 +2245,23 @@ export const gitService = {
       // If created a new branch, update local branch reference to point to the new pushed commit
       if (newBranch) {
         await runGit(['branch', '-f', newBranch, pushedCommit], repoPath);
+      } else {
+        // If pushed directly to the current working branch's tracking branch:
+        // Rebase local branch onto newly pushed upstream commit so local branch is Fast-Forward and linear!
+        // This guarantees 0 divergence and 0 pull conflicts!
+        try {
+          const curBranchRes = await runGit(['branch', '--show-current'], repoPath);
+          const currentBranch = curBranchRes.stdout?.trim();
+          if (currentBranch && targetBranch.toLowerCase() === currentBranch.toLowerCase()) {
+            const rebaseRes = await runGit(['rebase', '--autostash', `${remote}/${targetBranch}`], repoPath);
+            if (rebaseRes.code !== 0) {
+              await runGit(['rebase', '--abort'], repoPath);
+              console.warn('[gitService] Auto rebase after selective push failed, safely aborted:', rebaseRes.stderr || rebaseRes.stdout);
+            }
+          }
+        } catch (err) {
+          console.warn('[gitService] Auto rebase error:', err);
+        }
       }
 
       return {
@@ -2363,47 +2347,12 @@ export const gitService = {
             continue;
           }
 
-          // Step 2: Fallback to ORT merge strategy favoring incoming commit hunks (-X theirs)
-          await runGit(['cherry-pick', '--abort'], tempDir);
-          const retryRes = await runGit(['cherry-pick', '-x', '--strategy=ort', '-X', 'theirs', hash], tempDir);
-          if (retryRes.code === 0) {
-            newlyPickedCount++;
-            continue;
-          }
-
-          // Step 3: Check if retry became empty
-          const retryOut = (retryRes.stdout + '\n' + retryRes.stderr).toLowerCase();
-          if (
-            retryOut.includes('previous cherry-pick is now empty') ||
-            retryOut.includes('nothing to commit') ||
-            retryOut.includes('is now empty')
-          ) {
-            await runGit(['cherry-pick', '--skip'], tempDir);
-            alreadyAppliedCount++;
-            continue;
-          }
-
-          // Step 4: Check if remaining conflict is modify/delete (where a file introduced in predecessor commits was kept in tree)
-          const statusRes = await runGit(['status', '--porcelain'], tempDir);
-          const statusLines = (statusRes.stdout || '').split(/\r?\n/).filter(Boolean);
-          const hasUnresolvedConflict = statusLines.some((l) => l.startsWith('UU') || l.startsWith('AA') || l.startsWith('DD'));
-          const hasModifyDelete = statusLines.some((l) => l.startsWith('UD') || l.startsWith('DU') || l.startsWith('MD'));
-
-          if (!hasUnresolvedConflict && hasModifyDelete) {
-            await runGit(['add', '-A'], tempDir);
-            const contRes = await runGit(['-c', 'core.editor=true', 'cherry-pick', '--continue'], tempDir);
-            if (contRes.code === 0) {
-              newlyPickedCount++;
-              continue;
-            }
-          }
-
-          // Step 5: True unresolvable conflict
+          // If cherry-pick has conflict, report genuine conflict without corrupting target branch
           await runGit(['cherry-pick', '--abort'], tempDir);
           return {
             success: false,
             isConflict: true,
-            message: `同步失败: 提交 ${hash.slice(0, 7)} 同步到 '${targetBranch}' 分支时产生代码冲突，无法自动拣选。`,
+            message: `同步失败: 提交 ${hash.slice(0, 7)} 同步到 '${targetBranch}' 分支时产生代码冲突，无法自动拣选。请检查两分支代码差异。`,
           };
         } else {
           newlyPickedCount++;

@@ -1256,7 +1256,7 @@ export const PushCommitsModal: React.FC = () => {
                 />
                 <div className="flex-1 min-w-0">
                   <span className="font-semibold text-theme-main">直接推送到目标远端分支</span>
-                  <p className="text-[11px] text-theme-dim mt-0.5">直接将提交合并推送到远端 {remoteName}:{targetBranch}</p>
+                  <p className="text-[11px] text-theme-dim mt-0.5">将所选独立提交推送至远端 {remoteName}:{targetBranch}，并自动快进同步本地基准（保障后续拉取无冲突）</p>
                 </div>
               </label>
 
@@ -1270,7 +1270,7 @@ export const PushCommitsModal: React.FC = () => {
                 />
                 <div className="flex-1 min-w-0">
                   <span className="font-semibold text-theme-main">新建补丁分支并推送 (推荐用于提审/PR)</span>
-                  <p className="text-[11px] text-theme-dim mt-0.5">在远端创建独立分支，便于发起审查或合并请求</p>
+                  <p className="text-[11px] text-theme-dim mt-0.5">在远端创建独立分支，不改变主分支结构，便于发起审查或合并请求</p>
                   {selectiveModal.mode === 'patch' && (
                     <input
                       type="text"
@@ -1283,6 +1283,13 @@ export const PushCommitsModal: React.FC = () => {
                 </div>
               </label>
             </div>
+
+            {pushError && (
+              <div className="p-2.5 rounded bg-rose-500/15 border border-rose-500/30 text-rose-400 text-xs flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
+                <span className="leading-snug">{pushError}</span>
+              </div>
+            )}
 
             <div className="flex items-center justify-end gap-2 pt-1">
               <button
