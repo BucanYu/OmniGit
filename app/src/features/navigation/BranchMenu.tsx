@@ -53,6 +53,7 @@ export function BranchMenu({ onClose }: BranchMenuProps) {
     checkoutAndUpdate,
     pushBranch,
     openPushModal,
+    prefetchOutgoingCommits,
     checkoutTagOrRevision,
     showBranchDiffWithWorkingTree,
     compareBranchWithCurrent,
@@ -93,10 +94,17 @@ export function BranchMenu({ onClose }: BranchMenuProps) {
     ? branches.filter((b) => b && typeof b.name === 'string')
     : [];
   const currentBranchObj = safeBranches.find((b) => b && (b.isCurrent || b.name === currentBranchName));
-  const outgoingCount = Math.max(activeProject?.outgoing || 0, currentBranchObj?.outgoing || 0);
-  const incomingCount = Math.max(activeProject?.incoming || 0, currentBranchObj?.incoming || 0);
+  const outgoingCount = activeProject?.outgoing !== undefined ? activeProject.outgoing : (currentBranchObj?.outgoing || 0);
+  const incomingCount = activeProject?.incoming !== undefined ? activeProject.incoming : (currentBranchObj?.incoming || 0);
   const uncommittedCount = files.length;
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Non-blocking prefetch of outgoing commits when menu opens
+  useEffect(() => {
+    if (activeProject && outgoingCount > 0) {
+      prefetchOutgoingCommits(activeProject.path, currentBranchName);
+    }
+  }, [activeProject?.path, currentBranchName, outgoingCount, prefetchOutgoingCommits]);
 
   // Dynamically verify and correct the flyout's position to guarantee 100% visibility
   useLayoutEffect(() => {
@@ -420,6 +428,11 @@ export function BranchMenu({ onClose }: BranchMenuProps) {
 
             {/* Push... */}
             <div
+              onMouseEnter={() => {
+                if (activeProject && outgoingCount > 0) {
+                  prefetchOutgoingCommits(activeProject.path, currentBranchName);
+                }
+              }}
               onClick={() => {
                 openPushModal(currentBranchName);
                 onClose();
@@ -599,6 +612,11 @@ export function BranchMenu({ onClose }: BranchMenuProps) {
                 {/* 5. Push... */}
                 <button
                   type="button"
+                  onMouseEnter={() => {
+                    if (activeProject && outgoingCount > 0) {
+                      prefetchOutgoingCommits(activeProject.path, activeFlyoutBranch);
+                    }
+                  }}
                   onClick={() => {
                     openPushModal(activeFlyoutBranch);
                     onClose();
@@ -631,6 +649,11 @@ export function BranchMenu({ onClose }: BranchMenuProps) {
                 {isTrackedOpen && (
                   <div className="pl-4 py-1 bg-theme-card/50 border-y border-theme/40 space-y-0.5">
                     <div
+                      onMouseEnter={() => {
+                        if (activeProject && outgoingCount > 0) {
+                          prefetchOutgoingCommits(activeProject.path, activeFlyoutBranch);
+                        }
+                      }}
                       onClick={() => {
                         openPushModal(activeFlyoutBranch);
                         onClose();
@@ -849,6 +872,11 @@ export function BranchMenu({ onClose }: BranchMenuProps) {
                 {/* 11. Push... */}
                 <button
                   type="button"
+                  onMouseEnter={() => {
+                    if (activeProject && (activeFlyoutBranchObj?.outgoing || 0) > 0) {
+                      prefetchOutgoingCommits(activeProject.path, activeFlyoutBranch);
+                    }
+                  }}
                   onClick={() => {
                     openPushModal(activeFlyoutBranch);
                     onClose();

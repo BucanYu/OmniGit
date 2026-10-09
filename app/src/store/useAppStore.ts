@@ -424,6 +424,7 @@ interface AppState {
   pushingLoading: boolean;
   pushError: string | null;
   openPushModal: (branchName?: string, targetBranchName?: string) => Promise<void>;
+  prefetchOutgoingCommits: (repoPath?: string, branchName?: string, targetBranchName?: string) => void;
   closePushModal: () => void;
   switchPushSourceBranch: (sourceBranch: string, targetBranch?: string) => Promise<void>;
   executePush: (options?: { force?: boolean; tags?: boolean; targetCommit?: string; targetBranch?: string }) => Promise<{ success: boolean; message: string }>;
@@ -717,6 +718,7 @@ let currentRepoLoadId = 0;
 let lastFocusSyncTime = 0;
 const repoInFlight = new Set<string>();
 const repoSnapshotCache = new Map<string, LightRepoCache>();
+const outgoingCommitsMemoryCache = new Map<string, OutgoingCommitsData>();
 
 // ==========================================
 // 3-Tier Cache Architecture & Safe Storage
@@ -2512,8 +2514,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         .map((b) => ({
           ...b,
           isFavorite: savedFavs.includes(b.name) || Boolean(b.isCurrent),
-          outgoing: b.isCurrent && status.outgoing !== undefined ? status.outgoing : b.outgoing,
-          incoming: b.isCurrent && status.incoming !== undefined ? status.incoming : b.incoming,
+          outgoing: (b.isCurrent || b.name === status.currentBranch) && status.outgoing !== undefined ? status.outgoing : b.outgoing,
+          incoming: (b.isCurrent || b.name === status.currentBranch) && status.incoming !== undefined ? status.incoming : b.incoming,
         }));
 
       const allFiles: GitFileItem[] = normalizeSnapshotFiles(Array.isArray(status?.files) ? status.files : []);
@@ -4668,20 +4670,25 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     const source = branchName || currentProject.currentBranch;
     const target = targetBranchName || source;
-    set((state) => ({
+    const cacheKey = `${currentProject.path.toLowerCase()}::${source}::${target}`;
+    const cached = outgoingCommitsMemoryCache.get(cacheKey) || (get().pushModalSourceBranch === source ? get().outgoingCommitsData : null);
+
+    // 0ms INSTANT UI HYDRATION: If cached data exists, render modal and commits IMMEDIATELY with ZERO spinner delay!
+    set({
       isPushModalOpen: true,
       pushModalSourceBranch: source,
       pushModalTargetBranch: target,
-      outgoingCommitsLoading: true,
+      outgoingCommitsLoading: !cached,
       pushError: null,
       isBranchMenuOpen: false,
-      outgoingCommitsData: state.pushModalSourceBranch === source ? state.outgoingCommitsData : null,
-    }));
+      outgoingCommitsData: cached || null,
+    });
 
     try {
       const url = `/api/git/outgoing-commits?path=${encodeURIComponent(currentProject.path)}&branch=${encodeURIComponent(source)}&targetBranch=${encodeURIComponent(target)}`;
       const res = await fetch(url);
       const data: OutgoingCommitsData = await res.json();
+      outgoingCommitsMemoryCache.set(cacheKey, data);
       set({
         outgoingCommitsData: data,
         pushModalTargetBranch: data.targetBranch || target,
@@ -4693,6 +4700,25 @@ export const useAppStore = create<AppState>((set, get) => ({
         pushError: `Failed to load outgoing commits: ${e.message}`,
       });
     }
+  },
+
+  prefetchOutgoingCommits: (repoPath?: string, branchName?: string, targetBranchName?: string) => {
+    const currentProject = get().projects.find((p) => p.id === get().activeProjectId);
+    const pPath = repoPath || currentProject?.path;
+    if (!pPath) return;
+    const source = branchName || currentProject?.currentBranch || 'main';
+    const target = targetBranchName || source;
+    const cacheKey = `${pPath.toLowerCase()}::${source}::${target}`;
+    if (outgoingCommitsMemoryCache.has(cacheKey)) return;
+
+    fetch(`/api/git/outgoing-commits?path=${encodeURIComponent(pPath)}&branch=${encodeURIComponent(source)}&targetBranch=${encodeURIComponent(target)}`)
+      .then((res) => res.json())
+      .then((data: OutgoingCommitsData) => {
+        if (data && Array.isArray(data.commits)) {
+          outgoingCommitsMemoryCache.set(cacheKey, data);
+        }
+      })
+      .catch(() => {});
   },
 
   switchPushSourceBranch: async (sourceBranch: string, targetBranch?: string) => {
@@ -4864,7 +4890,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ pushingLoading: false });
 
       if (data.success) {
-        set({
+        const pushedHashes = new Set(options.hashes.map((h) => h.toLowerCase()));
+        const pushedCount = options.hashes.length;
+        const currentOut = currentProject.outgoing || 0;
+        const nextOut = Math.max(0, currentOut - pushedCount);
+        outgoingCommitsMemoryCache.clear();
+
+        // 1. Immediately and optimistically update projects, branches, and outgoingCommitsData in 0ms!
+        set((state) => ({
           isPushModalOpen: false,
           pushError: null,
           notification: {
@@ -4873,7 +4906,35 @@ export const useAppStore = create<AppState>((set, get) => ({
             detail: data.message,
             type: 'success',
           },
-        });
+          projects: state.projects.map((p) =>
+            p.id === currentProject.id ? { ...p, outgoing: nextOut } : p
+          ),
+          branches: state.branches.map((b) =>
+            b.name === sourceBranch || b.name === options.targetBranch || b.isCurrent
+              ? { ...b, outgoing: nextOut }
+              : b
+          ),
+          outgoingCommitsData: state.outgoingCommitsData
+            ? {
+                ...state.outgoingCommitsData,
+                commits: state.outgoingCommitsData.commits.filter(
+                  (c) => !pushedHashes.has(c.hash.toLowerCase()) && !pushedHashes.has(c.shortHash.toLowerCase())
+                ),
+              }
+            : null,
+        }));
+
+        // 2. Immediately update memory cache snapshot
+        const cached = repoSnapshotCache.get(currentProject.path.toLowerCase());
+        if (cached) {
+          cached.outgoing = nextOut;
+          cached.branches = cached.branches.map((b) =>
+            b.name === sourceBranch || b.name === options.targetBranch || b.isCurrent
+              ? { ...b, outgoing: nextOut }
+              : b
+          );
+          saveLocalSnapshot(currentProject.path.toLowerCase(), cached);
+        }
 
         await get().loadRepoData(currentProject.path, true);
         await get().fetchCommitLogs(true);
@@ -4907,7 +4968,12 @@ export const useAppStore = create<AppState>((set, get) => ({
           );
           if (!stillOutgoing) {
             // Commit was pushed successfully!
-            set({
+            const pushedCount = options.hashes.length;
+            const currentOut = currentProject.outgoing || 0;
+            const nextOut = Math.max(0, currentOut - pushedCount);
+            outgoingCommitsMemoryCache.clear();
+
+            set((state) => ({
               pushingLoading: false,
               isPushModalOpen: false,
               pushError: null,
@@ -4918,7 +4984,15 @@ export const useAppStore = create<AppState>((set, get) => ({
                 detail: '提交已成功推送到远端',
                 type: 'success',
               },
-            });
+              projects: state.projects.map((p) =>
+                p.id === currentProject.id ? { ...p, outgoing: nextOut } : p
+              ),
+              branches: state.branches.map((b) =>
+                b.name === sourceBranch || b.name === options.targetBranch || b.isCurrent
+                  ? { ...b, outgoing: nextOut }
+                  : b
+              ),
+            }));
             await get().loadRepoData(currentProject.path, true);
             await get().fetchCommitLogs(true);
             get().pollWorkspaceSyncStatus();
@@ -5641,6 +5715,11 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       set((curr) => {
         let hasChanged = false;
+        const activeProj = curr.projects.find((p) => p.id === curr.activeProjectId);
+        const activeMatch = activeProj
+          ? statuses.find((s) => s.path.toLowerCase() === activeProj.path.toLowerCase())
+          : null;
+
         const updatedProjects = curr.projects.map((p) => {
           const match = statuses.find((s) => s.path.toLowerCase() === p.path.toLowerCase());
           if (match) {
@@ -5663,12 +5742,29 @@ export const useAppStore = create<AppState>((set, get) => ({
           return p;
         });
 
+        let updatedBranches = curr.branches;
+        if (activeMatch) {
+          updatedBranches = curr.branches.map((b) => {
+            const isCurr = b.isCurrent || b.name === (activeMatch.currentBranch || activeProj?.currentBranch);
+            if (isCurr && (b.outgoing !== activeMatch.outgoing || b.incoming !== activeMatch.incoming)) {
+              hasChanged = true;
+              return {
+                ...b,
+                outgoing: activeMatch.outgoing,
+                incoming: activeMatch.incoming,
+              };
+            }
+            return b;
+          });
+        }
+
         if (!hasChanged) {
           return {}; // Do not trigger store change if nothing changed
         }
 
         return {
           projects: updatedProjects,
+          branches: updatedBranches,
         };
       });
     } catch {

@@ -1935,75 +1935,82 @@ export const gitService = {
   ): Promise<OutgoingCommitsData> {
     // 1. Resolve source branch
     let sourceBranch = branchName ? branchName.replace(/^origin\//, '') : '';
+    const remote = 'origin';
+    let targetBranch = targetBranchName ? targetBranchName.replace(/^origin\//, '') : (sourceBranch || 'dev');
+
     if (!sourceBranch) {
       const bRes = await runGit(['branch', '--show-current'], repoPath);
       sourceBranch = bRes.stdout || 'dev';
-    }
-
-    // 2. Resolve upstream and remote
-    const remote = 'origin';
-    let targetBranch = targetBranchName ? targetBranchName.replace(/^origin\//, '') : sourceBranch;
-    if (!targetBranchName) {
-      const upRes = await runGit(['rev-parse', '--abbrev-ref', `${sourceBranch}@{upstream}`], repoPath);
-      if (upRes.code === 0 && upRes.stdout) {
-        targetBranch = upRes.stdout.replace(/^origin\//, '');
+      if (!targetBranchName) {
+        targetBranch = sourceBranch;
       }
+    } else if (!targetBranchName) {
+      targetBranch = sourceBranch;
     }
 
-    // 3. Query outgoing commits
-    // Check if remote tracking branch exists
-    const checkRemote = await runGit(['rev-parse', '--verify', '--quiet', `${remote}/${targetBranch}`], repoPath);
-    let rawLog = '';
+    // 2. 0ms local disk check to verify if remote tracking branch exists (No child process spawn!)
+    let gitDir = path.join(repoPath, '.git');
+    try {
+      if (fs.existsSync(gitDir) && fs.statSync(gitDir).isFile()) {
+        const content = fs.readFileSync(gitDir, 'utf8');
+        const match = content.match(/gitdir:\s*(.+)/i);
+        if (match && match[1]) {
+          gitDir = path.resolve(repoPath, match[1].trim());
+        }
+      }
+    } catch {}
 
-    if (checkRemote.code === 0) {
-      // Remote tracking ref exists!
-      // Use --cherry-pick --right-only remote...local to automatically exclude commits whose patches
-      // have already been selectively pushed / cherry-picked into the remote branch
-      const range = `${remote}/${targetBranch}...${sourceBranch}`;
-      const logRes = await runGit([
-        'log',
-        '--cherry-pick',
-        '--right-only',
-        range,
-        '--pretty=format:%x1e%H%x00%h%x00%an%x00%ae%x00%ad%x00%s%x00%b%x1f',
-        '--name-status',
-        '-n', '300',
-      ], repoPath);
-      rawLog = (logRes.stdout || '').trim();
-    } else {
-      // Remote branch doesn't exist yet: all commits on sourceBranch are outgoing
-      const fullLog = await runGit([
-        'log',
-        sourceBranch,
-        '-n', '100',
-        '--pretty=format:%x1e%H%x00%h%x00%an%x00%ae%x00%ad%x00%s%x00%b%x1f',
-        '--name-status',
-      ], repoPath);
-      rawLog = (fullLog.stdout || '').trim();
+    const remoteRefPath = path.join(gitDir, 'refs', 'remotes', remote, targetBranch);
+    let remoteExists = fs.existsSync(remoteRefPath);
+    if (!remoteExists) {
+      try {
+        const packedPath = path.join(gitDir, 'packed-refs');
+        if (fs.existsSync(packedPath)) {
+          const content = fs.readFileSync(packedPath, 'utf8');
+          remoteExists = content.includes(`refs/remotes/${remote}/${targetBranch}`);
+        }
+      } catch {}
+    }
+
+    if (!remoteExists) {
+      // Fallback verification only if not found on disk
+      const verifyRes = await runGit(['rev-parse', '--verify', '--quiet', `${remote}/${targetBranch}`], repoPath);
+      remoteExists = verifyRes.code === 0;
     }
 
     let commits: OutgoingCommitItem[] = [];
     let allFiles: OutgoingCommitFile[] = [];
 
-    if (rawLog) {
-      const parsed = parseGitLogBatchOutput(rawLog);
-      commits = parsed.commits;
-      allFiles = parsed.allFiles;
-    }
-
-    // Precise cross verification:
-    // If remote tracking branch exists, check remote log for explicit cherry-pick references
-    // or matching subject+author signatures to filter out commits already pushed.
-    // (Note: `git log --cherry-pick --right-only` above already eliminates patch-identical commits natively in C).
-    if (checkRemote.code === 0 && commits.length > 0) {
-      try {
-        const remoteLogRes = await runGit([
+    if (remoteExists) {
+      // 3. Ultra-fast parallel execution:
+      // Run cherry-pick outgoing log AND remote log concurrently in ~300ms total!
+      const range = `${remote}/${targetBranch}...${sourceBranch}`;
+      const [logRes, remoteLogRes] = await Promise.all([
+        runGit([
+          'log',
+          '--cherry-pick',
+          '--right-only',
+          range,
+          '--pretty=format:%x1e%H%x00%h%x00%an%x00%ae%x00%ad%x00%s%x00%b%x1f',
+          '--name-status',
+          '-n', '300',
+        ], repoPath),
+        runGit([
           'log',
           `${remote}/${targetBranch}`,
           '-n', '50',
           '--pretty=format:%x1e%H%x00%s%x00%b%x00%ae%x00%an%x1f',
-        ], repoPath);
+        ], repoPath),
+      ]);
 
+      const rawLog = (logRes.stdout || '').trim();
+      if (rawLog) {
+        const parsed = parseGitLogBatchOutput(rawLog);
+        commits = parsed.commits;
+        allFiles = parsed.allFiles;
+      }
+
+      try {
         const remoteCherryPickedSources = new Set<string>();
         const remoteSubjectAuthors = new Set<string>();
 
@@ -2062,6 +2069,21 @@ export const gitService = {
           allFiles = Array.from(fileMap.values());
         }
       } catch {}
+    } else {
+      // Remote branch doesn't exist yet: all commits on sourceBranch are outgoing
+      const fullLog = await runGit([
+        'log',
+        sourceBranch,
+        '-n', '100',
+        '--pretty=format:%x1e%H%x00%h%x00%an%x00%ae%x00%ad%x00%s%x00%b%x1f',
+        '--name-status',
+      ], repoPath);
+      const rawLog = (fullLog.stdout || '').trim();
+      if (rawLog) {
+        const parsed = parseGitLogBatchOutput(rawLog);
+        commits = parsed.commits;
+        allFiles = parsed.allFiles;
+      }
     }
 
     return {

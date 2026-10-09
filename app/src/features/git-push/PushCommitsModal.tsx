@@ -673,7 +673,7 @@ export const PushCommitsModal: React.FC = () => {
             {outgoingCommitsLoading ? (
               <span className="flex items-center gap-1 text-sky-400">
                 <Loader2 className="w-3 h-3 animate-spin" />
-                <span>{t.modals.push.scanningCommits}</span>
+                <span>{commits.length > 0 ? `${t.modals.push.commitsToPush(commits.length)} (校验中...)` : t.modals.push.scanningCommits}</span>
               </span>
             ) : (
               <span>
@@ -730,7 +730,7 @@ export const PushCommitsModal: React.FC = () => {
             </div>
 
             <div className="flex-1 overflow-y-auto p-1 space-y-1">
-              {outgoingCommitsLoading ? (
+              {outgoingCommitsLoading && (!outgoingCommitsData || commits.length === 0) ? (
                 <div className="p-8 text-center text-theme-dim space-y-2">
                   <Loader2 className="w-5 h-5 animate-spin mx-auto text-sky-400" />
                   <p>{t.modals.push.loadingCommits}</p>
@@ -913,7 +913,12 @@ export const PushCommitsModal: React.FC = () => {
 
             {/* File List / Tree View */}
             <div className="flex-1 overflow-y-auto p-2">
-              {displayedFiles.length === 0 ? (
+              {outgoingCommitsLoading && (!outgoingCommitsData || commits.length === 0) ? (
+                <div className="p-8 text-center text-theme-dim text-xs flex flex-col items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin text-sky-400" />
+                  <span>{t.modals.push.loadingCommits}</span>
+                </div>
+              ) : displayedFiles.length === 0 ? (
                 <div className="p-8 text-center text-theme-dim text-xs">
                   {t.modals.push.noChangedFiles}
                 </div>
