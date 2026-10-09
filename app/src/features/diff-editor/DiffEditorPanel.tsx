@@ -25,6 +25,23 @@ import {
   RefreshCw,
 } from 'lucide-react';
 
+function hasGitConflictMarkers(text: string): boolean {
+  if (!text || (!text.includes('<<<<<<<') && !text.includes('======='))) return false;
+  if (/(?:^|\r?\n)<<<<<<< [^\r\n]*\r?\n[\s\S]*?(?:^|\r?\n)=======(?:\r?\n)[\s\S]*?(?:^|\r?\n)>>>>>>> [^\r\n]*/m.test(text)) {
+    return true;
+  }
+  const lines = text.split(/\r?\n/);
+  let hasStart = false;
+  for (const line of lines) {
+    if (line.startsWith('<<<<<<< ') || line.startsWith('<<<<<<<HEAD') || line.startsWith('<<<<<<< HEAD')) {
+      hasStart = true;
+    } else if (hasStart && (line === '=======' || line.startsWith('======='))) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function getLanguageFromPath(filePath: string): string {
   const ext = filePath.split('.').pop()?.toLowerCase() || '';
   switch (ext) {
@@ -854,7 +871,7 @@ export function DiffEditorPanel() {
       </div>
 
       {/* 1.5 Conflict Resolver Action Bar (IntelliJ IDEA style) */}
-      {(selectedFile?.status === 'conflict' || (Boolean(modifiedContent) && modifiedContent.includes('<<<<<<<'))) && (
+      {!isHistorical && (selectedFile?.status === 'conflict' || (Boolean(modifiedContent) && hasGitConflictMarkers(modifiedContent))) && (
         <div className="px-3 py-2 bg-amber-500/15 border-b border-amber-500/30 flex items-center justify-between text-xs animate-in fade-in shrink-0 overflow-hidden flex-wrap gap-1.5">
           <div className="flex items-center gap-2 text-amber-300">
             <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />

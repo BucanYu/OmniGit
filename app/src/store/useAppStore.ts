@@ -840,6 +840,20 @@ function normalizeSnapshotFiles(files: any[]): GitFileItem[] {
   });
 }
 
+// Sanitizes a snapshot so cold-start hydration NEVER speculatively assumes an in-progress merge conflict.
+// Active merge conflicts are volatile runtime states determined solely by live Git (.git/MERGE_HEAD).
+function sanitizeSnapshot(snapshot: LightRepoCache): LightRepoCache {
+  if (!snapshot) return snapshot;
+  const cleanFiles = (snapshot.files || []).filter((f) => f.status !== 'conflict');
+  return {
+    ...snapshot,
+    isMerging: false,
+    conflictedCount: 0,
+    mergeMessage: '',
+    files: cleanFiles,
+  };
+}
+
 // L1 / L2 / L3 Snapshot Persistence
 function getLocalSnapshot(rawPath: string): LightRepoCache | null {
   if (typeof window === 'undefined') return null;
@@ -850,7 +864,7 @@ function getLocalSnapshot(rawPath: string): LightRepoCache | null {
     if (cached && cached.files) {
       cached.files = normalizeSnapshotFiles(cached.files);
     }
-    return cached;
+    return sanitizeSnapshot(cached);
   }
   // 2. Check L2 Web Storage
   try {
@@ -861,8 +875,9 @@ function getLocalSnapshot(rawPath: string): LightRepoCache | null {
         if (parsed.files) {
           parsed.files = normalizeSnapshotFiles(parsed.files);
         }
-        repoSnapshotCache.set(normPath, parsed);
-        return parsed;
+        const clean = sanitizeSnapshot(parsed);
+        repoSnapshotCache.set(normPath, clean);
+        return clean;
       }
     }
   } catch {}
@@ -879,8 +894,9 @@ export async function loadDiskSnapshot(repoPath: string): Promise<LightRepoCache
       if (diskSnap.files) {
         diskSnap.files = normalizeSnapshotFiles(diskSnap.files);
       }
-      repoSnapshotCache.set(normPath, diskSnap);
-      return diskSnap;
+      const clean = sanitizeSnapshot(diskSnap);
+      repoSnapshotCache.set(normPath, clean);
+      return clean;
     }
   } catch {}
   return null;
@@ -896,6 +912,8 @@ function saveLocalSnapshot(rawPath: string, snapshot: LightRepoCache) {
   repoSnapshotCache.set(normPath, safeSnapshot);
 
   // 2. L2 Web Storage: Ultra-lightweight skeleton only (~3KB, prevents QuotaExceededError!)
+  // Filter out conflict files and set isMerging: false so cold-start never speculatively flashes merge conflicts
+  const nonConflictFiles = normalizedFiles.filter((f) => f.status !== 'conflict');
   try {
     const lightSnapshot = {
       repoPath: snapshot.repoPath,
@@ -911,7 +929,7 @@ function saveLocalSnapshot(rawPath: string, snapshot: LightRepoCache) {
         incoming: b.incoming,
         outgoing: b.outgoing,
       })),
-      files: normalizedFiles.slice(0, 50).map((f) => ({
+      files: nonConflictFiles.slice(0, 50).map((f) => ({
         path: f.path,
         fileName: f.fileName,
         dirPath: f.dirPath,
@@ -931,9 +949,9 @@ function saveLocalSnapshot(rawPath: string, snapshot: LightRepoCache) {
         authorName: c.authorName || '',
         date: c.date || '',
       })),
-      isMerging: snapshot.isMerging,
-      mergeMessage: snapshot.mergeMessage,
-      conflictedCount: snapshot.conflictedCount,
+      isMerging: false, // Never persist volatile merge conflict state to cold-start cache
+      mergeMessage: '',
+      conflictedCount: 0,
       lastUpdated: snapshot.lastUpdated || Date.now(),
     };
     safeLocalStorageSetItem(`omnigit_snap_${normPath}`, JSON.stringify(lightSnapshot));
@@ -944,7 +962,16 @@ function saveLocalSnapshot(rawPath: string, snapshot: LightRepoCache) {
     fetch('/api/git/cache/snapshot', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: snapshot.repoPath, snapshot }),
+      body: JSON.stringify({
+        path: snapshot.repoPath,
+        snapshot: {
+          ...snapshot,
+          files: nonConflictFiles,
+          isMerging: false,
+          mergeMessage: '',
+          conflictedCount: 0,
+        },
+      }),
     }).catch(() => {});
   } catch {}
 }
@@ -1996,12 +2023,12 @@ export const useAppStore = create<AppState>((set, get) => ({
           projects: instantProjects,
           activeProjectId: activeProject.id,
           commitMessage: initialDraft || activeCached.commitMessage || '',
-          files: normalizeSnapshotFiles(activeCached.files || []),
+          files: normalizeSnapshotFiles(activeCached.files || []).filter((f) => f.status !== 'conflict'),
           branches: activeCached.branches || [],
           commitLogs: activeCached.commitLogs || [],
-          isMerging: activeCached.isMerging || false,
-          mergeMessage: activeCached.mergeMessage || '',
-          conflictedCount: activeCached.conflictedCount || 0,
+          isMerging: false,
+          mergeMessage: '',
+          conflictedCount: 0,
           isRepoLoading: false,
           isLoading: false,
         });
@@ -2431,13 +2458,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       const currentActive = get().projects.find((p) => p.id === get().activeProjectId);
       if (currentActive && normalizePath(currentActive.path) === normPath) {
         set({
-          files: normalizeSnapshotFiles(cached.files || []),
+          files: normalizeSnapshotFiles(cached.files || []).filter((f) => f.status !== 'conflict'),
           branches: cached.branches,
           commitLogs: cached.commitLogs || get().commitLogs,
-          isMerging: cached.isMerging,
-          mergeMessage: cached.mergeMessage,
-          mergeSourceBranch: cached.mergeSourceBranch,
-          conflictedCount: cached.conflictedCount,
+          isMerging: false,
+          mergeMessage: '',
+          mergeSourceBranch: undefined,
+          conflictedCount: 0,
           lastCommitDetails: cached.lastCommitDetails,
           commitHistory: cached.commitHistory,
           isRepoLoading: false,
@@ -2777,7 +2804,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({
         activeProjectId: id,
         isRepoLoading: false,
-        files: normalizeSnapshotFiles(Array.isArray(cached.files) ? cached.files : []),
+        files: normalizeSnapshotFiles(Array.isArray(cached.files) ? cached.files : []).filter((f) => f.status !== 'conflict'),
         branches: Array.isArray(cached.branches) ? cached.branches : [],
         selectedFilePath: cached.selectedFilePath,
         selectedFileDiff: { oldContent: '', newContent: '' }, // Loaded on demand below
@@ -2791,10 +2818,10 @@ export const useAppStore = create<AppState>((set, get) => ({
         historicalDiff: null,
         commitLogs: Array.isArray(cached.commitLogs) ? cached.commitLogs : [],
         commitLogsSkip: Array.isArray(cached.commitLogs) ? cached.commitLogs.length : 0,
-        isMerging: Boolean(cached.isMerging),
-        mergeMessage: cached.mergeMessage || '',
-        mergeSourceBranch: cached.mergeSourceBranch,
-        conflictedCount: Number(cached.conflictedCount) || 0,
+        isMerging: false,
+        mergeMessage: '',
+        mergeSourceBranch: undefined,
+        conflictedCount: 0,
       });
 
       get().syncCurrentWorkspaceToSaved(targetProject.path);

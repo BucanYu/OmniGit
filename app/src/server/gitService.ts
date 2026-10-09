@@ -287,6 +287,30 @@ function runGit(
 }
 
 
+/**
+ * Accurately detects genuine Git conflict markers.
+ * Must start at beginning of line (column 0) to avoid false positives on source code
+ * string literals or regexes containing '<<<<<<<'.
+ */
+export function hasGitConflictMarkers(text: string): boolean {
+  if (!text || (!text.includes('<<<<<<<') && !text.includes('======='))) return false;
+  // Match full standard Git conflict block
+  if (/(?:^|\r?\n)<<<<<<< [^\r\n]*\r?\n[\s\S]*?(?:^|\r?\n)=======(?:\r?\n)[\s\S]*?(?:^|\r?\n)>>>>>>> [^\r\n]*/m.test(text)) {
+    return true;
+  }
+  // Fallback: check if lines actually start with git conflict markers at column 0
+  const lines = text.split(/\r?\n/);
+  let hasStart = false;
+  for (const line of lines) {
+    if (line.startsWith('<<<<<<< ') || line.startsWith('<<<<<<<HEAD') || line.startsWith('<<<<<<< HEAD')) {
+      hasStart = true;
+    } else if (hasStart && (line === '=======' || line.startsWith('======='))) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function getSystemGitCredentials(): Promise<Array<{ target: string; host: string; username: string }>> {
   return new Promise((resolve) => {
     const credentials: Array<{ target: string; host: string; username: string }> = [];
@@ -783,10 +807,7 @@ export const gitService = {
               const stats = fs.statSync(fullPath);
               if (stats.size < 5 * 1024 * 1024) {
                 const content = fs.readFileSync(fullPath, 'utf8');
-                const hasConflictMarkers =
-                  content.includes('<<<<<<<') ||
-                  content.includes('=======') ||
-                  content.includes('>>>>>>>');
+                const hasConflictMarkers = hasGitConflictMarkers(content);
                 if (!hasConflictMarkers) {
                   // Conflict markers were resolved externally in another editor/tool!
                   // Auto-stage with `git add` to synchronize Git index with the resolved working copy.
@@ -1018,7 +1039,7 @@ export const gitService = {
     try {
       fs.writeFileSync(fullPath, content, 'utf8');
       // If the file was in conflict, and now has no conflict markers, auto-mark as resolved via git add!
-      if (!content.includes('<<<<<<<') && !content.includes('=======') && !content.includes('>>>>>>>')) {
+      if (!hasGitConflictMarkers(content)) {
         const statusRes = await runGit(['status', '--porcelain=v1', '--', filePath], repoPath);
         if (statusRes.stdout && (statusRes.stdout.includes('U') || statusRes.stdout.startsWith('AA'))) {
           await runGit(['add', '--', filePath], repoPath);
@@ -2811,10 +2832,7 @@ export const gitService = {
       }
     } catch {}
 
-    const hasConflictMarkers =
-      result.includes('<<<<<<<') ||
-      result.includes('=======') ||
-      result.includes('>>>>>>>');
+    const hasConflictMarkers = hasGitConflictMarkers(result);
 
     // If file on disk has no conflict markers, it was resolved outside or manually!
     if (!hasConflictMarkers && fs.existsSync(fullPath)) {
@@ -2889,7 +2907,7 @@ export const gitService = {
           currentFileContent = fs.readFileSync(fullPath, 'utf8');
         } catch {}
       }
-      if (currentFileContent.includes('<<<<<<<') && currentFileContent.includes('=======')) {
+      if (hasGitConflictMarkers(currentFileContent)) {
         return {
           success: false,
           message: '标记解决失败: 文件中仍包含未解决的代码冲突标记 (<<<<<<< 或 =======)，请先清除冲突标记',
@@ -2924,7 +2942,7 @@ export const gitService = {
     }
 
     if (resolution === 'content' && typeof content === 'string') {
-      if (content.includes('<<<<<<<') && content.includes('=======')) {
+      if (hasGitConflictMarkers(content)) {
         return {
           success: false,
           message: 'Save failed / 保存失败: Code still contains unresolved conflict markers (<<<<<<< or =======)',
@@ -3224,12 +3242,14 @@ export const gitService = {
           incoming: Number(b.incoming) || 0,
           outgoing: Number(b.outgoing) || 0,
         })),
-        files: (snapshot.files || []).map((f: any) => ({
-          path: f.path,
-          status: f.status,
-          staged: Boolean(f.staged),
-          oldPath: f.oldPath,
-        })),
+        files: (snapshot.files || [])
+          .filter((f: any) => f.status !== 'conflict')
+          .map((f: any) => ({
+            path: f.path,
+            status: f.status,
+            staged: Boolean(f.staged),
+            oldPath: f.oldPath,
+          })),
         selectedFilePath: snapshot.selectedFilePath || null,
         commitMessage: snapshot.commitMessage || '',
         commitHistory: (snapshot.commitHistory || []).slice(0, 30),
@@ -3243,10 +3263,10 @@ export const gitService = {
           date: c.date || '',
           refs: c.refs || '',
         })),
-        isMerging: Boolean(snapshot.isMerging),
-        mergeMessage: snapshot.mergeMessage || '',
-        mergeSourceBranch: snapshot.mergeSourceBranch,
-        conflictedCount: Number(snapshot.conflictedCount) || 0,
+        isMerging: false, // Never persist volatile merge conflict state to cold-start cache
+        mergeMessage: '',
+        mergeSourceBranch: undefined,
+        conflictedCount: 0,
         lastUpdated: Date.now(),
       };
 
