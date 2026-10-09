@@ -13,10 +13,14 @@ function gitApiPlugin(): Plugin {
       // 监听后端服务代码 (src/server/**)，在修改时自动重启 Vite 服务器以重新加载后端中间件
       const serverDir = path.resolve(__dirname, 'src/server')
       server.watcher.add(serverDir)
+      let restartTimer: NodeJS.Timeout | null = null
       const onServerFileChange = (file: string) => {
         if (file.startsWith(serverDir) || file.includes('src/server') || file.includes('src\\server')) {
-          console.log('\x1b[36m%s\x1b[0m', `[OmniGit] Detected backend file change (${path.basename(file)}), auto-restarting server...`)
-          server.restart()
+          if (restartTimer) clearTimeout(restartTimer)
+          restartTimer = setTimeout(() => {
+            console.log('\x1b[36m%s\x1b[0m', `[OmniGit] Detected backend file change (${path.basename(file)}), debounced restarting server...`)
+            server.restart()
+          }, 1500)
         }
       }
       server.watcher.on('change', onServerFileChange)

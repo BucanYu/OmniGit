@@ -1234,8 +1234,9 @@ export const PushCommitsModal: React.FC = () => {
               </div>
               <button
                 type="button"
-                onClick={() => setSelectiveModal(null)}
-                className="p-1 text-theme-dim hover:text-theme-main rounded transition cursor-pointer"
+                disabled={pushingLoading}
+                onClick={() => !pushingLoading && setSelectiveModal(null)}
+                className="p-1 text-theme-dim hover:text-theme-main rounded transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1294,8 +1295,9 @@ export const PushCommitsModal: React.FC = () => {
             <div className="flex items-center justify-end gap-2 pt-1">
               <button
                 type="button"
+                disabled={pushingLoading}
                 onClick={() => setSelectiveModal(null)}
-                className="px-3.5 py-1.5 rounded bg-theme-card hover:bg-theme-card-hover border border-theme-border-card text-theme-main text-xs transition cursor-pointer"
+                className="px-3.5 py-1.5 rounded bg-theme-card hover:bg-theme-card-hover border border-theme-border-card text-theme-main text-xs transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 取消
               </button>

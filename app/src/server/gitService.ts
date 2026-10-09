@@ -286,66 +286,6 @@ function runGit(
   });
 }
 
-function getPatchIdsForRange(
-  revArgs: string[],
-  repoPath: string,
-  timeout = 10000
-): Promise<Map<string, string>> {
-  return new Promise((resolve) => {
-    try {
-      const gitLog = spawn('git', ['log', '-p', ...revArgs], {
-        cwd: repoPath,
-        windowsHide: true,
-      });
-      const gitPatchId = spawn('git', ['patch-id', '--stable'], {
-        cwd: repoPath,
-        windowsHide: true,
-      });
-
-      gitLog.stdout.pipe(gitPatchId.stdin);
-      let output = '';
-      gitPatchId.stdout.on('data', (data) => {
-        output += data.toString();
-      });
-
-      const timer = setTimeout(() => {
-        try {
-          gitLog.kill();
-          gitPatchId.kill();
-        } catch {}
-        resolve(new Map());
-      }, timeout);
-
-      gitPatchId.on('close', () => {
-        clearTimeout(timer);
-        const map = new Map<string, string>(); // commitHash -> patchId
-        for (const line of output.split(/\r?\n/)) {
-          const trimmed = line.trim();
-          if (trimmed) {
-            const parts = trimmed.split(/\s+/);
-            if (parts.length >= 2) {
-              const patchId = parts[0];
-              const commitHash = parts[1];
-              map.set(commitHash, patchId);
-            }
-          }
-        }
-        resolve(map);
-      });
-
-      gitLog.on('error', () => {
-        clearTimeout(timer);
-        resolve(new Map());
-      });
-      gitPatchId.on('error', () => {
-        clearTimeout(timer);
-        resolve(new Map());
-      });
-    } catch {
-      resolve(new Map());
-    }
-  });
-}
 
 function getSystemGitCredentials(): Promise<Array<{ target: string; host: string; username: string }>> {
   return new Promise((resolve) => {
@@ -2030,25 +1970,19 @@ export const gitService = {
       allFiles = parsed.allFiles;
     }
 
-    // Precise multi-dimensional cross verification:
-    // If remote tracking branch exists, check whether any of the candidate commits' patches
-    // already exist on the target branch (e.g. cherry-picked or already merged)
+    // Precise cross verification:
+    // If remote tracking branch exists, check remote log for explicit cherry-pick references
+    // or matching subject+author signatures to filter out commits already pushed.
+    // (Note: `git log --cherry-pick --right-only` above already eliminates patch-identical commits natively in C).
     if (checkRemote.code === 0 && commits.length > 0) {
       try {
-        const [targetPatchMap, outgoingPatchMap, remoteLogRes] = await Promise.all([
-          getPatchIdsForRange(['-n', '80', `${remote}/${targetBranch}`], repoPath),
-          getPatchIdsForRange(['-n', String(commits.length + 10), `${remote}/${targetBranch}..${sourceBranch}`], repoPath),
-          runGit([
-            'log',
-            `${remote}/${targetBranch}`,
-            '-n', '100',
-            '--pretty=format:%x1e%H%x00%s%x00%b%x00%ae%x00%an%x1f',
-          ], repoPath),
-        ]);
+        const remoteLogRes = await runGit([
+          'log',
+          `${remote}/${targetBranch}`,
+          '-n', '50',
+          '--pretty=format:%x1e%H%x00%s%x00%b%x00%ae%x00%an%x1f',
+        ], repoPath);
 
-        const targetPatchIds = new Set(targetPatchMap.values());
-
-        // Parse remote log to extract cherry-pick references and subject+author signatures
         const remoteCherryPickedSources = new Set<string>();
         const remoteSubjectAuthors = new Set<string>();
 
@@ -2081,10 +2015,6 @@ export const gitService = {
         }
 
         const filteredCommits = commits.filter((c) => {
-          const pId = outgoingPatchMap.get(c.hash);
-          if (pId && targetPatchIds.has(pId)) {
-            return false; // Patch already exists in target remote branch!
-          }
           if (
             remoteCherryPickedSources.has(c.hash) ||
             remoteCherryPickedSources.has(c.shortHash)
@@ -2230,19 +2160,16 @@ export const gitService = {
       const headRes = await runGit(['rev-parse', 'HEAD'], tempDir);
       const pushedCommit = headRes.code === 0 && headRes.stdout.trim() ? headRes.stdout.trim() : 'HEAD';
 
-      // Immediately fetch into local workspace so origin/${finalTargetBranch} is updated locally!
-      try {
-        await runGit(['fetch', remote, `${finalTargetBranch}:refs/remotes/${remote}/${finalTargetBranch}`], repoPath);
-      } catch {
+      // 1. Immediately update local tracking ref using update-ref in 0ms (no blocking network fetch delay!)
+      if (pushedCommit && pushedCommit !== 'HEAD') {
         try {
-          await runGit(['fetch', remote, finalTargetBranch], repoPath);
-        } catch {}
+          await runGit(['update-ref', `refs/remotes/${remote}/${finalTargetBranch}`, pushedCommit], repoPath);
+        } catch (err) {
+          console.warn('[gitService] update-ref tracking branch error:', err);
+        }
       }
-      try {
-        await runGit(['fetch', remote], repoPath);
-      } catch {}
 
-      // If created a new branch, update local branch reference to point to the new pushed commit
+      // 2. If created a new branch, update local branch reference to point to the new pushed commit
       if (newBranch) {
         await runGit(['branch', '-f', newBranch, pushedCommit], repoPath);
       } else {
@@ -2263,6 +2190,9 @@ export const gitService = {
           console.warn('[gitService] Auto rebase error:', err);
         }
       }
+
+      // 3. Best-effort non-blocking background sync of remote ref
+      runGit(['fetch', remote, finalTargetBranch], repoPath).catch(() => {});
 
       return {
         success: true,

@@ -4641,15 +4641,15 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     const source = branchName || currentProject.currentBranch;
     const target = targetBranchName || source;
-    set({
+    set((state) => ({
       isPushModalOpen: true,
       pushModalSourceBranch: source,
       pushModalTargetBranch: target,
-      outgoingCommitsData: null,
       outgoingCommitsLoading: true,
       pushError: null,
       isBranchMenuOpen: false,
-    });
+      outgoingCommitsData: state.pushModalSourceBranch === source ? state.outgoingCommitsData : null,
+    }));
 
     try {
       const url = `/api/git/outgoing-commits?path=${encodeURIComponent(currentProject.path)}&branch=${encodeURIComponent(source)}&targetBranch=${encodeURIComponent(target)}`;
@@ -4779,8 +4779,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
       return data;
     } catch (e: any) {
-      set({ pushingLoading: false, pushError: e.message });
-      return { success: false, message: e.message };
+      const errorMsg = e?.message === 'Failed to fetch'
+        ? '网络连接中断或服务正在重载，请检查网络后重试 (Failed to fetch)'
+        : (e?.message || '推送请求异常');
+      set({ pushingLoading: false, pushError: errorMsg });
+      return { success: false, message: errorMsg };
     }
   },
 
@@ -4813,12 +4816,30 @@ export const useAppStore = create<AppState>((set, get) => ({
           force: options.force,
         }),
       });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        const msg = errorData.error || errorData.message || `请求失败 (${res.status})`;
+        set({
+          pushingLoading: false,
+          pushError: msg,
+          notification: {
+            id: Date.now(),
+            title: '独立推送失败',
+            detail: msg,
+            type: 'warning',
+          },
+        });
+        return { success: false, message: msg };
+      }
+
       const data = await res.json();
       set({ pushingLoading: false });
 
       if (data.success) {
         set({
           isPushModalOpen: false,
+          pushError: null,
           notification: {
             id: Date.now(),
             title: '独立推送成功',
@@ -4843,8 +4864,47 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
       return data;
     } catch (e: any) {
-      set({ pushingLoading: false, pushError: e.message });
-      return { success: false, message: e.message };
+      console.error('[pushSelectedCommits] Push error:', e);
+      // Auto-verification on network failure or server reload:
+      // Verify if the push actually completed in the background
+      try {
+        const checkUrl = `/api/git/outgoing-commits?path=${encodeURIComponent(currentProject.path)}&branch=${encodeURIComponent(sourceBranch)}&targetBranch=${encodeURIComponent(options.targetBranch)}`;
+        const checkRes = await fetch(checkUrl);
+        if (checkRes.ok) {
+          const checkData: OutgoingCommitsData = await checkRes.json();
+          const targetHashes = new Set(options.hashes.map((h) => h.toLowerCase()));
+          const stillOutgoing = checkData.commits?.some((c) =>
+            targetHashes.has(c.hash.toLowerCase()) ||
+            targetHashes.has(c.shortHash.toLowerCase()) ||
+            options.hashes.some((h) => h.toLowerCase().startsWith(c.shortHash.toLowerCase()))
+          );
+          if (!stillOutgoing) {
+            // Commit was pushed successfully!
+            set({
+              pushingLoading: false,
+              isPushModalOpen: false,
+              pushError: null,
+              outgoingCommitsData: checkData,
+              notification: {
+                id: Date.now(),
+                title: '独立推送成功',
+                detail: '提交已成功推送到远端',
+                type: 'success',
+              },
+            });
+            await get().loadRepoData(currentProject.path, true);
+            await get().fetchCommitLogs(true);
+            get().pollWorkspaceSyncStatus();
+            return { success: true, message: '提交已成功推送到远端' };
+          }
+        }
+      } catch {}
+
+      const errorMsg = e?.message === 'Failed to fetch'
+        ? '网络连接中断或服务正在重载，请检查网络连接后重试 (Failed to fetch)'
+        : (e?.message || '推送请求异常');
+      set({ pushingLoading: false, pushError: errorMsg });
+      return { success: false, message: errorMsg };
     }
   },
 
