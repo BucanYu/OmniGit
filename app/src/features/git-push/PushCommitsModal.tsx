@@ -4,6 +4,7 @@ import {
   ArrowUpRight,
   GitBranch,
   GitCommit,
+  GitMerge,
   Folder,
   FolderOpen,
   FileCode,
@@ -791,7 +792,11 @@ export const PushCommitsModal: React.FC = () => {
                           )}
                         </button>
 
-                        <GitCommit className="w-3.5 h-3.5 text-sky-400 shrink-0 mt-0.5" />
+                        {commit.isMerge ? (
+                          <GitMerge className="w-3.5 h-3.5 text-purple-400 shrink-0 mt-0.5" title="合并提交 (Merge Commit)" />
+                        ) : (
+                          <GitCommit className="w-3.5 h-3.5 text-sky-400 shrink-0 mt-0.5" />
+                        )}
                         <div className="min-w-0 flex-1">
                           <p className="font-medium text-theme-main leading-tight line-clamp-2" title={commit.subject}>
                             {commit.subject}

@@ -176,6 +176,7 @@ export interface OutgoingCommitItem {
   authorEmail: string;
   date: string;
   files: OutgoingCommitFile[];
+  isMerge?: boolean;
 }
 
 export interface OutgoingCommitsData {

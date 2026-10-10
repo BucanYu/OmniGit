@@ -186,8 +186,27 @@ function parseGitLogBatchOutput(raw: string): { commits: OutgoingCommitItem[]; a
     const filesSection = chunk.slice(unitSepIdx + 1).trim();
 
     const parts = header.split('\x00');
-    if (parts.length < 6) continue;
-    const [hash, shortHash, authorName, authorEmail, date, subject, body = ''] = parts;
+    let hash = '';
+    let shortHash = '';
+    let authorName = '';
+    let authorEmail = '';
+    let date = '';
+    let subject = '';
+    let body = '';
+    let isMerge = false;
+
+    if (parts.length >= 8) {
+      [hash, shortHash, authorName, authorEmail, date, subject] = parts;
+      const parentsStr = parts[6] || '';
+      body = parts[7] || '';
+      const parents = parentsStr.trim().split(/\s+/).filter(Boolean);
+      isMerge = parents.length > 1 || subject.toLowerCase().startsWith('merge ');
+    } else if (parts.length >= 6) {
+      [hash, shortHash, authorName, authorEmail, date, subject, body = ''] = parts;
+      isMerge = subject.toLowerCase().startsWith('merge ');
+    } else {
+      continue;
+    }
 
     const files: OutgoingCommitFile[] = [];
     if (filesSection) {
@@ -229,6 +248,7 @@ function parseGitLogBatchOutput(raw: string): { commits: OutgoingCommitItem[]; a
       authorEmail,
       date,
       files,
+      isMerge,
     });
   }
 
@@ -515,6 +535,7 @@ export interface OutgoingCommitItem {
   authorEmail: string;
   date: string;
   files: OutgoingCommitFile[];
+  isMerge?: boolean;
 }
 
 export interface OutgoingCommitsData {
@@ -1990,8 +2011,10 @@ export const gitService = {
           'log',
           '--cherry-pick',
           '--right-only',
+          '-m',
+          '--first-parent',
           range,
-          '--pretty=format:%x1e%H%x00%h%x00%an%x00%ae%x00%ad%x00%s%x00%b%x1f',
+          '--pretty=format:%x1e%H%x00%h%x00%an%x00%ae%x00%ad%x00%s%x00%P%x00%b%x1f',
           '--name-status',
           '-n', '300',
         ], repoPath),
@@ -2049,11 +2072,16 @@ export const gitService = {
           ) {
             return false; // Explicit cherry-pick source match!
           }
-          if (
-            (c.authorEmail && remoteSubjectAuthors.has(`${c.subject}:::${c.authorEmail}`)) ||
-            (c.authorName && remoteSubjectAuthors.has(`${c.subject}:::${c.authorName}`))
-          ) {
-            return false; // Subject and author match!
+          // Merge commits MUST NEVER be filtered out by subject + author matching!
+          // Merge commits always have standard auto-generated subjects (e.g. "Merge branch 'dev' of ... into dev")
+          // which match earlier merges on the remote, but represent fresh merge graph nodes that must be pushed.
+          if (!c.isMerge && !c.subject.toLowerCase().startsWith('merge ')) {
+            if (
+              (c.authorEmail && remoteSubjectAuthors.has(`${c.subject}:::${c.authorEmail}`)) ||
+              (c.authorName && remoteSubjectAuthors.has(`${c.subject}:::${c.authorName}`))
+            ) {
+              return false; // Subject and author match!
+            }
           }
           return true;
         });
@@ -2074,8 +2102,10 @@ export const gitService = {
       const fullLog = await runGit([
         'log',
         sourceBranch,
+        '-m',
+        '--first-parent',
         '-n', '100',
-        '--pretty=format:%x1e%H%x00%h%x00%an%x00%ae%x00%ad%x00%s%x00%b%x1f',
+        '--pretty=format:%x1e%H%x00%h%x00%an%x00%ae%x00%ad%x00%s%x00%P%x00%b%x1f',
         '--name-status',
       ], repoPath);
       const rawLog = (fullLog.stdout || '').trim();
@@ -2144,7 +2174,14 @@ export const gitService = {
 
       for (const hash of sortedHashes) {
         // Step 1: Standard cherry-pick with -x (records source hash in commit message)
-        const cpRes = await runGit(['cherry-pick', '-x', hash], tempDir);
+        let cpRes = await runGit(['cherry-pick', '-x', hash], tempDir);
+        if (cpRes.code !== 0) {
+          const rawErr = (cpRes.stdout + '\n' + cpRes.stderr).toLowerCase();
+          if (rawErr.includes('is a merge')) {
+            // Merge commits require parent number: replay with -m 1
+            cpRes = await runGit(['cherry-pick', '-x', '-m', '1', hash], tempDir);
+          }
+        }
         if (cpRes.code !== 0) {
           const out = (cpRes.stdout + '\n' + cpRes.stderr).toLowerCase();
           if (
