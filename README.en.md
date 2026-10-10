@@ -6,20 +6,33 @@
 **English** | [简体中文](README.md)
 
 [![GitHub release](https://img.shields.io/github/v/release/BucanYu/OmniGit?style=flat-square&color=0284c7)](https://github.com/BucanYu/OmniGit/releases)
+[![Total Downloads](https://img.shields.io/github/downloads/BucanYu/OmniGit/total?style=flat-square&color=10b981&label=Total%20Downloads)](https://somsubhra.github.io/github-release-stats/?username=BucanYu&repository=OmniGit)
+[![Latest Release Downloads](https://img.shields.io/github/downloads/BucanYu/OmniGit/latest/total?style=flat-square&color=0ea5e9&label=v0.4.0%20Downloads)](https://github.com/BucanYu/OmniGit/releases/latest)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS-blue?style=flat-square)](https://github.com/BucanYu/OmniGit/releases)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 [![GitHub Stars](https://img.shields.io/github/stars/BucanYu/OmniGit?style=flat-square&color=eab308)](https://github.com/BucanYu/OmniGit/stargazers)
 
 ---
 
-### 📦 Download Latest Release (v0.4.0)
+### 📦 Downloads & Releases
 
-| Platform | Package Format | Download Link (GitHub Releases) | Highlights |
-| :--- | :--- | :--- | :--- |
-| **Windows x64** | **Setup Installer** | 👉 **[OmniGit-Setup-0.4.0.exe](https://github.com/BucanYu/OmniGit/releases/latest)** | Recommended: customizable path, auto-updates, **Zero UAC Elevation** |
-| **Windows x64** | **Portable (ZIP)** | 👉 **[OmniGit-win32-x64.zip](https://github.com/BucanYu/OmniGit/releases/latest)** | No installation needed, extract and launch `OmniGit.exe` instantly |
-| **macOS (Apple Silicon)** | **Portable App (ZIP)** | 👉 **[OmniGit-v0.4.0-mac-arm64.zip](https://github.com/BucanYu/OmniGit/releases/latest)** | Optimized for Apple Silicon M1 / M2 / M3 / M4 Macs |
-| **macOS (Intel x64)** | **Portable App (ZIP)** | 👉 **[OmniGit-v0.4.0-mac-x64.zip](https://github.com/BucanYu/OmniGit/releases/latest)** | Compatible with Intel-based Macs |
+> 🚀 **Latest Release: v0.4.0** | 📈 **Live Stats: [![Total Downloads](https://img.shields.io/github/downloads/BucanYu/OmniGit/total?style=flat-square&color=10b981&label=Total%20Downloads)](https://somsubhra.github.io/github-release-stats/?username=BucanYu&repository=OmniGit) [![Latest Downloads](https://img.shields.io/github/downloads/BucanYu/OmniGit/latest/total?style=flat-square&color=0ea5e9&label=v0.4.0%20Downloads)](https://github.com/BucanYu/OmniGit/releases/latest)** | 🔍 **[View Live Download Analytics Dashboard ↗](https://somsubhra.github.io/github-release-stats/?username=BucanYu&repository=OmniGit)**
+
+#### 🪟 Windows
+| Package Format | Download Link (GitHub Releases) | Highlights | Zero UAC |
+| :--- | :--- | :--- | :---: |
+| **Setup Installer** | 👉 **[OmniGit-Setup-0.4.0.exe](https://github.com/BucanYu/OmniGit/releases/latest)** | Recommended: customizable path, auto-updates | ✅ Zero UAC |
+| **Portable (ZIP)** | 👉 **[OmniGit-win32-x64.zip](https://github.com/BucanYu/OmniGit/releases/latest)** | Extract & run `OmniGit.exe` directly, suitable for restricted work PCs | ✅ Portable |
+
+#### 🍎 macOS
+| Architecture | Download Link (GitHub Releases) | Highlights |
+| :--- | :--- | :--- |
+| **Apple Silicon (arm64)** | 👉 **[OmniGit-v0.4.0-mac-arm64.zip](https://github.com/BucanYu/OmniGit/releases/latest)** | Native build for Apple Silicon M1 / M2 / M3 / M4 Macs |
+| **Intel (x64)** | 👉 **[OmniGit-v0.4.0-mac-x64.zip](https://github.com/BucanYu/OmniGit/releases/latest)** | Compatible with Intel-based Macs |
+
+> 💡 **Release History & Analytics**:  
+> - Looking for previous versions (v0.3.0, v0.2.0, etc.) and changelogs? Visit 👉 **[GitHub Releases Archive](https://github.com/BucanYu/OmniGit/releases)**  
+> - Want to monitor real-time daily download trends and breakdown charts? Visit 👉 **[GitHub Release Stats Dashboard](https://somsubhra.github.io/github-release-stats/?username=BucanYu&repository=OmniGit)**
 
 ---
 
