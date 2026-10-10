@@ -92,7 +92,7 @@ Every developer (especially those working in VS Code, Sublime, or terminal envir
 | :--- | :---: | :---: | :---: | :---: | :---: |
 | **Open Source & Price** | **100% Free & MIT** | Free (Closed Source) | Freemium ($$ Subscription) | $49.99 Paid | Free & Open Source |
 | **3-Way Merge Resolver** | **Native 3-Panel Visual** | Needs external tool | Paywalled feature | Supported | Requires heavy extensions |
-| **External Conflict Auto-healing**| **Native Real-Time Auto-Stage**| None | Manual refresh | None | None |
+| **External Conflict Auto-healing** | **Native Real-Time Auto-Stage** | None | Manual refresh | None | None |
 | **Fine-Grained Selective Push** | **Commit checkboxes & patch branch** | Full branch only | Complex | Basic | Full branch only |
 | **1-Click Undo Merge** | **Native with Auto-recovery** | Complex CLI commands | Complex reflog rollback | Manual revert | None |
 | **Cross-Branch Commit Sync** | **Log context menu Cherry-pick** | Manual checkout | Tedious | Supported | Manual CLI commands |
