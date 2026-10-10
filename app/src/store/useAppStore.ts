@@ -4759,6 +4759,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   executePush: async (options?: { force?: boolean; tags?: boolean; targetCommit?: string; targetBranch?: string }) => {
+    const t = getLocale(get().language);
     const currentProject = get().projects.find((p) => p.id === get().activeProjectId);
     const sourceBranch = get().pushModalSourceBranch || currentProject?.currentBranch || '';
     const targetBranch = options?.targetBranch || get().pushModalTargetBranch || sourceBranch;
@@ -4830,7 +4831,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
       return data;
     } catch (e: any) {
-      const t = getLocale(get().language);
       const errorMsg = e?.message === 'Failed to fetch'
         ? t.notifications.networkError
         : (e?.message || t.notifications.pushFailed);
