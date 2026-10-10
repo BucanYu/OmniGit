@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { AppLanguage } from '../locales/types';
+import { getLocale, type AppLanguage } from '../locales';
 
 export type { AppLanguage };
 
@@ -2269,19 +2269,17 @@ export const useAppStore = create<AppState>((set, get) => ({
         await get().loadRepoData(createdProject.path);
       }
 
-      const isZh = get().language === 'zh-CN';
+      const t = getLocale(get().language);
       get().setNotification({
         id: Date.now(),
-        title: isZh ? '克隆成功并已加入工作区' : 'Repository Cloned & Added to Workspace',
-        detail: isZh
-          ? `已成功从远端拉取仓库：${data.repoName || params.folderName || repoPath}`
-          : `Successfully cloned remote repository: ${data.repoName || params.folderName || repoPath}`,
+        title: t.notifications.cloneSuccess,
+        detail: t.notifications.cloneSuccessDetail(data.repoName || params.folderName || repoPath),
         type: 'success',
       });
 
       return { success: true, message: data.message, repoPath };
     } catch (e: any) {
-      return { success: false, message: e.message || (get().language === 'zh-CN' ? '网络请求错误，无法连接后端服务' : 'Network error, unable to connect to server') };
+      return { success: false, message: e.message || getLocale(get().language).notifications.networkError };
     }
   },
 
@@ -3331,7 +3329,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         set({
           notification: {
             id: Date.now(),
-            title: isZh ? '切换分支失败 (Checkout Failed)' : 'Checkout Failed',
+            title: isZh ? '切换分支失败' : 'Checkout Failed',
             detail: errorDetail,
             type: 'warning',
           },
@@ -3413,8 +3411,8 @@ export const useAppStore = create<AppState>((set, get) => ({
           notification: {
             id: Date.now(),
             title: hasConflicts
-              ? (isZh ? '分支合并冲突 (Merge Conflicts)' : 'Merge Conflicts')
-              : (isZh ? '分支合并失败 (Merge Failed)' : 'Merge Failed'),
+              ? (isZh ? '分支合并冲突' : 'Merge Conflicts')
+              : (isZh ? '分支合并失败' : 'Merge Failed'),
             detail: hasConflicts
               ? (isZh ? '合并发生代码冲突，已自动为您打开冲突解决窗口。您可以进行三方可视化合并或放弃合并。' : data.message)
               : data.message,
@@ -3645,19 +3643,19 @@ export const useAppStore = create<AppState>((set, get) => ({
     const currentProject = get().projects.find((p) => p.id === get().activeProjectId);
     if (!currentProject) return;
 
-    const isZh = get().language === 'zh-CN';
+    const t = getLocale(get().language);
     set({
       isBranchMenuOpen: false,
       branchOperationLoading: {
         operating: true,
         type: 'pull',
         branchName: currentProject.currentBranch,
-        message: isZh ? '正在拉取远端更新 (git pull)...' : 'Pulling remote updates (git pull)...',
+        message: t.notifications.pullUpdating,
       },
       notification: {
         id: Date.now(),
-        title: isZh ? '正在拉取远端更新...' : 'Updating Project...',
-        detail: isZh ? '正在执行 git pull 获取远程最新代码...' : 'Running git pull from remote...',
+        title: t.notifications.pullUpdating,
+        detail: t.notifications.pullUpdatingDetail,
         type: 'info',
       },
     });
@@ -3684,11 +3682,11 @@ export const useAppStore = create<AppState>((set, get) => ({
           ),
           notification: {
             id: Date.now(),
-            title: isZh ? '项目拉取完成' : 'Project Updated',
+            title: t.notifications.pullComplete,
             detail: result.message?.includes('Already up to date')
-              ? (isZh ? '本地分支已经是最新状态，无需合并。' : 'Already up to date.')
-              : (result.message || (isZh ? '已成功拉取最新提交。' : 'Project updated.')),
-            linkText: isZh ? '查看提交' : 'View Commits',
+              ? t.notifications.pullAlreadyUpToDate
+              : (result.message || t.notifications.pullUpdatedCommits),
+            linkText: t.notifications.pullViewCommits,
             type: 'success',
           },
         }));
@@ -3712,8 +3710,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         set({
           notification: {
             id: Date.now(),
-            title: isZh ? '拉取更新提醒' : 'Update Notice',
-            detail: result.message || (isZh ? '拉取过程遇到问题，请检查网络或冲突。' : 'Pull encountered an issue.'),
+            title: t.notifications.pullNotice,
+            detail: result.message || t.notifications.pullNoticeDetail,
             type: 'warning',
           },
         });
@@ -3722,7 +3720,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({
         notification: {
           id: Date.now(),
-          title: isZh ? '拉取更新失败' : 'Pull Failed',
+          title: t.notifications.pullFailed,
           detail: e.message,
           type: 'warning',
         },
@@ -3932,6 +3930,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       });
       const data = await res.json();
       if (data.success && data.user) {
+        const t = getLocale(get().language);
         const isZh = get().language === 'zh-CN';
         set((s) => ({
           gitUser: data.user,
@@ -3941,7 +3940,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           ],
           notification: {
             id: Date.now(),
-            title: isZh ? `已切换 Git 身份为 ${data.user.name}` : `Switched Git author to ${data.user.name}`,
+            title: t.notifications.switchedIdentity(data.user.name),
             detail: `${data.user.name} <${data.user.email}>${
               applyToAllWorkspace
                 ? (isZh ? ' (已同步至工作空间所有项目)' : ' (Applied to all workspace projects)')
@@ -4340,7 +4339,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const currentProject = state.projects.find((p) => p.id === state.activeProjectId);
     if (!currentProject) return { success: false, message: 'No active project' };
 
-    const isZh = state.language === 'zh-CN';
+    const t = getLocale(state.language);
 
     try {
       const res = await fetch('/api/git/cherry-pick', {
@@ -4354,8 +4353,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         set({
           notification: {
             id: Date.now(),
-            title: isZh ? 'Cherry-Pick 成功' : 'Cherry-Pick Succeeded',
-            detail: isZh ? `已将提交 ${hash.slice(0, 7)} 成功合并到当前分支` : `Cherry-picked ${hash.slice(0, 7)} into current branch`,
+            title: t.notifications.cherryPickSuccess,
+            detail: t.notifications.cherryPickSuccessDetail(hash.slice(0, 7)),
             type: 'success',
           },
         });
@@ -4375,10 +4374,8 @@ export const useAppStore = create<AppState>((set, get) => ({
             activeTab: 'changes',
             notification: {
               id: Date.now(),
-              title: isZh ? 'Cherry-Pick 产生代码冲突' : 'Cherry-Pick Conflict',
-              detail: isZh
-                ? `提交 ${hash.slice(0, 7)} 存在冲突，已自动为您打开冲突解决器。您可以点击【解决冲突】三方合并，或点击【放弃】中止合并。`
-                : `Cherry-pick of ${hash.slice(0, 7)} produced conflicts. The conflicts dialog has been opened.`,
+              title: t.notifications.cherryPickConflict,
+              detail: t.notifications.cherryPickConflictDetail(hash.slice(0, 7)),
               type: 'warning',
             },
           });
@@ -4386,7 +4383,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           set({
             notification: {
               id: Date.now(),
-              title: isZh ? 'Cherry-Pick 失败' : 'Cherry-Pick Failed',
+              title: t.notifications.cherryPickFailed,
               detail: data.message,
               type: 'warning',
             },
@@ -4395,11 +4392,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
       return data;
     } catch (e: any) {
-      const errorMsg = e.message || (isZh ? '请求异常' : 'Request error');
+      const errorMsg = e.message || t.notifications.cherryPickError;
       set({
         notification: {
           id: Date.now(),
-          title: isZh ? 'Cherry-Pick 异常' : 'Cherry-Pick Error',
+          title: t.notifications.cherryPickError,
           detail: errorMsg,
           type: 'warning',
         },
@@ -4799,8 +4796,8 @@ export const useAppStore = create<AppState>((set, get) => ({
           ),
           notification: {
             id: Date.now(),
-            title: '推送成功',
-            detail: data.message,
+            title: t.notifications.pushSuccess,
+            detail: data.message || t.notifications.pushSuccessDetail,
             type: 'success',
           },
         }));
@@ -4825,7 +4822,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           pushError: data.message,
           notification: {
             id: Date.now(),
-            title: '推送失败',
+            title: t.notifications.pushFailed,
             detail: data.message,
             type: 'warning',
           },
@@ -4833,9 +4830,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
       return data;
     } catch (e: any) {
+      const t = getLocale(get().language);
       const errorMsg = e?.message === 'Failed to fetch'
-        ? '网络连接中断或服务正在重载，请检查网络后重试 (Failed to fetch)'
-        : (e?.message || '推送请求异常');
+        ? t.notifications.networkError
+        : (e?.message || t.notifications.pushFailed);
       set({ pushingLoading: false, pushError: errorMsg });
       return { success: false, message: errorMsg };
     }
@@ -4848,10 +4846,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     newBranchName?: string;
     force?: boolean;
   }) => {
+    const t = getLocale(get().language);
     const currentProject = get().projects.find((p) => p.id === get().activeProjectId);
     const sourceBranch = get().pushModalSourceBranch || currentProject?.currentBranch || '';
     if (!currentProject || !options.hashes || options.hashes.length === 0) {
-      return { success: false, message: '未选择有效工程或提交' };
+      return { success: false, message: t.notifications.noValidProjectOrCommit };
     }
 
     set({ pushingLoading: true, pushError: null });
@@ -4873,13 +4872,13 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
-        const msg = errorData.error || errorData.message || `请求失败 (${res.status})`;
+        const msg = errorData.error || errorData.message || `Request failed (${res.status})`;
         set({
           pushingLoading: false,
           pushError: msg,
           notification: {
             id: Date.now(),
-            title: '独立推送失败',
+            title: t.notifications.selectivePushFailed,
             detail: msg,
             type: 'warning',
           },
@@ -4903,8 +4902,8 @@ export const useAppStore = create<AppState>((set, get) => ({
           pushError: null,
           notification: {
             id: Date.now(),
-            title: '独立推送成功',
-            detail: data.message,
+            title: t.notifications.selectivePushSuccess,
+            detail: data.message || t.notifications.selectivePushSuccessDetail,
             type: 'success',
           },
           projects: state.projects.map((p) =>
@@ -4945,7 +4944,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           pushError: data.message,
           notification: {
             id: Date.now(),
-            title: '独立推送失败',
+            title: t.notifications.selectivePushFailed,
             detail: data.message,
             type: 'warning',
           },
@@ -4955,7 +4954,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch (e: any) {
       console.error('[pushSelectedCommits] Push error:', e);
       // Auto-verification on network failure or server reload:
-      // Verify if the push actually completed in the background
       try {
         const checkUrl = `/api/git/outgoing-commits?path=${encodeURIComponent(currentProject.path)}&branch=${encodeURIComponent(sourceBranch)}&targetBranch=${encodeURIComponent(options.targetBranch)}`;
         const checkRes = await fetch(checkUrl);
@@ -4981,8 +4979,8 @@ export const useAppStore = create<AppState>((set, get) => ({
               outgoingCommitsData: checkData,
               notification: {
                 id: Date.now(),
-                title: '独立推送成功',
-                detail: '提交已成功推送到远端',
+                title: t.notifications.selectivePushSuccess,
+                detail: t.notifications.selectivePushSuccessDetail,
                 type: 'success',
               },
               projects: state.projects.map((p) =>
@@ -4997,14 +4995,14 @@ export const useAppStore = create<AppState>((set, get) => ({
             await get().loadRepoData(currentProject.path, true);
             await get().fetchCommitLogs(true);
             get().pollWorkspaceSyncStatus();
-            return { success: true, message: '提交已成功推送到远端' };
+            return { success: true, message: t.notifications.selectivePushSuccessDetail };
           }
         }
       } catch {}
 
       const errorMsg = e?.message === 'Failed to fetch'
-        ? '网络连接中断或服务正在重载，请检查网络连接后重试 (Failed to fetch)'
-        : (e?.message || '推送请求异常');
+        ? t.notifications.networkError
+        : (e?.message || t.notifications.selectivePushFailed);
       set({ pushingLoading: false, pushError: errorMsg });
       return { success: false, message: errorMsg };
     }
@@ -5015,9 +5013,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     targetBranch: string;
     pushToRemote?: boolean;
   }) => {
+    const t = getLocale(get().language);
     const currentProject = get().projects.find((p) => p.id === get().activeProjectId);
     if (!currentProject || !options.hashes || options.hashes.length === 0) {
-      return { success: false, message: '未选择有效工程或提交' };
+      return { success: false, message: t.notifications.noValidProjectOrCommit };
     }
 
     try {
@@ -5037,7 +5036,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         set({
           notification: {
             id: Date.now(),
-            title: '分支同步成功',
+            title: t.notifications.syncBranchSuccess,
             detail: data.message,
             type: 'success',
           },
@@ -5048,7 +5047,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         set({
           notification: {
             id: Date.now(),
-            title: '分支同步失败',
+            title: t.notifications.syncBranchFailed,
             detail: data.message,
             type: 'warning',
           },
@@ -5122,10 +5121,10 @@ export const useAppStore = create<AppState>((set, get) => ({
         isRightPanelOpen: true,
         historicalDiff: {
           original: '',
-          modified: data.stdout || (isZh ? '(没有检测到与工作区的差异 / No diff with working tree)' : '(No diff with working tree)'),
+          modified: data.stdout || (isZh ? '(没有检测到与工作区的差异)' : '(No diff with working tree)'),
           filePath: `Branch Diff: ${branch} vs Working Tree`,
           oldLabel: `Branch '${branch}'`,
-          newLabel: isZh ? 'Working Tree (本地修改)' : 'Working Tree',
+          newLabel: isZh ? '工作区修改' : 'Working Tree',
           commitHash: branch,
         },
       });
@@ -5144,10 +5143,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!filePath) return;
     await get().setSelectedFile(filePath);
     set({ editorViewMode: 'editor', isRightPanelOpen: true });
-    const isZh = get().language === 'zh-CN';
+    const t = getLocale(get().language);
     get().setNotification({
       id: Date.now(),
-      title: isZh ? '已在内部源码编辑器中打开' : 'Opened in Internal Editor',
+      title: t.notifications.openedInEditor,
       detail: filePath,
       type: 'info',
     });
@@ -5171,7 +5170,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       navigator.clipboard.writeText(folderPath).catch(() => {});
     }
 
-    const isZh = get().language === 'zh-CN';
+    const t = getLocale(get().language);
 
     // 1. Electron runtime bridge (when packaged as desktop client)
     if (typeof window !== 'undefined' && (window as any).electron?.shell?.openPath) {
@@ -5179,8 +5178,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         await (window as any).electron.shell.openPath(folderPath);
         get().setNotification({
           id: Date.now(),
-          title: isZh ? '已打开所在文件夹' : 'Folder Opened',
-          detail: isZh ? `${folderPath} (路径已复制)` : `${folderPath} (Path copied to clipboard)`,
+          title: t.notifications.folderOpened,
+          detail: t.notifications.folderOpenedDetail(folderPath),
           type: 'success',
         });
         return;
@@ -5189,8 +5188,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       (window as any).electron.shell.showItemInFolder(fullPath);
       get().setNotification({
         id: Date.now(),
-        title: isZh ? '已打开所在文件夹' : 'Folder Opened',
-        detail: isZh ? `${folderPath} (路径已复制)` : `${folderPath} (Path copied to clipboard)`,
+        title: t.notifications.folderOpened,
+        detail: t.notifications.folderOpenedDetail(folderPath),
         type: 'success',
       });
       return;
@@ -5202,8 +5201,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         await (window as any).__TAURI__.shell.open(folderPath);
         get().setNotification({
           id: Date.now(),
-          title: isZh ? '已打开所在文件夹' : 'Folder Opened',
-          detail: isZh ? `${folderPath} (路径已复制)` : `${folderPath} (Path copied to clipboard)`,
+          title: t.notifications.folderOpened,
+          detail: t.notifications.folderOpenedDetail(folderPath),
           type: 'success',
         });
         return;
@@ -5225,22 +5224,22 @@ export const useAppStore = create<AppState>((set, get) => ({
         }
         get().setNotification({
           id: Date.now(),
-          title: isZh ? '已打开所在文件夹' : 'Folder Opened',
-          detail: isZh ? `${actualFolder} (路径已复制到剪贴板)` : `${actualFolder} (Path copied to clipboard)`,
+          title: t.notifications.folderOpened,
+          detail: t.notifications.folderOpenedDetail(actualFolder),
           type: 'success',
         });
       } else {
         get().setNotification({
           id: Date.now(),
-          title: isZh ? '打开文件夹失败' : 'Failed to Open Folder',
-          detail: data.message || (isZh ? '未知错误' : 'Unknown error'),
+          title: t.notifications.folderOpenFailed,
+          detail: data.message || t.notifications.folderOpenException,
           type: 'error',
         });
       }
     } catch (err: any) {
       get().setNotification({
         id: Date.now(),
-        title: isZh ? '打开文件夹异常' : 'Open Folder Exception',
+        title: t.notifications.folderOpenException,
         detail: err.message,
         type: 'error',
       });
@@ -5256,7 +5255,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       navigator.clipboard.writeText(targetPath).catch(() => {});
     }
 
-    const isZh = get().language === 'zh-CN';
+    const t = getLocale(get().language);
 
     // 1. Electron 桌面容器调用
     if (typeof window !== 'undefined' && (window as any).electron?.shell?.openPath) {
@@ -5264,8 +5263,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         await (window as any).electron.shell.openPath(targetPath);
         get().setNotification({
           id: Date.now(),
-          title: isZh ? '已打开项目文件夹' : 'Project Folder Opened',
-          detail: isZh ? `${targetPath} (路径已复制到剪贴板)` : `${targetPath} (Path copied to clipboard)`,
+          title: t.notifications.projectFolderOpened,
+          detail: t.notifications.projectFolderOpenedDetail(targetPath),
           type: 'success',
         });
         return;
@@ -5278,8 +5277,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         await (window as any).__TAURI__.shell.open(targetPath);
         get().setNotification({
           id: Date.now(),
-          title: isZh ? '已打开项目文件夹' : 'Project Folder Opened',
-          detail: isZh ? `${targetPath} (路径已复制到剪贴板)` : `${targetPath} (Path copied to clipboard)`,
+          title: t.notifications.projectFolderOpened,
+          detail: t.notifications.projectFolderOpenedDetail(targetPath),
           type: 'success',
         });
         return;
@@ -5298,22 +5297,22 @@ export const useAppStore = create<AppState>((set, get) => ({
         const actualFolder = data.target || targetPath;
         get().setNotification({
           id: Date.now(),
-          title: isZh ? '已打开项目所在文件夹' : 'Project Folder Opened',
-          detail: isZh ? `${actualFolder} (路径已复制到剪贴板)` : `${actualFolder} (Path copied to clipboard)`,
+          title: t.notifications.projectFolderOpened,
+          detail: t.notifications.projectFolderOpenedDetail(actualFolder),
           type: 'success',
         });
       } else {
         get().setNotification({
           id: Date.now(),
-          title: isZh ? '打开项目文件夹失败' : 'Failed to Open Project Folder',
-          detail: data.message || (isZh ? '未知错误' : 'Unknown error'),
+          title: t.notifications.projectFolderOpenFailed,
+          detail: data.message || t.notifications.projectFolderOpenException,
           type: 'error',
         });
       }
     } catch (err: any) {
       get().setNotification({
         id: Date.now(),
-        title: isZh ? '打开项目文件夹异常' : 'Open Project Folder Exception',
+        title: t.notifications.projectFolderOpenException,
         detail: err.message,
         type: 'error',
       });
@@ -5339,10 +5338,10 @@ export const useAppStore = create<AppState>((set, get) => ({
           cached.files = cached.files.map((f) => (f.path === filePath ? { ...f, checked: true } : f));
           cached.lastUpdated = Date.now();
         }
-        const isZh = get().language === 'zh-CN';
+        const t = getLocale(get().language);
         get().setNotification({
           id: Date.now(),
-          title: isZh ? '已暂存更改 (Staged)' : 'Changes Staged',
+          title: t.notifications.changesStaged,
           detail: filePath,
           type: 'success',
         });
@@ -5372,10 +5371,10 @@ export const useAppStore = create<AppState>((set, get) => ({
           cached.files = cached.files.map((f) => (f.path === filePath ? { ...f, checked: false } : f));
           cached.lastUpdated = Date.now();
         }
-        const isZh = get().language === 'zh-CN';
+        const t = getLocale(get().language);
         get().setNotification({
           id: Date.now(),
-          title: isZh ? '已取消暂存 (Unstaged)' : 'Changes Unstaged',
+          title: t.notifications.changesUnstaged,
           detail: filePath,
           type: 'info',
         });
@@ -5409,10 +5408,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       const data: Conflict3WayData = await res.json();
       if (data.alreadyResolved) {
         set({ threeWayMergeOpen: false, threeWayLoading: false });
-        const isZh = get().language === 'zh-CN';
+        const notif = getLocale(get().language).notifications;
         get().setNotification({
           id: Date.now(),
-          title: isZh ? '该文件冲突已在外部解决' : 'Conflict already resolved externally',
+          title: notif.conflictResolvedExternally,
           detail: filePath,
           type: 'success',
         });
@@ -5425,10 +5424,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       });
     } catch (e: any) {
       set({ threeWayMergeOpen: false, threeWayLoading: false });
-      const isZh = get().language === 'zh-CN';
+      const notif = getLocale(get().language).notifications;
       get().setNotification({
         id: Date.now(),
-        title: isZh ? '无法加载三方合并数据' : 'Failed to Load 3-Way Merge Data',
+        title: notif.failedLoad3WayData,
         detail: e.message,
         type: 'warning',
       });
@@ -5452,12 +5451,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       const data = await res.json();
 
       if (data.success) {
-        const isZh = get().language === 'zh-CN';
+        const notif = getLocale(get().language).notifications;
         get().setNotification({
           id: Date.now(),
-          title: resolution === 'yours'
-            ? (isZh ? '已接受本地版本' : 'Accepted Local Version (Yours)')
-            : (isZh ? '已接受传入版本' : 'Accepted Incoming Version (Theirs)'),
+          title: resolution === 'yours' ? notif.acceptedYours : notif.acceptedTheirs,
           detail: filePath,
           type: 'success',
         });
@@ -5470,10 +5467,10 @@ export const useAppStore = create<AppState>((set, get) => ({
           set({ conflictsDialogOpen: false, threeWayMergeOpen: false });
         }
       } else {
-        const isZh = get().language === 'zh-CN';
+        const notif = getLocale(get().language).notifications;
         get().setNotification({
           id: Date.now(),
-          title: isZh ? '冲突解决失败' : 'Conflict Resolution Failed',
+          title: notif.conflictResolveFailed,
           detail: data.message,
           type: 'warning',
         });
@@ -5500,10 +5497,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       const data = await res.json();
 
       if (data.success) {
-        const isZh = get().language === 'zh-CN';
+        const notif = getLocale(get().language).notifications;
         get().setNotification({
           id: Date.now(),
-          title: isZh ? '已标记为解决并暂存' : 'Marked as Resolved & Staged',
+          title: notif.markedResolvedAndStaged,
           detail: filePath,
           type: 'success',
         });
@@ -5515,10 +5512,10 @@ export const useAppStore = create<AppState>((set, get) => ({
           set({ conflictsDialogOpen: false, threeWayMergeOpen: false });
         }
       } else {
-        const isZh = get().language === 'zh-CN';
+        const notif = getLocale(get().language).notifications;
         get().setNotification({
           id: Date.now(),
-          title: isZh ? '标记解决失败' : 'Failed to Mark Resolved',
+          title: notif.markResolvedFailed,
           detail: data.message,
           type: 'warning',
         });
@@ -5545,13 +5542,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       });
     }
 
-    const isZh = get().language === 'zh-CN';
+    const notif = getLocale(get().language).notifications;
     get().setNotification({
       id: Date.now(),
-      title: resolution === 'yours'
-        ? (isZh ? '全部采用本地版本完成' : 'All Accepted Local (Yours)')
-        : (isZh ? '全部采用传入版本完成' : 'All Accepted Incoming (Theirs)'),
-      detail: isZh ? `已批量解决 ${conflictFiles.length} 个冲突文件` : `Resolved ${conflictFiles.length} conflicted files`,
+      title: resolution === 'yours' ? notif.allAcceptedYours : notif.allAcceptedTheirs,
+      detail: notif.allResolvedDetail(conflictFiles.length),
       type: 'success',
     });
 
@@ -5580,10 +5575,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (data.success) {
         // 1. Immediately close the modal window! Zero waiting time!
         set({ threeWayMergeOpen: false, threeWayData: null, threeWayLoading: false });
-        const isZh = get().language === 'zh-CN';
+        const notif = getLocale(get().language).notifications;
         get().setNotification({
           id: Date.now(),
-          title: isZh ? '三方合并应用成功并已标记解决' : '3-Way Merge Applied & Resolved',
+          title: notif.threeWayApplied,
           detail: filePath,
           type: 'success',
         });
@@ -5598,13 +5593,13 @@ export const useAppStore = create<AppState>((set, get) => ({
         });
         return true;
       } else {
-        const isZh = get().language === 'zh-CN';
-        alert(data.message || (isZh ? '合并失败' : 'Merge failed'));
+        const notif = getLocale(get().language).notifications;
+        alert(data.message || notif.mergeError('failed'));
         return false;
       }
     } catch (e: any) {
-      const isZh = get().language === 'zh-CN';
-      alert(isZh ? `合并错误: ${e.message}` : `Merge error: ${e.message}`);
+      const notif = getLocale(get().language).notifications;
+      alert(notif.mergeError(e.message));
       return false;
     }
   },
@@ -5621,16 +5616,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       });
       const data = await res.json();
 
-      const isZh = get().language === 'zh-CN';
+      const notif = getLocale(get().language).notifications;
       set({
         conflictsDialogOpen: false,
         threeWayMergeOpen: false,
         threeWayData: null,
         notification: {
           id: Date.now(),
-          title: data.success
-            ? (isZh ? '已放弃合并' : 'Merge Aborted')
-            : (isZh ? '放弃合并失败' : 'Failed to Abort Merge'),
+          title: data.success ? notif.mergeAborted : notif.abortMergeFailed,
           detail: data.message,
           type: data.success ? 'info' : 'warning',
         },
@@ -5656,14 +5649,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       });
       const data = await res.json();
 
-      const isZh = get().language === 'zh-CN';
+      const notif = getLocale(get().language).notifications;
       if (data.success) {
         set({
           commitMessage: '',
           isMerging: false,
           notification: {
             id: Date.now(),
-            title: isZh ? '合并完成并提交成功' : 'Merge Completed & Committed',
+            title: notif.mergeSuccess,
             detail: message,
             type: 'success',
           },
@@ -5674,7 +5667,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       } else {
         get().setNotification({
           id: Date.now(),
-          title: isZh ? '完成合并提交失败' : 'Failed to Complete Merge Commit',
+          title: notif.mergeCommitFailed,
           detail: data.message,
           type: 'warning',
         });

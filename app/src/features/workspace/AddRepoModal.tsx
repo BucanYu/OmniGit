@@ -843,7 +843,7 @@ export function AddRepoModal({ onClose }: AddRepoModalProps) {
                 <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                 <div className="flex-1 space-y-1">
                   <div className="leading-relaxed font-medium">{cloneError}</div>
-                  {cloneError.includes('目标文件夹已存在') && (
+                  {(cloneError.includes('目标文件夹已存在') || cloneError.toLowerCase().includes('already exists')) && (
                     <div className="text-[11px] text-rose-300/80 leading-normal">
                       {t.modals.addRepo.existingDirNotice}
                     </div>
@@ -881,19 +881,19 @@ export function AddRepoModal({ onClose }: AddRepoModalProps) {
                   <div className="p-1.5 rounded bg-theme-card/60 border border-theme-border-subtle flex flex-col">
                     <span className="text-[10px] text-theme-dim">{t.modals.addRepo.speedLabel}</span>
                     <span className="text-sky-400 font-semibold truncate">
-                      {cloneProgress.speed ? `⚡ ${cloneProgress.speed}` : '⚡ 测速中...'}
+                      {cloneProgress.speed ? `⚡ ${cloneProgress.speed}` : t.modals.addRepo.speedMeasuring}
                     </span>
                   </div>
                   <div className="p-1.5 rounded bg-theme-card/60 border border-theme-border-subtle flex flex-col">
                     <span className="text-[10px] text-theme-dim">{t.modals.addRepo.transferredLabel}</span>
                     <span className="text-emerald-400 font-semibold truncate">
-                      {cloneProgress.transferred ? `📦 ${cloneProgress.transferred}` : '📦 计算中...'}
+                      {cloneProgress.transferred ? `📦 ${cloneProgress.transferred}` : t.modals.addRepo.transferCalculating}
                     </span>
                   </div>
                   <div className="p-1.5 rounded bg-theme-card/60 border border-theme-border-subtle flex flex-col">
                     <span className="text-[10px] text-theme-dim">{t.modals.addRepo.objectsLabel}</span>
                     <span className="text-purple-400 font-semibold truncate">
-                      {cloneProgress.objects ? `🔢 ${cloneProgress.objects}` : '🔢 连接中...'}
+                      {cloneProgress.objects ? `🔢 ${cloneProgress.objects}` : t.modals.addRepo.objectsConnecting}
                     </span>
                   </div>
                 </div>

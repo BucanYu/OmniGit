@@ -1065,14 +1065,10 @@ export function WelcomeWorkspaceView() {
           workspaceToDelete ? (
             <div className="space-y-1 text-xs">
               <p>
-                {language === 'zh-CN'
-                  ? `确定要从历史记录列表中移除工作空间“${workspaceToDelete.name}”吗？`
-                  : `Are you sure you want to remove workspace "${workspaceToDelete.name}" from history?`}
+                {t.welcome.workspaceCard.removeConfirmMessage(workspaceToDelete.name)}
               </p>
               <p className="text-theme-dim text-[11px]">
-                {language === 'zh-CN'
-                  ? '（此操作仅清理历史访问记录，绝不会删除本地磁盘上的任何项目或仓库代码）'
-                  : '(This only cleans up your recent history record and will never delete any project files on disk)'}
+                {t.welcome.workspaceCard.removeNoticeSafe}
               </p>
             </div>
           ) : null

@@ -71,11 +71,11 @@ export const SyncCommitModal: React.FC<SyncCommitModalProps> = ({
     e.preventDefault();
     const target = selectedBranch.trim() || searchTerm.trim();
     if (!target) {
-      setErrorMsg('请选择或输入要同步的目标分支');
+      setErrorMsg(t.modals.syncModal.errorTargetRequired);
       return;
     }
     if (target === currentBranch) {
-      setErrorMsg('目标分支不能与当前所在分支相同');
+      setErrorMsg(t.modals.syncModal.errorSameBranch);
       return;
     }
 
@@ -95,7 +95,7 @@ export const SyncCommitModal: React.FC<SyncCommitModalProps> = ({
         setErrorMsg(res.message);
       }
     } catch (err: any) {
-      setErrorMsg(err.message || '同步执行失败');
+      setErrorMsg(err.message || t.modals.syncModal.errorSyncFailed);
     } finally {
       setIsLoading(false);
     }
@@ -120,10 +120,10 @@ export const SyncCommitModal: React.FC<SyncCommitModalProps> = ({
             </div>
             <div>
               <h2 className="font-semibold text-sm text-theme-main leading-tight">
-                同步提交到其他分支
+                {t.modals.syncModal.title}
               </h2>
               <p className="text-[11px] text-theme-dim mt-0.5">
-                将选中的修改内容抽取（Cherry-pick）并同步到其他环境分支
+                {t.modals.syncModal.desc}
               </p>
             </div>
           </div>
@@ -152,14 +152,14 @@ export const SyncCommitModal: React.FC<SyncCommitModalProps> = ({
           {/* Source and Target Routing Visualization */}
           <div className="flex items-center justify-between px-3 py-2 rounded bg-sky-500/10 border border-sky-500/20 text-xs">
             <div className="flex items-center gap-1.5 min-w-0">
-              <span className="text-theme-dim">来源分支:</span>
+              <span className="text-theme-dim">{t.modals.syncModal.sourceBranchLabel}</span>
               <span className="font-bold text-sky-400 truncate max-w-[140px]">{currentBranch}</span>
             </div>
             <ArrowRight className="w-3.5 h-3.5 text-sky-400 shrink-0" />
             <div className="flex items-center gap-1.5 min-w-0">
-              <span className="text-theme-dim">同步目标:</span>
+              <span className="text-theme-dim">{t.modals.syncModal.targetBranchLabel}</span>
               <span className="font-bold text-emerald-400 truncate max-w-[140px]">
-                {effectiveTarget || '未选择'}
+                {effectiveTarget || t.modals.syncModal.notSelected}
               </span>
             </div>
           </div>
@@ -167,7 +167,7 @@ export const SyncCommitModal: React.FC<SyncCommitModalProps> = ({
           {/* Target Branch Picker */}
           <div className="space-y-1.5">
             <label className="block text-xs font-medium text-theme-main">
-              选择目标分支：
+              {t.modals.syncModal.selectTargetLabel}
             </label>
             <div className="relative">
               <Search className="w-3.5 h-3.5 text-theme-dim absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -180,7 +180,7 @@ export const SyncCommitModal: React.FC<SyncCommitModalProps> = ({
                     setSelectedBranch(e.target.value.trim());
                   }
                 }}
-                placeholder="搜索或输入目标分支（如 test, uat, master）..."
+                placeholder={t.modals.syncModal.searchPlaceholder}
                 className="w-full pl-8 pr-3 py-1.5 rounded bg-theme-input border border-theme-border-card text-xs text-theme-main focus:outline-none focus:border-sky-500"
                 autoFocus
               />
@@ -189,7 +189,7 @@ export const SyncCommitModal: React.FC<SyncCommitModalProps> = ({
             <div className="max-h-36 overflow-y-auto border border-theme-border-card rounded bg-theme-panel p-1 space-y-0.5">
               {filteredBranches.length === 0 ? (
                 <div className="py-3 text-center text-theme-dim text-[11px]">
-                  未找到匹配分支，直接回车将尝试同步到 &apos;{searchTerm.trim()}&apos;
+                  {t.modals.syncModal.noMatchEnterPrompt(searchTerm.trim())}
                 </div>
               ) : (
                 filteredBranches.map((name) => (
@@ -225,7 +225,7 @@ export const SyncCommitModal: React.FC<SyncCommitModalProps> = ({
               onChange={(e) => setPushToRemote(e.target.checked)}
               className="rounded border-theme text-sky-500 focus:ring-0 w-3.5 h-3.5 cursor-pointer"
             />
-            <span>同步成功后立即推送到远端 (git push origin &lt;目标分支&gt;)</span>
+            <span>{t.modals.syncModal.pushImmediately}</span>
           </label>
 
           {/* Error Message banner */}
@@ -254,12 +254,12 @@ export const SyncCommitModal: React.FC<SyncCommitModalProps> = ({
               {isLoading ? (
                 <>
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>正在同步并推送...</span>
+                  <span>{t.modals.syncModal.syncingAndPushing}</span>
                 </>
               ) : (
                 <>
                   <GitFork className="w-3.5 h-3.5" />
-                  <span>开始同步</span>
+                  <span>{t.modals.syncModal.startSync}</span>
                 </>
               )}
             </button>

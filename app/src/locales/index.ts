@@ -11,6 +11,11 @@ const dictionaries: Record<AppLanguage, LocaleDictionary> = {
   'en-US': enUS,
 };
 
+export function getLocale(language?: AppLanguage): LocaleDictionary {
+  const lang = language || useAppStore.getState().language || 'zh-CN';
+  return dictionaries[lang] || dictionaries['zh-CN'];
+}
+
 export function useTranslation() {
   const language = useAppStore((s) => s.language);
   const setLanguage = useAppStore((s) => s.setLanguage);

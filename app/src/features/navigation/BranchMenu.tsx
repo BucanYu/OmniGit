@@ -243,7 +243,7 @@ export function BranchMenu({ onClose }: BranchMenuProps) {
           isCurrent
             ? `${t.topBar.branchMenu.currentBranch}: ${branch.name}`
             : isRemote
-            ? `远程分支: '${branch.name}'`
+            ? t.topBar.branchMenu.remoteBranchTitle(branch.name)
             : `${t.topBar.branchMenu.switchBranch}: '${branch.name}'`
         }
       >
@@ -282,22 +282,22 @@ export function BranchMenu({ onClose }: BranchMenuProps) {
             </span>
           )}
 
-          {/* Outgoing Badge (本地待推送 ↗ - 1:1 对标 IDEA 截图 3) */}
+          {/* Outgoing Badge */}
           {rowOutgoing > 0 && (
             <span
               className="flex items-center gap-0.5 px-1.5 py-0.2 bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 rounded text-[10px] font-mono font-bold shrink-0"
-              title={`Local has ${rowOutgoing} unpushed commit(s)`}
+              title={t.topBar.branchMenu.outgoingTooltip(rowOutgoing)}
             >
               <span>↗</span>
               <span>{rowOutgoing}</span>
             </span>
           )}
 
-          {/* Incoming Badge (远端待拉取 ↙) */}
+          {/* Incoming Badge */}
           {rowIncoming > 0 && (
             <span
               className="flex items-center gap-0.5 px-1.5 py-0.2 bg-sky-500/20 text-sky-400 border border-sky-500/30 rounded text-[10px] font-mono font-bold shrink-0"
-              title={`Remote has ${rowIncoming} unpulled commit(s)`}
+              title={t.topBar.branchMenu.incomingTooltip(rowIncoming)}
             >
               <span>↙</span>
               <span>{rowIncoming}</span>
@@ -711,7 +711,7 @@ export function BranchMenu({ onClose }: BranchMenuProps) {
                     onClose();
                   }}
                   className="w-full text-left px-3 py-1 bg-sky-500/15 text-sky-400 font-semibold hover:bg-sky-500/25 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-between cursor-pointer transition-colors whitespace-nowrap truncate"
-                  title={`切换到分支 '${activeFlyoutBranch}' (Checkout)`}
+                  title={t.branchMenu.actions.checkout}
                 >
                   <div className="flex items-center gap-2 min-w-0 truncate">
                     {branchOperationLoading?.type === 'checkout' && branchOperationLoading?.branchName === activeFlyoutBranch ? (
@@ -740,7 +740,7 @@ export function BranchMenu({ onClose }: BranchMenuProps) {
                     onClose();
                   }}
                   className="w-full text-left px-3 py-1 hover:bg-theme-hover flex items-center text-theme-main cursor-pointer whitespace-nowrap truncate"
-                  title={`切换并变基到 '${currentBranchName}' (Checkout and Rebase)`}
+                  title={t.branchMenu.actions.checkoutAndRebaseOnto(currentBranchName)}
                 >
                   <span className="truncate">{t.branchMenu.actions.checkoutAndRebaseOnto(currentBranchName)}</span>
                 </button>
@@ -753,7 +753,7 @@ export function BranchMenu({ onClose }: BranchMenuProps) {
                     onClose();
                   }}
                   className="w-full text-left px-3 py-1 hover:bg-theme-hover flex items-center text-theme-main cursor-pointer whitespace-nowrap truncate"
-                  title="切换并拉取最新代码 (Checkout and Update)"
+                  title={t.branchMenu.actions.checkoutAndUpdate}
                 >
                   <span className="truncate">{t.branchMenu.actions.checkoutAndUpdate}</span>
                 </button>
@@ -768,7 +768,7 @@ export function BranchMenu({ onClose }: BranchMenuProps) {
                     onClose();
                   }}
                   className="w-full text-left px-3 py-1 hover:bg-theme-hover flex items-center text-theme-main cursor-pointer whitespace-nowrap truncate"
-                  title={`与 '${currentBranchName}' 对比差异 (Compare with)`}
+                  title={t.branchMenu.actions.compareWith(currentBranchName)}
                 >
                   <span className="truncate">{t.branchMenu.actions.compareWith(currentBranchName)}</span>
                 </button>
@@ -796,7 +796,7 @@ export function BranchMenu({ onClose }: BranchMenuProps) {
                     onClose();
                   }}
                   className="w-full text-left px-3 py-1 hover:bg-theme-hover flex items-center text-theme-main cursor-pointer whitespace-nowrap truncate"
-                  title={`将 '${currentBranchName}' 变基到 '${activeFlyoutBranch}' (Rebase onto)`}
+                  title={t.branchMenu.actions.rebaseOnto(activeFlyoutBranch, currentBranchName)}
                 >
                   <span className="truncate">{t.branchMenu.actions.rebaseOnto(activeFlyoutBranch, currentBranchName)}</span>
                 </button>
@@ -810,7 +810,7 @@ export function BranchMenu({ onClose }: BranchMenuProps) {
                     onClose();
                   }}
                   className="w-full text-left px-3 py-1 hover:bg-theme-hover disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-between text-theme-main cursor-pointer whitespace-nowrap truncate"
-                  title={`将 '${activeFlyoutBranch}' 合并到 '${currentBranchName}' (Merge into)`}
+                  title={t.branchMenu.actions.mergeInto(activeFlyoutBranch, currentBranchName)}
                 >
                   <span className="truncate">{t.branchMenu.actions.mergeInto(activeFlyoutBranch, currentBranchName)}</span>
                   {branchOperationLoading?.type === 'merge' && branchOperationLoading?.branchName === activeFlyoutBranch && (
@@ -818,7 +818,7 @@ export function BranchMenu({ onClose }: BranchMenuProps) {
                   )}
                 </button>
 
-                {/* 8b. Undo Merge (常态：与其它菜单项一致为常规可用状态，点击后弹出确认框执行安全撤销) */}
+                {/* 8b. Undo Merge */}
                 <button
                   type="button"
                   disabled={Boolean(branchOperationLoading)}
@@ -849,7 +849,7 @@ export function BranchMenu({ onClose }: BranchMenuProps) {
                     onClose();
                   }}
                   className="w-full text-left px-3 py-1 hover:bg-theme-hover flex items-center text-theme-main cursor-pointer whitespace-nowrap truncate"
-                  title={`基于 '${activeFlyoutBranch}' 建立新工作树窗口... (New Worktree)`}
+                  title={t.branchMenu.actions.newWorktreeFrom(activeFlyoutBranch)}
                 >
                   <span className="truncate">{t.branchMenu.actions.newWorktreeFrom(activeFlyoutBranch)}</span>
                 </button>
@@ -934,8 +934,8 @@ export function BranchMenu({ onClose }: BranchMenuProps) {
                   className="w-full text-left px-3 py-1 hover:bg-rose-500/15 text-rose-400 hover:text-rose-500 flex items-center gap-2 cursor-pointer font-medium transition-colors whitespace-nowrap truncate"
                   title={
                     isRemoteFlyout
-                      ? `删除远程分支 '${activeFlyoutBranch}' (Delete Remote)`
-                      : `删除本地分支 '${activeFlyoutBranch}' (Delete)`
+                      ? t.modals.deleteBranch.titleRemote
+                      : t.modals.deleteBranch.title
                   }
                 >
                   <Trash2 className="w-3.5 h-3.5 text-rose-400 shrink-0" />
@@ -1035,7 +1035,7 @@ export function BranchMenu({ onClose }: BranchMenuProps) {
               setIsDeleting(false);
               onClose();
             } else {
-              setDeleteError(result.message || '删除失败');
+              setDeleteError(result.message || (language === 'zh-CN' ? '删除失败' : 'Failed to delete'));
               setIsDeleting(false);
             }
           } catch (err: any) {
@@ -1096,15 +1096,13 @@ export function BranchMenu({ onClose }: BranchMenuProps) {
         isOpen={Boolean(undoMergeTarget)}
         title={
           useAppStore.getState().language === 'zh-CN'
-            ? `撤销合并 (Undo Merge)`
-            : `Undo Merge`
+            ? '撤销合并'
+            : 'Undo Merge'
         }
         confirmText={
           useAppStore.getState().language === 'zh-CN' ? '确认撤销' : 'Undo Merge'
         }
-        cancelText={
-          useAppStore.getState().language === 'zh-CN' ? '取消' : 'Cancel'
-        }
+        cancelText={t.common.cancel}
         variant="danger"
         icon="warning"
         isLoading={Boolean(branchOperationLoading)}

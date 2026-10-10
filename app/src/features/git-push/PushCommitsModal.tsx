@@ -545,7 +545,7 @@ export const PushCommitsModal: React.FC = () => {
                   setIsTargetBranchDropdownOpen(false);
                 }}
                 className="flex items-center gap-1.5 px-2 py-1 rounded bg-theme-card hover:bg-theme-card-hover border border-theme-border-card text-sky-400 font-bold transition cursor-pointer"
-                title="选择本地推送源分支"
+                title={t.modals.push.selectSourceBranchTooltip}
               >
                 <GitBranch className="w-3.5 h-3.5 text-sky-400 shrink-0" />
                 <span className="truncate max-w-[160px]">{sourceBranch}</span>
@@ -565,7 +565,7 @@ export const PushCommitsModal: React.FC = () => {
                         type="text"
                         value={sourceBranchSearch}
                         onChange={(e) => setSourceBranchSearch(e.target.value)}
-                        placeholder="搜索本地分支..."
+                        placeholder={t.modals.push.searchLocalBranchesPlaceholder}
                         className="bg-transparent border-none text-xs text-theme-main focus:outline-none w-full"
                         autoFocus
                       />
@@ -573,7 +573,7 @@ export const PushCommitsModal: React.FC = () => {
                   </div>
                   <div className="max-h-48 overflow-y-auto py-1">
                     {filteredLocalBranches.length === 0 ? (
-                      <div className="px-3 py-2 text-center text-theme-dim text-[11px]">无匹配分支</div>
+                      <div className="px-3 py-2 text-center text-theme-dim text-[11px]">{t.modals.push.noMatchingBranches}</div>
                     ) : (
                       filteredLocalBranches.map((b) => (
                         <button
@@ -618,7 +618,7 @@ export const PushCommitsModal: React.FC = () => {
                   setIsSourceBranchDropdownOpen(false);
                 }}
                 className="flex items-center gap-1.5 px-2 py-1 rounded bg-theme-card hover:bg-theme-card-hover border border-theme-border-card text-sky-400 font-bold transition cursor-pointer"
-                title="选择或修改目标远端分支"
+                title={t.modals.push.selectTargetRemoteBranchTooltip}
               >
                 <span className="truncate max-w-[160px]">{targetBranch}</span>
                 <ChevronDown className="w-3 h-3 text-theme-dim shrink-0" />
@@ -637,7 +637,7 @@ export const PushCommitsModal: React.FC = () => {
                         type="text"
                         value={targetBranchSearch}
                         onChange={(e) => setTargetBranchSearch(e.target.value)}
-                        placeholder="搜索目标远程分支..."
+                        placeholder={t.modals.push.searchRemoteBranchesPlaceholder}
                         className="bg-transparent border-none text-xs text-theme-main focus:outline-none w-full"
                         autoFocus
                       />
@@ -660,7 +660,7 @@ export const PushCommitsModal: React.FC = () => {
                       >
                         <span className="truncate">{name}</span>
                         {name === sourceBranch && (
-                          <span className="text-[10px] text-theme-dim">同名分支</span>
+                          <span className="text-[10px] text-theme-dim">{t.modals.push.sameNameBranch}</span>
                         )}
                       </button>
                     ))}
@@ -674,7 +674,7 @@ export const PushCommitsModal: React.FC = () => {
             {outgoingCommitsLoading ? (
               <span className="flex items-center gap-1 text-sky-400">
                 <Loader2 className="w-3 h-3 animate-spin" />
-                <span>{commits.length > 0 ? `${t.modals.push.commitsToPush(commits.length)} (校验中...)` : t.modals.push.scanningCommits}</span>
+                <span>{commits.length > 0 ? `${t.modals.push.commitsToPush(commits.length)} (${t.modals.push.validatingNotice})` : t.modals.push.scanningCommits}</span>
               </span>
             ) : (
               <span>
@@ -709,7 +709,7 @@ export const PushCommitsModal: React.FC = () => {
                     }
                   }}
                   className="p-0.5 hover:text-sky-400 transition cursor-pointer flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
-                  title={checkedCommitHashes.size === commits.length ? '取消全选' : '全选所有待推送提交'}
+                  title={checkedCommitHashes.size === commits.length ? t.modals.push.deselectAllCommitsTooltip : t.modals.push.selectAllCommitsTooltip}
                 >
                   {checkedCommitHashes.size === commits.length && commits.length > 0 ? (
                     <CheckSquare className="w-3.5 h-3.5 text-sky-400" />
@@ -725,7 +725,7 @@ export const PushCommitsModal: React.FC = () => {
 
               {checkedCommitHashes.size > 0 && checkedCommitHashes.size < commits.length && (
                 <span className="text-[10px] text-sky-400 bg-sky-500/10 px-1.5 py-0.2 rounded font-mono">
-                  已选 {checkedCommitHashes.size} 项
+                  {t.modals.push.selectedCommitsBadge(checkedCommitHashes.size)}
                 </span>
               )}
             </div>
@@ -783,7 +783,7 @@ export const PushCommitsModal: React.FC = () => {
                             });
                           }}
                           className="p-0.5 mt-0.5 hover:text-sky-400 transition cursor-pointer shrink-0"
-                          title={isChecked ? '取消勾选此提交' : '勾选此提交'}
+                          title={isChecked ? t.modals.push.uncheckCommitTooltip : t.modals.push.checkCommitTooltip}
                         >
                           {isChecked ? (
                             <CheckSquare className="w-3.5 h-3.5 text-sky-400" />
@@ -793,7 +793,7 @@ export const PushCommitsModal: React.FC = () => {
                         </button>
 
                         {commit.isMerge ? (
-                          <GitMerge className="w-3.5 h-3.5 text-purple-400 shrink-0 mt-0.5" title="合并提交 (Merge Commit)" />
+                          <GitMerge className="w-3.5 h-3.5 text-purple-400 shrink-0 mt-0.5" title={t.modals.push.mergeCommitBadge} />
                         ) : (
                           <GitCommit className="w-3.5 h-3.5 text-sky-400 shrink-0 mt-0.5" />
                         )}
@@ -821,10 +821,10 @@ export const PushCommitsModal: React.FC = () => {
                                   });
                                 }}
                                 className="opacity-0 group-hover:opacity-100 px-1.5 py-0.5 rounded bg-sky-500/20 hover:bg-sky-500/30 text-sky-400 text-[10px] transition cursor-pointer flex items-center gap-1"
-                                title="单独将此提交推送到远端"
+                                title={t.modals.push.pushAloneCommitTooltip}
                               >
                                 <Rocket className="w-2.5 h-2.5" />
-                                <span>单独推送</span>
+                                <span>{t.modals.push.pushAloneBtn}</span>
                               </button>
                             </div>
                           </div>
@@ -988,7 +988,7 @@ export const PushCommitsModal: React.FC = () => {
 
                   {displayedFiles.length > 300 && (
                     <div className="py-2 px-3 text-center text-[11px] text-theme-dim bg-theme-subbar/60 rounded border border-theme/40 my-1">
-                      已展示前 300 个变更文件（共 {displayedFiles.length} 个）以保障流畅度
+                      {t.modals.push.maxFilesLimitNotice(displayedFiles.length)}
                     </div>
                   )}
                 </div>
@@ -1024,7 +1024,7 @@ export const PushCommitsModal: React.FC = () => {
                 title={t.modals.push.pullMergeTooltip}
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isPulling ? 'animate-spin' : ''}`} />
-                <span>{isPulling ? '正在拉取远端更新...' : t.modals.push.updateProjectPull}</span>
+                <span>{isPulling ? t.modals.push.pullingUpdates : t.modals.push.updateProjectPull}</span>
               </button>
 
               <button
@@ -1092,10 +1092,10 @@ export const PushCommitsModal: React.FC = () => {
               } disabled:opacity-40 disabled:cursor-not-allowed`}
               title={
                 isNoneChecked
-                  ? '请勾选至少一个待推送提交'
+                  ? t.modals.push.pleaseSelectAtLeastOne
                   : isSubsetChecked
-                  ? `仅推送当前勾选的 ${checkedCommitHashes.size} 个提交到远端`
-                  : '推送当前分支的所有待推送提交'
+                  ? t.modals.push.pushSelectedTooltip(checkedCommitHashes.size)
+                  : t.modals.push.pushAllTooltip
               }
             >
               {pushingLoading ? (
@@ -1110,11 +1110,11 @@ export const PushCommitsModal: React.FC = () => {
                     {forcePushMode
                       ? t.modals.push.forcePush
                       : isNoneChecked
-                      ? (pushTags ? '仅推送标签' : '请勾选要推送的提交 (0)')
+                      ? (pushTags ? t.modals.push.pushTagsOnly : t.modals.push.pleaseSelectToPush)
                       : isSubsetChecked
-                      ? `推送所选提交 (${checkedCommitHashes.size})`
+                      ? t.modals.push.pushSelectedCountBtn(checkedCommitHashes.size)
                       : commits.length > 0
-                      ? `推送分支 (${commits.length})`
+                      ? t.modals.push.pushBranchCountBtn(commits.length)
                       : t.modals.push.pushButton}
                   </span>
                 </>
@@ -1240,7 +1240,7 @@ export const PushCommitsModal: React.FC = () => {
             <div className="flex items-center justify-between border-b border-theme pb-2.5">
               <div className="flex items-center gap-2 font-bold text-sm text-theme-main">
                 <Rocket className="w-4 h-4 text-sky-400" />
-                <span>单独推送到远端 ({selectiveModal.hashes.length} 个提交)</span>
+                <span>{t.modals.push.selectiveModalTitle(selectiveModal.hashes.length)}</span>
               </div>
               <button
                 type="button"
@@ -1253,7 +1253,7 @@ export const PushCommitsModal: React.FC = () => {
             </div>
 
             <p className="text-theme-dim text-[11px] leading-relaxed">
-              将所选提交安全抽取并推送到远端仓库，本地原始开发分支与其他未完成提交不受任何影响。
+              {t.modals.push.selectiveModalDesc}
             </p>
 
             <div className="space-y-2.5 bg-theme-card p-3 rounded border border-theme-border-card">
@@ -1266,8 +1266,8 @@ export const PushCommitsModal: React.FC = () => {
                   className="mt-0.5 text-sky-500 focus:ring-0 cursor-pointer"
                 />
                 <div className="flex-1 min-w-0">
-                  <span className="font-semibold text-theme-main">直接推送到目标远端分支</span>
-                  <p className="text-[11px] text-theme-dim mt-0.5">将所选独立提交推送至远端 {remoteName}:{targetBranch}，并自动快进同步本地基准（保障后续拉取无冲突）</p>
+                  <span className="font-semibold text-theme-main">{t.modals.push.pushDirectTargetTitle}</span>
+                  <p className="text-[11px] text-theme-dim mt-0.5">{t.modals.push.pushDirectTargetDesc(remoteName, targetBranch)}</p>
                 </div>
               </label>
 
@@ -1280,14 +1280,14 @@ export const PushCommitsModal: React.FC = () => {
                   className="mt-0.5 text-sky-500 focus:ring-0 cursor-pointer"
                 />
                 <div className="flex-1 min-w-0">
-                  <span className="font-semibold text-theme-main">新建补丁分支并推送 (推荐用于提审/PR)</span>
-                  <p className="text-[11px] text-theme-dim mt-0.5">在远端创建独立分支，不改变主分支结构，便于发起审查或合并请求</p>
+                  <span className="font-semibold text-theme-main">{t.modals.push.pushPatchBranchTitle}</span>
+                  <p className="text-[11px] text-theme-dim mt-0.5">{t.modals.push.pushPatchBranchDesc}</p>
                   {selectiveModal.mode === 'patch' && (
                     <input
                       type="text"
                       value={selectiveModal.patchBranchName}
                       onChange={(e) => setSelectiveModal({ ...selectiveModal, patchBranchName: e.target.value })}
-                      placeholder="补丁分支名，例如 patch/fix-bug-123"
+                      placeholder={t.modals.push.patchBranchPlaceholder}
                       className="mt-2 w-full px-2.5 py-1.5 rounded bg-theme-input border border-theme-border-card text-xs text-theme-main focus:outline-none focus:border-sky-500 font-mono"
                     />
                   )}
@@ -1309,7 +1309,7 @@ export const PushCommitsModal: React.FC = () => {
                 onClick={() => setSelectiveModal(null)}
                 className="px-3.5 py-1.5 rounded bg-theme-card hover:bg-theme-card-hover border border-theme-border-card text-theme-main text-xs transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                取消
+                {t.common.cancel}
               </button>
               <button
                 type="button"
@@ -1331,12 +1331,12 @@ export const PushCommitsModal: React.FC = () => {
                 {pushingLoading ? (
                   <>
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>正在推送...</span>
+                    <span>{t.modals.push.pushing}</span>
                   </>
                 ) : (
                   <>
                     <Rocket className="w-3.5 h-3.5" />
-                    <span>确认独立推送</span>
+                    <span>{t.modals.push.confirmSelectivePush}</span>
                   </>
                 )}
               </button>
@@ -1377,7 +1377,7 @@ export const PushCommitsModal: React.FC = () => {
             className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-theme-main hover:bg-theme-card hover:text-sky-400 transition cursor-pointer"
           >
             <Rocket className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-            <span>单独推送此提交到远端...</span>
+            <span>{t.modals.push.pushAloneCommitTooltip}...</span>
           </button>
 
           <button
@@ -1396,7 +1396,7 @@ export const PushCommitsModal: React.FC = () => {
             className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-theme-main hover:bg-theme-card hover:text-sky-400 transition cursor-pointer"
           >
             <ArrowUpRight className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-            <span>仅推送截止到此提交</span>
+            <span>{t.modals.push.pushOnlyUpToThisCommit}</span>
           </button>
 
           <button
@@ -1406,7 +1406,7 @@ export const PushCommitsModal: React.FC = () => {
               setCommitContextMenu(null);
               setNotification({
                 id: Date.now(),
-                title: '已复制版本号',
+                title: t.notifications.copyHashSuccess,
                 detail: commitContextMenu.commit.hash,
                 type: 'info',
               });
@@ -1414,7 +1414,7 @@ export const PushCommitsModal: React.FC = () => {
             className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-theme-muted hover:bg-theme-card hover:text-theme-main transition cursor-pointer"
           >
             <Copy className="w-3.5 h-3.5 text-theme-dim shrink-0" />
-            <span>复制提交哈希</span>
+            <span>{t.modals.push.copyCommitHash}</span>
           </button>
         </div>
       )}

@@ -135,7 +135,7 @@ export function TopBar() {
                 ? 'bg-theme-hover text-theme-main border-sky-500/70 shadow'
                 : 'bg-theme-card hover:bg-theme-card-hover text-theme-main border-theme-border-card'
             }`}
-            title={currentProject ? `Active Repo: ${currentProject.path}` : 'Select a project'}
+            title={currentProject ? t.topBar.projectSelector.activeRepoTooltip(currentProject.path) : t.topBar.projectSelector.selectProjectPrompt}
           >
             {/* Project Monogram Badge (FEQI, LQS, etc.) */}
             <span className="px-1.5 py-0.2 rounded-md font-mono font-bold text-[10px] bg-gradient-to-r from-blue-600 to-indigo-600 text-white tracking-wider shadow-2xs shrink-0">
@@ -145,9 +145,9 @@ export function TopBar() {
             {/* Project Name */}
             <span
               className="font-semibold max-w-[100px] sm:max-w-[160px] md:max-w-[220px] truncate text-theme-main text-xs"
-              title={currentProject ? `${currentProject.name}\n${currentProject.path}` : 'Select Project'}
+              title={currentProject ? `${currentProject.name}\n${currentProject.path}` : t.topBar.projectSelector.selectProjectPrompt}
             >
-              {currentProject ? currentProject.name : 'Select Project'}
+              {currentProject ? currentProject.name : t.topBar.projectSelector.selectProjectPrompt}
             </span>
 
             <ChevronDown className="w-3 h-3 text-theme-dim shrink-0 ml-0.5" />
@@ -191,7 +191,7 @@ export function TopBar() {
                             <span className={`truncate text-xs ${isSelected ? 'text-theme-active-text font-bold' : 'text-theme-main'}`} title={p.name}>
                               {p.name}
                             </span>
-                            <span className={`text-[10px] truncate ${isSelected ? 'text-theme-active-dim' : 'text-theme-dim'}`} title={`Branch: ${p.currentBranch}`}>
+                            <span className={`text-[10px] truncate ${isSelected ? 'text-theme-active-dim' : 'text-theme-dim'}`} title={t.topBar.projectSelector.branchLabel(p.currentBranch)}>
                               {p.currentBranch}
                             </span>
                           </div>
@@ -266,27 +266,27 @@ export function TopBar() {
               )}
               <span
                 className={`font-semibold truncate max-w-[80px] sm:max-w-[130px] md:max-w-[180px] ${branchOperationLoading || isRepoLoading ? 'text-sky-300' : 'text-theme-main'}`}
-                title={`Current Branch: ${currentProject.currentBranch}`}
+                title={t.topBar.branchMenu.currentBranchTooltip(currentProject.currentBranch)}
               >
                 {currentProject.currentBranch}
               </span>
 
-              {/* Incoming Commits (未更新代码 - 选项 A 原生呼吸感) */}
+              {/* Incoming Commits */}
               {incomingCount > 0 && !branchOperationLoading && (
                 <span
                   className="flex items-center gap-0.5 px-2 py-0.5 bg-sky-500/15 text-sky-400 border border-sky-500/30 rounded-full text-[10px] font-mono font-bold animate-pulse shrink-0"
-                  title={`Remote has ${incomingCount} unpulled commit(s). Click to update.`}
+                  title={t.topBar.branchMenu.incomingTooltip(incomingCount)}
                 >
                   <span>↙</span>
                   <span>{incomingCount}</span>
                 </span>
               )}
 
-              {/* Outgoing Commits (本地待推送) */}
+              {/* Outgoing Commits */}
               {outgoingCount > 0 && !branchOperationLoading && (
                 <span
                   className="flex items-center gap-0.5 px-2 py-0.5 bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 rounded-full text-[10px] font-mono font-bold shrink-0"
-                  title={`Local has ${outgoingCount} unpushed commit(s).`}
+                  title={t.topBar.branchMenu.outgoingTooltip(outgoingCount)}
                 >
                   <span>↗</span>
                   <span>{outgoingCount}</span>

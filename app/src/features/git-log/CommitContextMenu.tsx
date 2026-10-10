@@ -180,7 +180,7 @@ export function CommitContextMenu({
         className="w-full flex items-center gap-2.5 px-3 py-1.5 text-left text-theme-main hover:bg-theme-card hover:text-sky-400 transition-colors cursor-pointer group"
       >
         <GitFork className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-        <span className="flex-1 truncate">{t.gitLog.contextMenu.syncToBranch || '同步此提交到其他分支...'}</span>
+        <span className="flex-1 truncate">{t.gitLog.contextMenu.syncToBranch}</span>
       </button>
 
       <div className="my-1 border-t border-theme/60" />
