@@ -17,6 +17,7 @@ dist-ssr/
 app/dist-ssr/
 release/
 app/release/
+app/public/vs/
 .cache/
 app/.cache/
 *.tsbuildinfo

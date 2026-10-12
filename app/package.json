@@ -5,8 +5,10 @@
   "type": "module",
   "main": "dist-electron/electron/main.js",
   "scripts": {
+    "predev": "node scripts/setup-monaco.cjs",
     "dev": "vite",
     "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p electron/tsconfig.json --noEmit",
+    "prebuild": "node scripts/setup-monaco.cjs",
     "build": "tsc -p tsconfig.app.json --noEmit && vite build",
     "preview": "vite preview",
     "build:electron": "tsc -p electron/tsconfig.json && node -e \"require('fs').writeFileSync('dist-electron/package.json', JSON.stringify({type:'commonjs'}))\"",

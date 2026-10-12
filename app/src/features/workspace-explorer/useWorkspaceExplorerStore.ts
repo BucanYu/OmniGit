@@ -15,7 +15,7 @@ interface WorkspaceExplorerState {
   loadingDirs: Set<string>;
   selectedNodePath: string | null;
 
-  toggleExpandDir: (repoPath: string, subDir?: string) => Promise<void>;
+  toggleExpandDir: (repoPath: string, subDir?: string, autoExpandDepth?: number) => Promise<void>;
   selectNode: (nodePath: string) => void;
   refreshDir: (repoPath: string, subDir?: string) => Promise<void>;
 }
@@ -26,11 +26,11 @@ export const useWorkspaceExplorerStore = create<WorkspaceExplorerState>((set, ge
   loadingDirs: new Set<string>(),
   selectedNodePath: null,
 
-  toggleExpandDir: async (repoPath: string, subDir: string = '') => {
+  toggleExpandDir: async (repoPath: string, subDir: string = '', autoExpandDepth: number = 0) => {
     const fullKey = subDir ? `${repoPath}/${subDir}`.replace(/\\/g, '/') : repoPath.replace(/\\/g, '/');
     const { expandedDirs, dirChildren, loadingDirs } = get();
 
-    if (expandedDirs.has(fullKey)) {
+    if (expandedDirs.has(fullKey) && autoExpandDepth === 0) {
       // Collapse
       const nextExpanded = new Set(expandedDirs);
       nextExpanded.delete(fullKey);
@@ -44,7 +44,8 @@ export const useWorkspaceExplorerStore = create<WorkspaceExplorerState>((set, ge
     set({ expandedDirs: nextExpanded });
 
     // Fetch if not already cached
-    if (!dirChildren[fullKey] && !loadingDirs.has(fullKey)) {
+    let items = dirChildren[fullKey];
+    if (!items && !loadingDirs.has(fullKey)) {
       const nextLoading = new Set(loadingDirs);
       nextLoading.add(fullKey);
       set({ loadingDirs: nextLoading });
@@ -55,7 +56,7 @@ export const useWorkspaceExplorerStore = create<WorkspaceExplorerState>((set, ge
           dir: subDir,
         });
         const res = await fetch(`/api/fs/tree?${query.toString()}`);
-        const items: FileTreeNodeItem[] = await res.json();
+        items = await res.json();
 
         set((state) => ({
           dirChildren: {
@@ -70,6 +71,11 @@ export const useWorkspaceExplorerStore = create<WorkspaceExplorerState>((set, ge
           loadingDirs: new Set([...state.loadingDirs].filter((k) => k !== fullKey)),
         }));
       }
+    }
+
+    // Auto-expand single-child folder chains (e.g. src/main/java/com/adas/...)
+    if (items && items.length === 1 && items[0].isDirectory && autoExpandDepth < 8) {
+      get().toggleExpandDir(repoPath, items[0].relativePath, autoExpandDepth + 1);
     }
   },
 

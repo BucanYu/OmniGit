@@ -30,18 +30,27 @@ const DEFAULT_IGNORED_DIRS = new Set([
 ]);
 
 export class FileSystemService {
+  private gitignoreCache = new Map<string, { mtime: number; rules: string[] }>();
+
   /**
-   * Parse .gitignore rules into simple prefix/suffix filters
+   * Parse .gitignore rules into simple prefix/suffix filters (cached with mtime check)
    */
   private loadGitignoreRules(repoPath: string): string[] {
     const gitignorePath = path.join(repoPath, '.gitignore');
     if (!fs.existsSync(gitignorePath)) return [];
     try {
+      const stat = fs.statSync(gitignorePath);
+      const cached = this.gitignoreCache.get(repoPath);
+      if (cached && cached.mtime === stat.mtimeMs) {
+        return cached.rules;
+      }
       const content = fs.readFileSync(gitignorePath, 'utf8');
-      return content
+      const rules = content
         .split(/\r?\n/)
         .map((l) => l.trim())
         .filter((l) => l && !l.startsWith('#'));
+      this.gitignoreCache.set(repoPath, { mtime: stat.mtimeMs, rules });
+      return rules;
     } catch {
       return [];
     }
@@ -95,23 +104,13 @@ export class FileSystemService {
       }
 
       const isDir = entry.isDirectory();
-      let size = 0;
-      let extension = '';
-
-      if (!isDir) {
-        extension = path.extname(name).toLowerCase();
-        try {
-          const stat = fs.statSync(fullPath);
-          size = stat.size;
-        } catch {}
-      }
+      const extension = !isDir ? path.extname(name).toLowerCase() : '';
 
       items.push({
         name,
         path: fullPath,
         relativePath: relPath,
         isDirectory: isDir,
-        size,
         extension,
       });
     }
