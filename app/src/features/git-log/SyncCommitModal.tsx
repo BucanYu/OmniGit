@@ -145,7 +145,7 @@ export const SyncCommitModal: React.FC<SyncCommitModalProps> = ({
               <span className="text-theme-dim">{commit.authorName}</span>
             </div>
             <p className="text-xs text-theme-main font-medium line-clamp-2 leading-relaxed">
-              {commit.subject}
+              {commit.message}
             </p>
           </div>
 

@@ -171,6 +171,13 @@ export function UserAccountFilter() {
     }
   };
 
+  const handleSetPrimary = (name: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const current = useAppStore.getState().selectedAuthorNames;
+    const next = [name, ...current.filter((n) => n !== name)];
+    useAppStore.setState({ selectedAuthorNames: next });
+  };
+
   return (
     <div className="relative" ref={containerRef}>
       {/* Capsule Trigger Button */}

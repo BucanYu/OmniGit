@@ -250,7 +250,7 @@ export interface AppState {
   
   // Workspace Aggregation (Multi-repo Workspaces)
   savedWorkspaces: WorkspaceGroupItem[];
-  loadSavedWorkspaces: () => void;
+  loadSavedWorkspaces: () => Promise<WorkspaceGroupItem[]>;
   saveWorkspaceRecord: (ws: WorkspaceGroupItem) => void;
   removeSavedWorkspace: (id: string) => void;
   renameSavedWorkspace: (id: string, newName: string) => void;
@@ -360,12 +360,11 @@ export interface AppState {
   saveCurrentFile: (content: string) => Promise<boolean>;
   toggleFileCheck: (path: string) => void;
   toggleGroupCheck: (group: 'changes' | 'unversioned', checked: boolean) => void;
-  toggleGroupCollapsed: (group: 'changes' | 'unversioned') => void;
+  toggleGroupCollapsed: (group: 'changes' | 'unversioned' | 'conflicts') => void;
   setViewStyle: (style: 'flat' | 'tree') => void;
   setIsAmend: (isAmend: boolean) => void;
   setCommitMessage: (msg: string) => void;
   setIsBranchMenuOpen: (open: boolean) => void;
-  setIsAddRepoModalOpen: (open: boolean) => void;
 
   // Workspace & Multi-window Actions
   addProjectsToWorkspace: (paths: string[]) => Promise<void>;
@@ -397,7 +396,7 @@ export interface AppState {
     preMergeHead: string;
     timestamp: number;
   } | null;
-  checkMergeUndoStatus: (repoPath?: string, activeBranch?: string) => Promise<{ canUndo: boolean; sourceBranch: string; targetBranch: string; preMergeHead: string } | null>;
+  checkMergeUndoStatus: (repoPath?: string, activeBranch?: string) => Promise<any>;
   undoLastMerge: (sourceBranch?: string) => Promise<{ success: boolean; message: string }>;
   deleteBranch: (branchName: string, force?: boolean, isRemote?: boolean) => Promise<{ success: boolean; message: string }>;
   updateProject: () => Promise<void>;

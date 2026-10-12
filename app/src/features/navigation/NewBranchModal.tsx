@@ -63,9 +63,9 @@ export function NewBranchModal({
             </div>
             <div>
               <h3 className="text-sm font-semibold text-theme-main leading-none">
-                {t.modals.newBranch.title(sourceBranch)}
+                {t.modals.newBranch.title}
               </h3>
-              <p className="text-[11px] text-theme-muted mt-1">{t.modals.newBranch.description}</p>
+              <p className="text-[11px] text-theme-muted mt-1">{t.modals.newBranch.sourceBranch} <span className="font-mono text-sky-400">{sourceBranch}</span></p>
             </div>
           </div>
           <button
@@ -81,7 +81,7 @@ export function NewBranchModal({
         <form onSubmit={handleSubmit} className="p-5 flex flex-col gap-4">
           <div>
             <label className="block text-xs font-medium text-theme-main mb-1.5">
-              {t.modals.newBranch.branchNameLabel}
+              {t.modals.newBranch.baseBranchLabel}
             </label>
             <input
               type="text"

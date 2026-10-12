@@ -201,7 +201,7 @@ export const PushCommitsModal: React.FC = () => {
       isOpen: true,
       filePath: file.path,
       commitHash: hash,
-      commitMessage: commitObj?.message,
+      commitMessage: commitObj?.subject || (commitObj as any)?.message,
     });
   };
 
@@ -793,7 +793,9 @@ export const PushCommitsModal: React.FC = () => {
                         </button>
 
                         {commit.isMerge ? (
-                          <GitMerge className="w-3.5 h-3.5 text-purple-400 shrink-0 mt-0.5" title={t.modals.push.mergeCommitBadge} />
+                          <span title={t.modals.push.mergeCommitBadge} className="inline-flex shrink-0 mt-0.5">
+                            <GitMerge className="w-3.5 h-3.5 text-purple-400" />
+                          </span>
                         ) : (
                           <GitCommit className="w-3.5 h-3.5 text-sky-400 shrink-0 mt-0.5" />
                         )}

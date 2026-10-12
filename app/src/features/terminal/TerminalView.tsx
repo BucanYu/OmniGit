@@ -152,6 +152,11 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
       } catch {}
     }, 100);
 
+    if (!window.electronAPI?.terminal) {
+      term.writeln('\x1b[38;5;39m[OmniGit Terminal]\x1b[0m Web 模式运行在浏览器沙箱中，本地命令行 PTY 终端不可用。');
+      term.writeln('\x1b[90m请安装并使用 OmniGit 桌面客户端以获得完整极速的集成终端体验 (PowerShell / Git Bash / CMD)。\x1b[0m\r\n');
+    }
+
     // Terminal user input -> send to PTY backend
     const onDataDisposable = term.onData((data) => {
       window.electronAPI?.terminal?.write(sessionId, data);

@@ -703,7 +703,7 @@ export const PushDiffModal: React.FC<PushDiffModalProps> = ({
                 useInlineViewWhenSpaceIsLimited: false,
                 renderSideBySideInlineBreakpoint: 0,
                 hover: { enabled: false },
-              }}
+              } as any}
             />
           )}
         </div>

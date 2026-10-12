@@ -13,6 +13,9 @@ import {
   initialLanguage,
   initialTheme,
   currentWorkspaceId,
+  repoSnapshotCache,
+  syncRuntime,
+  aggregateReposIntoWorkspaces,
 } from '../storeHelpers';
 import { getLocale, type AppLanguage } from '../../locales';
 
@@ -58,8 +61,8 @@ export const createWorkspaceSlice = (set: any, get: any) => ({
 
   savedWorkspaces: [],
 
-  loadSavedWorkspaces: () => {
-    if (typeof window === 'undefined') return;
+  loadSavedWorkspaces: async (): Promise<WorkspaceGroupItem[]> => {
+    if (typeof window === 'undefined') return [];
     // Clean up any bogus 'default' storage keys immediately
     try {
       localStorage.removeItem('omnigit_ws_paths_default');
@@ -146,6 +149,36 @@ export const createWorkspaceSlice = (set: any, get: any) => ({
       }
     }
 
+    // Always check L3 disk backup if list is empty, or merge with L3 disk backup!
+    if (list.length === 0) {
+      try {
+        const res = await fetch('/api/git/workspaces/backup');
+        const backup = await res.json();
+        if (backup) {
+          const sanitizedBackup: WorkspaceGroupItem[] = Array.isArray(backup.savedWorkspaces)
+            ? backup.savedWorkspaces.filter((w: any) => w && w.id && w.id !== 'default')
+            : [];
+          if (backup.workspaceProjectPaths && typeof backup.workspaceProjectPaths === 'object') {
+            Object.entries(backup.workspaceProjectPaths).forEach(([wsId, paths]: [string, any]) => {
+              if (wsId && wsId !== 'default' && Array.isArray(paths) && paths.length > 0) {
+                safeLocalStorageSetItem(`omnigit_ws_paths_${wsId}`, JSON.stringify(paths));
+                if (!sanitizedBackup.some((w) => w.id === wsId)) {
+                  sanitizedBackup.push(buildWorkspaceRecord(wsId, paths, undefined, undefined, get().language));
+                }
+              }
+            });
+          }
+          if (Array.isArray(backup.recentProjects) && backup.recentProjects.length > 0) {
+            safeLocalStorageSetItem('omnigit_global_recent_projects', JSON.stringify(backup.recentProjects));
+            set({ globalRecentProjects: backup.recentProjects });
+          }
+          list = sanitizedBackup;
+        }
+      } catch (err) {
+        console.warn('[OmniGit] Failed to fetch disk backup during loadSavedWorkspaces:', err);
+      }
+    }
+
     // Collect all repo paths belonging to multi-repo workspaces
     const multiRepoPaths = new Set<string>();
     for (const ws of list) {
@@ -186,45 +219,12 @@ export const createWorkspaceSlice = (set: any, get: any) => ({
     // Sort by lastOpened descending
     deduplicated.sort((a, b) => (b.lastOpened || 0) - (a.lastOpened || 0));
 
+    safeLocalStorageSetItem('omnigit_saved_workspaces', JSON.stringify(deduplicated));
+    set({ savedWorkspaces: deduplicated });
     if (deduplicated.length > 0) {
-      safeLocalStorageSetItem('omnigit_saved_workspaces', JSON.stringify(deduplicated));
-      set({ savedWorkspaces: deduplicated });
       scheduleWorkspacesDiskBackup();
-    } else {
-      // Automatic L3 Disk Backup Restoration!
-      fetch('/api/git/workspaces/backup')
-        .then((res) => res.json())
-        .then((backup) => {
-          if (backup && Array.isArray(backup.savedWorkspaces) && backup.savedWorkspaces.length > 0) {
-            const sanitizedBackup = backup.savedWorkspaces.filter(
-              (w: any) => w && w.id && w.id !== 'default'
-            );
-            if (sanitizedBackup.length > 0) {
-              console.log('[OmniGit] Auto-restoring workspaces from L3 disk backup...');
-              safeLocalStorageSetItem('omnigit_saved_workspaces', JSON.stringify(sanitizedBackup));
-              if (backup.workspaceProjectPaths) {
-                Object.entries(backup.workspaceProjectPaths).forEach(([wsId, paths]) => {
-                  if (wsId && wsId !== 'default') {
-                    safeLocalStorageSetItem(`omnigit_ws_paths_${wsId}`, JSON.stringify(paths));
-                  }
-                });
-              }
-              if (Array.isArray(backup.recentProjects) && backup.recentProjects.length > 0) {
-                safeLocalStorageSetItem('omnigit_global_recent_projects', JSON.stringify(backup.recentProjects));
-                set({ globalRecentProjects: backup.recentProjects });
-              }
-              set({ savedWorkspaces: sanitizedBackup });
-              broadcastWorkspaceChanged();
-              return;
-            }
-          }
-          safeLocalStorageSetItem('omnigit_saved_workspaces', JSON.stringify([]));
-          set({ savedWorkspaces: [] });
-        })
-        .catch(() => {
-          set({ savedWorkspaces: [] });
-        });
     }
+    return deduplicated;
   },
 
   saveWorkspaceRecord: (ws: WorkspaceGroupItem) => {
@@ -741,7 +741,7 @@ export const createWorkspaceSlice = (set: any, get: any) => ({
 
   initApp: async () => {
     get().loadRecentProjects();
-    get().loadSavedWorkspaces();
+    const savedList = await get().loadSavedWorkspaces();
 
     const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
     const isExplicitWs = urlParams.has('ws');
@@ -779,7 +779,6 @@ export const createWorkspaceSlice = (set: any, get: any) => ({
 
     // Resolve active workspace:
     let activeWsId = isExplicitWs ? (urlParams.get('ws') || 'default') : 'default';
-    const savedList = get().savedWorkspaces.filter((w) => w && w.id && w.id !== 'default');
     let targetWs: WorkspaceGroupItem | undefined;
 
     if (!isExplicitWs) {
@@ -876,6 +875,26 @@ export const createWorkspaceSlice = (set: any, get: any) => ({
       selectedPaths = targetWs.repos.map((r) => r.path);
       if (typeof window !== 'undefined') {
         safeLocalStorageSetItem(storageKey, JSON.stringify(selectedPaths));
+      }
+    }
+
+    // Fallback: If STILL empty, check if any workspace in savedList matches or can be opened!
+    if (!selectedPaths || selectedPaths.length === 0) {
+      const candidateWs = savedList.find((w) => w.id === activeWsId) || (savedList.length > 0 ? savedList[0] : null);
+      if (candidateWs && candidateWs.repos && candidateWs.repos.length > 0) {
+        targetWs = candidateWs;
+        activeWsId = candidateWs.id;
+        selectedPaths = candidateWs.repos.map((r) => r.path);
+        set({ workspaceId: activeWsId });
+        if (typeof window !== 'undefined') {
+          safeLocalStorageSetItem(`omnigit_ws_paths_${activeWsId}`, JSON.stringify(selectedPaths));
+          safeLocalStorageSetItem('omnigit_last_active_workspace_id', activeWsId);
+          try {
+            const url = new URL(window.location.href);
+            url.searchParams.set('ws', activeWsId);
+            window.history.replaceState(null, '', url.toString());
+          } catch {}
+        }
       }
     }
 
@@ -1017,8 +1036,8 @@ export const createWorkspaceSlice = (set: any, get: any) => ({
         (window as any).__omnigit_sync_interval_set = true;
         window.addEventListener('focus', () => {
           const now = Date.now();
-          if (now - lastFocusSyncTime > 30000) {
-            lastFocusSyncTime = now;
+          if (now - syncRuntime.lastFocusSyncTime > 30000) {
+            syncRuntime.lastFocusSyncTime = now;
             get().pollWorkspaceSyncStatus();
             const curr = get().projects.find((p) => p.id === get().activeProjectId);
             if (curr) {
@@ -1405,7 +1424,7 @@ export const createWorkspaceSlice = (set: any, get: any) => ({
     get().syncCurrentWorkspaceToSaved(targetProject.path);
 
     // Invalidate any in-flight requests from the previous project!
-    currentRepoLoadId++;
+    syncRuntime.currentRepoLoadId++;
 
     const normTargetPath = normalizePath(targetProject.path);
     let cached = repoSnapshotCache.get(normTargetPath) || getLocalSnapshot(normTargetPath);

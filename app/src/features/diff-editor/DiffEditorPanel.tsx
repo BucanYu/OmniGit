@@ -23,6 +23,7 @@ import {
   ArrowRightLeft,
   FolderOpen,
   RefreshCw,
+  ExternalLink,
 } from 'lucide-react';
 
 function hasGitConflictMarkers(text: string): boolean {
@@ -133,6 +134,7 @@ export function DiffEditorPanel() {
     markConflictResolved,
     openConflictsDialog,
     revealFileInOS,
+    openFileInEditor,
     isRepoLoading,
   } = useAppStore();
   const { t } = useTranslation();
@@ -1077,7 +1079,7 @@ export function DiffEditorPanel() {
               diffWordWrap: 'off',
               enableSplitViewResizing: true,
               hover: { enabled: false },
-            }}
+            } as any}
           />
         ) : (
           <Editor
@@ -1102,7 +1104,7 @@ export function DiffEditorPanel() {
               wordWrap: wordWrap ? 'on' : 'off',
               tabSize: 2,
               hover: { enabled: false },
-            }}
+            } as any}
           />
         )}
       </div>

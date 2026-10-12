@@ -1,20 +1,11 @@
-import type { AppState, GitFileItem, BranchItem, GitProject, GitCommitItem, GitCommitDetails, LogFilterOptions, BranchOperationState, HistoricalDiffState, OutgoingCommitsData, LightRepoCache, WorkspaceGroupItem, WorkspaceRepoItem, RecentProjectItem, GitUserInfo, GitAuthorItem, WorkspaceGitAccount, Conflict3WayData } from '../types';
+import type { AppTheme } from '../types';
 import {
-  normalizePath,
   broadcastWorkspaceChanged,
-  buildWorkspaceRecord,
   safeLocalStorageSetItem,
-  scheduleWorkspacesDiskBackup,
-  normalizeSnapshotFiles,
-  sanitizeSnapshot,
-  getLocalSnapshot,
-  loadDiskSnapshot,
-  saveLocalSnapshot,
   initialLanguage,
   initialTheme,
-  currentWorkspaceId,
 } from '../storeHelpers';
-import { getLocale, type AppLanguage } from '../../locales';
+import type { AppLanguage } from '../../locales';
 
 export const createLayoutSlice = (set: any, get: any) => ({
   language: initialLanguage,

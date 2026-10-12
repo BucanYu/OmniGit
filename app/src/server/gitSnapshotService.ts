@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { OmniGitSettings } from './gitTypes';
+import type { OmniGitSettings } from './gitTypes';
 
 function getConfigFile(): string {
   const candidate1 = path.resolve(process.cwd(), '.omnigit_config.json');
@@ -308,6 +308,35 @@ export const gitSnapshotService = {
             sanitizedPaths[wsId] = paths;
           }
         }
+
+        // Auto-reconcile: If workspaceProjectPaths has workspace IDs missing from savedWorkspaces, synthesize them!
+        const savedIds = new Set(sanitizedSaved.map((w: any) => w.id));
+        for (const [wsId, paths] of Object.entries(sanitizedPaths)) {
+          if (!savedIds.has(wsId)) {
+            const firstRepo = paths[0] || '';
+            const norm = firstRepo.replace(/\\/g, '/');
+            const name = paths.length > 1
+              ? `${norm.split('/').filter(Boolean).pop() || 'Workspace'} 等 ${paths.length} 个项目`
+              : norm.split('/').filter(Boolean).pop() || 'Workspace';
+            sanitizedSaved.push({
+              id: wsId,
+              name,
+              rootPath: path.dirname(firstRepo),
+              repos: paths.map((p: string) => {
+                const pNorm = p.replace(/\\/g, '/');
+                return {
+                  name: pNorm.split('/').filter(Boolean).pop() || 'repo',
+                  path: p,
+                  branch: 'main',
+                };
+              }),
+              lastOpened: Date.now(),
+              badgeColor: 'bg-sky-600/90 text-white',
+            });
+            savedIds.add(wsId);
+          }
+        }
+
         return {
           savedWorkspaces: sanitizedSaved,
           recentProjects: Array.isArray(parsed.recentProjects) ? parsed.recentProjects : [],

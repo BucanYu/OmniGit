@@ -32,7 +32,7 @@ interface BranchMenuProps {
 }
 
 export function BranchMenu({ onClose }: BranchMenuProps) {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const {
     branches,
     projects,

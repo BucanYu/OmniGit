@@ -13,6 +13,9 @@ import {
   initialLanguage,
   initialTheme,
   currentWorkspaceId,
+  repoSnapshotCache,
+  syncRuntime,
+  repoInFlight,
 } from '../storeHelpers';
 import { getLocale, type AppLanguage } from '../../locales';
 
@@ -23,7 +26,7 @@ export const createGitStatusSlice = (set: any, get: any) => ({
 
   selectedFileDiff: { oldContent: '', newContent: '' },
 
-  editorViewMode: 'diff',
+  editorViewMode: 'diff' as 'diff' | 'editor',
 
   setEditorViewMode: (mode: 'diff' | 'editor') => set({ editorViewMode: mode }),
 
@@ -43,7 +46,7 @@ export const createGitStatusSlice = (set: any, get: any) => ({
 
   setRightPanelOpen: (open: boolean) => set({ isRightPanelOpen: open }),
 
-  viewStyle: 'flat',
+  viewStyle: 'flat' as 'flat' | 'tree',
 
   groupCollapsed: {
     conflicts: false,
@@ -98,7 +101,7 @@ export const createGitStatusSlice = (set: any, get: any) => ({
     }
     repoInFlight.add(normPath);
 
-    const loadId = ++currentRepoLoadId;
+    const loadId = ++syncRuntime.currentRepoLoadId;
     // Only show full loading spinner if this repo has never been loaded before (no cache)
     if (!cached) {
       set({ isRepoLoading: true });
@@ -169,7 +172,7 @@ export const createGitStatusSlice = (set: any, get: any) => ({
 
       // Guard: Discard applying to active state if active project switched or another load began
       const nowActive = get().projects.find((p) => p.id === get().activeProjectId);
-      if (loadId !== currentRepoLoadId || !nowActive || normalizePath(nowActive.path) !== normPath) {
+      if (loadId !== syncRuntime.currentRepoLoadId || !nowActive || normalizePath(nowActive.path) !== normPath) {
         return;
       }
 
@@ -218,14 +221,14 @@ export const createGitStatusSlice = (set: any, get: any) => ({
       console.error('Failed to load repo data:', e);
     } finally {
       repoInFlight.delete(normPath);
-      if (loadId === currentRepoLoadId) {
+      if (loadId === syncRuntime.currentRepoLoadId) {
         set({ isRepoLoading: false });
       }
     }
   },
 
   syncRepoStatusSilently: async (repoPath?: string) => {
-    if (isSyncingSilently) return;
+    if (syncRuntime.isSyncingSilently) return;
     const currentActive = get().projects.find((p) => p.id === get().activeProjectId);
     if (!currentActive) return;
 
@@ -235,8 +238,8 @@ export const createGitStatusSlice = (set: any, get: any) => ({
     }
 
     const targetPath = currentActive.path;
-    isSyncingSilently = true;
-    const loadId = currentRepoLoadId;
+    syncRuntime.isSyncingSilently = true;
+    const loadId = syncRuntime.currentRepoLoadId;
 
     try {
       const [statusRes, branchesRes] = await Promise.all([
@@ -249,7 +252,7 @@ export const createGitStatusSlice = (set: any, get: any) => ({
 
       // Strict Guard: If active project changed while fetching, DISCARD immediately!
       const nowActive = get().projects.find((p) => p.id === get().activeProjectId);
-      if (loadId !== currentRepoLoadId || !nowActive || nowActive.path.toLowerCase() !== targetPath.toLowerCase()) {
+      if (loadId !== syncRuntime.currentRepoLoadId || !nowActive || nowActive.path.toLowerCase() !== targetPath.toLowerCase()) {
         return;
       }
 
@@ -365,7 +368,7 @@ export const createGitStatusSlice = (set: any, get: any) => ({
     } catch {
       // Ignore background errors
     } finally {
-      isSyncingSilently = false;
+      syncRuntime.isSyncingSilently = false;
     }
   },
 

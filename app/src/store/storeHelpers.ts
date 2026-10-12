@@ -216,10 +216,12 @@ if (typeof document !== 'undefined') {
 }
 
 // In-flight concurrency guards to prevent request storming and socket exhaustion
-export let isSyncingSilently = false;
-export let isPollingBatchSync = false;
-export let currentRepoLoadId = 0;
-export let lastFocusSyncTime = 0;
+export const syncRuntime = {
+  isSyncingSilently: false,
+  isPollingBatchSync: false,
+  currentRepoLoadId: 0,
+  lastFocusSyncTime: 0,
+};
 export const repoInFlight = new Set<string>();
 export const repoSnapshotCache = new Map<string, LightRepoCache>();
 export const outgoingCommitsMemoryCache = new Map<string, OutgoingCommitsData>();
@@ -435,7 +437,7 @@ export function saveLocalSnapshot(rawPath: string, snapshot: LightRepoCache) {
         incoming: b.incoming,
         outgoing: b.outgoing,
       })),
-      files: nonConflictFiles.slice(0, 50).map((f) => ({
+      files: nonConflictFiles.slice(0, 50).map((f: any) => ({
         path: f.path,
         fileName: f.fileName,
         dirPath: f.dirPath,
@@ -447,7 +449,7 @@ export function saveLocalSnapshot(rawPath: string, snapshot: LightRepoCache) {
       selectedFilePath: snapshot.selectedFilePath,
       commitMessage: snapshot.commitMessage,
       commitHistory: (snapshot.commitHistory || []).slice(0, 5),
-      commitLogs: (snapshot.commitLogs || []).slice(0, 10).map((c) => ({
+      commitLogs: (snapshot.commitLogs || []).slice(0, 10).map((c: any) => ({
         hash: c.hash,
         shortHash: c.shortHash,
         subject: c.subject || c.message || '',

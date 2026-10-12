@@ -54,6 +54,7 @@ export function AddRepoModal({ onClose }: AddRepoModalProps) {
     addProjectsToWorkspace,
     setWorkspaceProjects,
     cloneAndImportRepo,
+    setActiveProject,
     workspaceId,
   } = useAppStore();
 

@@ -395,7 +395,7 @@ function getSystemGitCredentials(): Promise<Array<{ target: string; host: string
 }
 
 export * from './gitTypes';
-import {
+import type {
   OmniGitSettings,
   GitUserInfo,
   GitAuthorItem,

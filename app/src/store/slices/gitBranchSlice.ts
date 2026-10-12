@@ -13,6 +13,8 @@ import {
   initialLanguage,
   initialTheme,
   currentWorkspaceId,
+  repoSnapshotCache,
+  outgoingCommitsMemoryCache,
 } from '../storeHelpers';
 import { getLocale, type AppLanguage } from '../../locales';
 

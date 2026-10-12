@@ -64,7 +64,7 @@ export function CheckoutRevisionModal({
             </div>
             <div>
               <h3 className="text-sm font-semibold text-theme-main">{t.modals.checkoutRevision.title}</h3>
-              <p className="text-[11px] text-theme-dim">{t.modals.checkoutRevision.description}</p>
+              <p className="text-[11px] text-theme-dim">{t.modals.checkoutRevision.subtitle}</p>
             </div>
           </div>
           <button
@@ -82,7 +82,7 @@ export function CheckoutRevisionModal({
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-semibold text-theme-main flex items-center gap-1">
               <Tag className="w-3.5 h-3.5 text-sky-400" />
-              <span>{t.modals.checkoutRevision.targetLabel}</span>
+              <span>{t.modals.checkoutRevision.targetPlaceholder}</span>
             </label>
             <input
               type="text"
@@ -108,13 +108,13 @@ export function CheckoutRevisionModal({
             <div className="flex flex-col gap-1.5 pl-6 animate-in fade-in slide-in-from-top-1 duration-150">
               <label className="text-xs font-semibold text-theme-main flex items-center gap-1">
                 <GitBranch className="w-3.5 h-3.5 text-amber-400" />
-                <span>{t.modals.checkoutRevision.branchNameLabel}</span>
+                <span>{t.modals.checkoutRevision.newBranchLabel}</span>
               </label>
               <input
                 type="text"
                 value={newBranchName}
                 onChange={(e) => setNewBranchName(e.target.value)}
-                placeholder={t.modals.checkoutRevision.branchNamePlaceholder}
+                placeholder={t.modals.checkoutRevision.newBranchPlaceholder}
                 className="px-3 py-1.5 rounded-md bg-theme-input border border-theme text-xs text-theme-main placeholder-theme-dim focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 font-mono"
               />
             </div>

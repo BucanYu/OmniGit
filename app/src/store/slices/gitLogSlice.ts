@@ -13,11 +13,12 @@ import {
   initialLanguage,
   initialTheme,
   currentWorkspaceId,
+  repoSnapshotCache,
 } from '../storeHelpers';
 import { getLocale, type AppLanguage } from '../../locales';
 
 export const createGitLogSlice = (set: any, get: any) => ({
-  activeTab: 'commit',
+  activeTab: 'commit' as 'commit' | 'shelf' | 'log',
 
   setActiveTab: (tab: 'commit' | 'shelf' | 'log') => {
     set({ activeTab: tab });
@@ -690,7 +691,7 @@ export const createGitLogSlice = (set: any, get: any) => ({
           set({
             conflictsDialogOpen: true,
             conflictsDialogMinimized: false,
-            activeTab: 'changes',
+            activeTab: 'commit',
             notification: {
               id: Date.now(),
               title: t.notifications.cherryPickConflict,

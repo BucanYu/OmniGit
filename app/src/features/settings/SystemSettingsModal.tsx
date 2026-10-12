@@ -903,7 +903,7 @@ export function SystemSettingsModal({ onClose }: SystemSettingsModalProps) {
                         onClick={handleCheckUpdate}
                         className="px-2.5 py-1 rounded bg-theme-hover text-theme-muted hover:text-theme-main border border-theme-border text-xs transition cursor-pointer"
                       >
-                        {t.settings.updatesSection.checkAgain}
+                        {t.settings.updatesSection.checkUpdateBtn}
                       </button>
                     </div>
                   ) : updateStatus === 'error' ? (

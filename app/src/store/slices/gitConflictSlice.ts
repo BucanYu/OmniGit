@@ -13,6 +13,8 @@ import {
   initialLanguage,
   initialTheme,
   currentWorkspaceId,
+  repoSnapshotCache,
+  syncRuntime,
 } from '../storeHelpers';
 import { getLocale, type AppLanguage } from '../../locales';
 
@@ -116,7 +118,7 @@ export const createGitConflictSlice = (set: any, get: any) => ({
         set({
           conflictsDialogOpen: hasConflicts,
           conflictsDialogMinimized: false,
-          activeTab: hasConflicts ? 'changes' : get().activeTab,
+          activeTab: hasConflicts ? 'commit' : get().activeTab,
           notification: {
             id: Date.now(),
             title: hasConflicts
@@ -562,14 +564,14 @@ export const createGitConflictSlice = (set: any, get: any) => ({
   },
 
   pollWorkspaceSyncStatus: async () => {
-    if (isPollingBatchSync) return;
+    if (syncRuntime.isPollingBatchSync) return;
     const state = get();
     const paths = state.workspaceProjectPaths.length > 0
       ? state.workspaceProjectPaths
       : state.projects.map((p) => p.path);
     if (!paths || paths.length === 0) return;
 
-    isPollingBatchSync = true;
+    syncRuntime.isPollingBatchSync = true;
     try {
       const res = await fetch('/api/git/batch-sync-status', {
         method: 'POST',
@@ -648,7 +650,7 @@ export const createGitConflictSlice = (set: any, get: any) => ({
     } catch {
       // Quietly ignore background poll error
     } finally {
-      isPollingBatchSync = false;
+      syncRuntime.isPollingBatchSync = false;
     }
   }
 });
