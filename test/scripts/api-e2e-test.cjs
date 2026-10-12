@@ -6,7 +6,7 @@
 const http = require('http');
 
 const PORT = 5345;
-const BASE_URL = `http://localhost:${PORT}`;
+const BASE_URL = `http://127.0.0.1:${PORT}`;
 
 async function request(path, options = {}) {
   const url = `${BASE_URL}${path}`;

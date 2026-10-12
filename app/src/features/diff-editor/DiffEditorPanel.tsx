@@ -3,6 +3,10 @@ import { useAppStore } from '../../store/useAppStore';
 import { useTranslation } from '../../locales';
 import Editor, { DiffEditor } from '@monaco-editor/react';
 import {
+  toggleEditorComment,
+  registerAllLanguageComments,
+} from '../../utils/editorCommentUtils';
+import {
   Save,
   CheckCircle2,
   FileText,
@@ -388,11 +392,18 @@ export function DiffEditorPanel() {
       console.warn('Failed to lock side-by-side mode on mount', e);
     }
 
-    // Add Ctrl+S command inside diff editor
+    // Register universal language comment definitions
+    registerAllLanguageComments(monaco);
+
+    // Add Ctrl+S and Ctrl+/ commands inside diff editor
     const modifiedEditor = editor.getModifiedEditor();
     if (modifiedEditor) {
       modifiedEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
         handleSave();
+      });
+      modifiedEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Slash, () => {
+        const lang = getLanguageFromPath(selectedFile?.path || '');
+        toggleEditorComment(modifiedEditor, lang, selectedFile?.path);
       });
     }
 
@@ -427,9 +438,18 @@ export function DiffEditorPanel() {
   const handleMountSingleEditor = (editor: any, monaco: any) => {
     singleEditorRef.current = editor;
 
+    // Register universal language comment definitions
+    registerAllLanguageComments(monaco);
+
     // Add Ctrl+S command inside single editor
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
       handleSave();
+    });
+
+    // Add Ctrl+/ command inside single editor
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Slash, () => {
+      const lang = getLanguageFromPath(selectedFile?.path || '');
+      toggleEditorComment(editor, lang, selectedFile?.path);
     });
   };
 

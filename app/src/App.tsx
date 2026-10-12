@@ -18,6 +18,8 @@ import { CodeEditorPanel } from './features/code-editor/CodeEditorPanel';
 import { TerminalDock } from './features/terminal/TerminalDock';
 import { useTerminalStore } from './features/terminal/useTerminalStore';
 import { useWorkbenchStore } from './store/useWorkbenchStore';
+import { useWorkspaceExplorerStore } from './features/workspace-explorer/useWorkspaceExplorerStore';
+import { useEditorTabsStore } from './features/code-editor/useEditorTabsStore';
 
 export default function App() {
   const { t } = useTranslation();
@@ -61,6 +63,9 @@ export default function App() {
 
   useEffect(() => {
     (window as any).__appStore = useAppStore;
+    (window as any).__workbenchStore = useWorkbenchStore;
+    (window as any).__workspaceExplorerStore = useWorkspaceExplorerStore;
+    (window as any).__editorTabsStore = useEditorTabsStore;
     initApp();
   }, [initApp]);
 

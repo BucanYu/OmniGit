@@ -20,7 +20,7 @@ const os = require('os');
 
 const CHROME_PATH = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 const DEBUG_PORT = 9222;
-const APP_URL = 'http://localhost:5345/?ws=ws_1789365574398';
+const APP_URL = 'http://127.0.0.1:5345/?ws=ws_1789365574398';
 const REPORTS_DIR = path.resolve(__dirname, '..', 'reports');
 
 if (!fs.existsSync(REPORTS_DIR)) {
@@ -215,84 +215,160 @@ async function runBrowserE2E() {
     console.log('[6/7] Switching to Workspace Explorer Mode (Alt + 2)...');
     await cdp.evaluate(`
       (function() {
-        const explorerBtn = document.querySelector('button[title*="源码资源管理器"]') ||
-          document.querySelectorAll('.w-\\\\[42px\\\\] button')[1];
+        if (window.__workbenchStore) {
+          window.__workbenchStore.getState().setWorkbenchMode('explorer');
+          return { switched: true };
+        }
+        const explorerBtn = document.querySelector('button[title*="工作区源码资源管理器"]') ||
+          document.querySelector('button[title*="源码资源管理器"]');
         if (explorerBtn) {
           explorerBtn.click();
+          return { clicked: true };
         }
+        return { switched: false };
       })()
     `);
-    await sleep(2000);
+    await sleep(1500);
 
-    // Expand first project in explorer
-    console.log('    ▶ Expanding project tree in Workspace Explorer...');
-    const projectClickResult = await cdp.evaluate(`
+    // Verify project hover folder button (and absence of delete 'x' button)
+    console.log('    ▶ Checking project root actions (open folder button present, delete button absent)...');
+    const projectBtnCheck = await cdp.evaluate(`
       (function() {
-        const projectRow = document.querySelector('aside div[title*="farmland"]') ||
-          document.querySelector('aside div[title*="OmniGit"]') ||
-          document.querySelector('aside .cursor-pointer');
-        if (projectRow) {
-          projectRow.click();
-          return { clicked: projectRow.textContent.trim() };
-        }
-        return { clicked: false };
+        const aside = document.querySelector('aside');
+        const folderButtons = aside ? Array.from(aside.querySelectorAll('button[title*="系统资源管理器"]')) : [];
+        const deleteButtons = aside ? Array.from(aside.querySelectorAll('button')).filter(b => b.title && (b.title.includes('移除') || b.title.includes('删除'))) : [];
+        return {
+          hasFolderButton: folderButtons.length > 0,
+          folderButtonsCount: folderButtons.length,
+          deleteButtonsCount: deleteButtons.length,
+        };
       })()
     `);
-    console.log('    ✓ Project tree node clicked:', projectClickResult);
-    await sleep(2500);
+    console.log('    ✓ Project root action check:', projectBtnCheck);
 
-    // Click first source file to open in Monaco Editor
-    console.log('    ▶ Clicking file node to open in Monaco Editor...');
+    // Click source file to open in Monaco Editor & Markdown Preview
+    console.log('    ▶ Opening source file in Monaco Editor & Markdown Preview...');
     const fileClickResult = await cdp.evaluate(`
-      (function() {
-        const nodes = Array.from(document.querySelectorAll('aside div.cursor-pointer'));
-        for (const node of nodes) {
-          const text = node.textContent || '';
-          if (text.includes('.xml') || text.includes('.md') || text.includes('.java') || text.includes('.json') || text.includes('.ts') || text.includes('.yml')) {
-            node.click();
-            return { openedFile: text.trim() };
+      (async function() {
+        for (let i = 0; i < 30; i++) {
+          const store = window.__workspaceExplorerStore ? window.__workspaceExplorerStore.getState() : null;
+          if (store && Object.keys(store.dirChildren).length > 0 && store.loadingDirs.size === 0) {
+            break;
+          }
+          await new Promise(r => setTimeout(r, 200));
+        }
+
+        const store = window.__workspaceExplorerStore ? window.__workspaceExplorerStore.getState() : null;
+        if (!store) return { opened: false, reason: 'no_store' };
+
+        // Look for markdown file across loaded trees
+        for (const [repoKey, items] of Object.entries(store.dirChildren)) {
+          const mdItem = (items || []).find(item => !item.isDirectory && item.name.endsWith('.md'));
+          if (mdItem) {
+            const tabId = await window.__editorTabsStore.getState().openFileTab({
+              filePath: mdItem.path,
+              repoPath: repoKey,
+              relativePath: mdItem.relativePath,
+              repoName: mdItem.name,
+            });
+            return { opened: true, fileName: mdItem.name, filePath: mdItem.path, tabId };
           }
         }
-        return { openedFile: null, totalAsideNodes: nodes.length };
+        return { opened: false, reason: 'no_md_file_found' };
       })()
     `);
-    console.log('    ✓ File node clicked:', fileClickResult);
-    await sleep(3000);
+    console.log('    ✓ File open result:', fileClickResult);
+    await sleep(2000);
 
-    // Wait for Monaco editor to finish initializing and mounting
-    console.log('    ▶ Waiting for Monaco Editor to finish mounting (.monaco-editor)...');
+    // Verify Monaco editor is rendered and Markdown live preview is present
+    console.log('    ▶ Waiting for Monaco Editor & Markdown Preview mounting...');
     const monacoStatus = await cdp.evaluate(`
       (async function() {
-        for (let i = 0; i < 40; i++) {
+        for (let i = 0; i < 50; i++) {
           const monacoRoot = document.querySelector('.monaco-editor');
           const lines = document.querySelectorAll('.view-line');
-          if (monacoRoot && lines.length > 0) {
+          const mdBody = document.querySelector('.markdown-body');
+          if (monacoRoot && lines.length > 0 && mdBody) {
             return {
               monacoEditorPresent: true,
               stuckInLoading: false,
               renderedLinesCount: lines.length,
-              sampleLine: lines[0].textContent,
+              markdownPreviewPresent: Boolean(mdBody),
+              mdHeadingsCount: mdBody.querySelectorAll('h1, h2, h3').length,
             };
           }
-          await new Promise(r => setTimeout(r, 300));
+          await new Promise(r => setTimeout(r, 200));
         }
-        const monacoRoot = document.querySelector('.monaco-editor');
-        const lines = document.querySelectorAll('.view-line');
         return {
-          monacoEditorPresent: Boolean(monacoRoot),
+          monacoEditorPresent: Boolean(document.querySelector('.monaco-editor')),
           stuckInLoading: document.body.innerText.includes('Loading...'),
-          renderedLinesCount: lines.length,
+          markdownPreviewPresent: Boolean(document.querySelector('.markdown-body')),
         };
       })()
     `);
-    console.log('    ✓ Monaco Editor verification status:', monacoStatus);
+    console.log('    ✓ Editor & Markdown Preview status:', monacoStatus);
 
-    // Capture Explorer & Editor screenshot
-    console.log('[7/7] Capturing Explorer & Editor high-resolution screenshot...');
+    // Test Ctrl+/ Comment Shortcut
+    console.log('    ▶ Testing Ctrl+/ comment toggle and untoggle shortcut...');
+    const commentTestResult = await cdp.evaluate(`
+      (async function() {
+        const editor = window.__currentCodeEditor;
+        if (!editor) return { tested: false, reason: 'no_editor' };
+        const model = editor.getModel();
+        const before = model.getLineContent(1);
+
+        const commentBtn = document.querySelector('button[title*="注释 / 取消注释"]');
+        if (commentBtn) commentBtn.click();
+        await new Promise(r => setTimeout(r, 300));
+        const afterComment = model.getLineContent(1);
+
+        if (commentBtn) commentBtn.click();
+        await new Promise(r => setTimeout(r, 300));
+        const afterUncomment = model.getLineContent(1);
+
+        return {
+          tested: true,
+          before,
+          afterComment,
+          afterUncomment,
+          commentSuccess: afterComment.startsWith('<!--') && afterComment.endsWith('-->'),
+          uncommentSuccess: afterUncomment === before,
+        };
+      })()
+    `);
+    console.log('    ✓ Comment toggle action tested:', commentTestResult);
+    await sleep(500);
+
+    // Capture Split Editor & Markdown Preview screenshot
+    console.log('[7/7] Capturing Explorer, Editor & Markdown Preview high-resolution screenshot...');
     const screenshotEditor = await cdp.send('Page.captureScreenshot', { format: 'png' });
     const screenshotEditorPath = path.join(REPORTS_DIR, '02_explorer_editor.png');
     fs.writeFileSync(screenshotEditorPath, Buffer.from(screenshotEditor.data, 'base64'));
     console.log(`    ✓ Explorer & Editor screenshot saved: ${screenshotEditorPath}`);
+
+    // Test switching to Full Preview mode
+    console.log('    ▶ Switching to Fullscreen Markdown Preview mode...');
+    await cdp.evaluate(`
+      (function() {
+        const previewBtn = document.querySelector('button[title*="全屏纯阅读预览模式"]');
+        if (previewBtn) previewBtn.click();
+      })()
+    `);
+    await sleep(1500);
+
+    const screenshotMdPreview = await cdp.send('Page.captureScreenshot', { format: 'png' });
+    const screenshotMdPath = path.join(REPORTS_DIR, '03_markdown_fullscreen_preview.png');
+    fs.writeFileSync(screenshotMdPath, Buffer.from(screenshotMdPreview.data, 'base64'));
+    console.log(`    ✓ Fullscreen Markdown preview screenshot saved: ${screenshotMdPath}`);
+
+    // Switch back to split mode
+    await cdp.evaluate(`
+      (function() {
+        const splitBtn = document.querySelector('button[title*="双栏实时对照预览模式"]');
+        if (splitBtn) splitBtn.click();
+      })()
+    `);
+    await sleep(500);
 
     // Verify console errors
     const fatalErrors = cdp.consoleErrors.filter((e) => !e.includes('favicon') && !e.includes('DevTools'));

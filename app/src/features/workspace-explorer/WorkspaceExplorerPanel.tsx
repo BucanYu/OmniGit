@@ -20,6 +20,7 @@ export function WorkspaceExplorerPanel() {
     setActiveProject,
     sidebarWidth,
     setIsAddRepoModalOpen,
+    openProjectFolder,
   } = useAppStore();
 
   const {
@@ -108,7 +109,7 @@ export function WorkspaceExplorerPanel() {
                     setActiveProject(project.id);
                     toggleExpandDir(project.path, '');
                   }}
-                  className={`flex items-center justify-between px-2 py-1.5 cursor-pointer hover:bg-theme-hover font-semibold text-[11px] select-none transition-colors ${
+                  className={`group flex items-center justify-between px-2 py-1.5 cursor-pointer hover:bg-theme-hover font-semibold text-[11px] select-none transition-colors ${
                     isActive ? 'text-sky-400 bg-theme-hover/50' : 'text-theme-main'
                   }`}
                   title={`${project.name} (${project.path})`}
@@ -125,13 +126,30 @@ export function WorkspaceExplorerPanel() {
                     <span className="truncate font-bold tracking-tight text-[12px]">{project.name}</span>
                   </div>
 
-                  {/* Branch Pill */}
-                  {project.currentBranch && (
-                    <div className="flex items-center gap-0.5 text-[10px] font-normal text-theme-muted bg-theme-app/60 px-1.5 py-0.5 rounded border border-theme-border/60 shrink-0">
-                      <GitBranch className="w-2.5 h-2.5 text-sky-400 shrink-0" />
-                      <span className="truncate max-w-[80px]">{project.currentBranch}</span>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {/* Hover Action: Open folder in system file manager (consistent with Git module, strictly NO 'x' delete button) */}
+                    <div className="hidden group-hover:flex items-center bg-theme-app/90 px-1 py-0.5 rounded border border-theme-border shadow-xs">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openProjectFolder(project.path);
+                        }}
+                        title={`在系统资源管理器中打开 (${project.path})`}
+                        className="p-1 text-theme-muted hover:text-sky-400 hover:bg-theme-hover rounded transition cursor-pointer"
+                      >
+                        <FolderOpen className="w-3.5 h-3.5 text-sky-400" />
+                      </button>
                     </div>
-                  )}
+
+                    {/* Branch Pill */}
+                    {project.currentBranch && (
+                      <div className="flex items-center gap-0.5 text-[10px] font-normal text-theme-muted bg-theme-app/60 px-1.5 py-0.5 rounded border border-theme-border/60 shrink-0">
+                        <GitBranch className="w-2.5 h-2.5 text-sky-400 shrink-0" />
+                        <span className="truncate max-w-[80px]">{project.currentBranch}</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Project Tree Children */}
