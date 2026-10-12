@@ -345,7 +345,7 @@ export function WelcomeWorkspaceView() {
 
           {/* Bottom Settings & Back to Workspace */}
           <div className="flex flex-col gap-2 pt-4 border-t border-theme-border">
-            {projects.length > 0 && (
+            {projects.length > 0 ? (
               <button
                 type="button"
                 onClick={closeWelcomeScreen}
@@ -354,7 +354,19 @@ export function WelcomeWorkspaceView() {
                 <span>{t.welcome.workspaceCard.openButton} ({projects.length})</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
-            )}
+            ) : savedWorkspaces.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => {
+                  const target = savedWorkspaces.find((w) => w.id === selectedWorkspaceId) || savedWorkspaces[0];
+                  if (target) openWorkspaceGroup(target, false);
+                }}
+                className="flex items-center justify-center gap-2 px-3 py-1.5 rounded bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold transition cursor-pointer shadow-xs"
+              >
+                <span>{t.welcome.workspaceCard.openButton}</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            ) : null}
 
             <button
               type="button"
@@ -475,7 +487,10 @@ export function WelcomeWorkspaceView() {
                       return (
                         <div
                           key={ws.id}
-                          onClick={() => setSelectedWorkspaceId(ws.id)}
+                          onClick={() => {
+                            setSelectedWorkspaceId(ws.id);
+                            openWorkspaceGroup(ws, false);
+                          }}
                           onDoubleClick={() => handleDoubleClickWorkspace(ws)}
                           onMouseEnter={(e) => {
                             const rect = e.currentTarget.getBoundingClientRect();
@@ -578,9 +593,14 @@ export function WelcomeWorkspaceView() {
                           <div className="mt-2.5 pt-2 border-t border-theme-border/40 flex items-center gap-1.5 flex-wrap">
                             <span className="text-[10px] text-theme-dim shrink-0">{t.welcome.workspaceCard.containsTitle}</span>
                             {ws.repos.slice(0, 5).map((repo) => (
-                              <span
+                              <button
+                                type="button"
                                 key={repo.path}
-                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-theme-input text-[10px] font-mono text-theme-main border border-theme-border/60 hover:border-sky-500/50 transition shrink-0"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openWorkspaceGroup({ ...ws, lastActiveProjectPath: repo.path }, false);
+                                }}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-theme-input text-[10px] font-mono text-theme-main border border-theme-border/60 hover:border-sky-500 hover:bg-sky-500/10 transition shrink-0 cursor-pointer text-left"
                                 title={`${repo.name} (${repo.path})`}
                               >
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
@@ -590,7 +610,7 @@ export function WelcomeWorkspaceView() {
                                     (⎇ {repo.branch})
                                   </span>
                                 )}
-                              </span>
+                              </button>
                             ))}
                             {ws.repos.length > 5 && (
                               <span className="text-[10px] text-theme-dim px-1 font-mono">

@@ -51,6 +51,36 @@ const electronAPI = {
       ipcRenderer.removeListener('workspace:changed', handler);
     };
   },
+
+  // Integrated Terminal (PTY)
+  terminal: {
+    getShells: () =>
+      ipcRenderer.invoke('terminal:get-shells') as Promise<
+        Array<{ id: string; name: string; path: string; args?: string[] }>
+      >,
+    spawn: (options: { id: string; shell?: string; args?: string[]; cwd?: string; cols?: number; rows?: number }) =>
+      ipcRenderer.invoke('terminal:spawn', options) as Promise<{ id: string; shell: string; cwd: string }>,
+    write: (id: string, data: string) =>
+      ipcRenderer.invoke('terminal:write', id, data) as Promise<boolean>,
+    resize: (id: string, cols: number, rows: number) =>
+      ipcRenderer.invoke('terminal:resize', id, cols, rows) as Promise<boolean>,
+    kill: (id: string) =>
+      ipcRenderer.invoke('terminal:kill', id) as Promise<boolean>,
+    onData: (callback: (payload: { id: string; data: string }) => void) => {
+      const handler = (_event: any, payload: { id: string; data: string }) => callback(payload);
+      ipcRenderer.on('terminal:data', handler);
+      return () => {
+        ipcRenderer.removeListener('terminal:data', handler);
+      };
+    },
+    onExit: (callback: (payload: { id: string; exitCode: number }) => void) => {
+      const handler = (_event: any, payload: { id: string; exitCode: number }) => callback(payload);
+      ipcRenderer.on('terminal:exit', handler);
+      return () => {
+        ipcRenderer.removeListener('terminal:exit', handler);
+      };
+    },
+  },
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);

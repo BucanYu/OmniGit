@@ -231,7 +231,7 @@ export const enUS: LocaleDictionary = {
     noWorkspacesGuide: 'Click [Open] in top right to browse folder, or [New Window] to create blank workspace.',
     openFolderBtn: 'Open Local Workspace Directory',
     newBlankWorkspaceBtn: 'New Blank Workspace',
-    cardClickTooltip: (name: string, count: number) => `Click to select, double-click to open:\n${name} (${count} Git repos)`,
+    cardClickTooltip: (name: string, count: number) => `Click to open workspace:\n${name} (${count} Git repos)`,
     moreReposBadge: (count: number) => `+${count} more repos...`,
   },
   settings: {

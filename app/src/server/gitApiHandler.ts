@@ -1,14 +1,17 @@
 import type { IncomingMessage, ServerResponse } from 'http';
+import * as path from 'path';
 import { gitService } from './gitService';
+import { fileSystemService } from './fileSystemService';
+import { fileEncodingService } from './fileEncodingService';
 
 /**
- * Universal Git API Request Handler
+ * Universal Git & File System API Request Handler
  * Shared between Vite dev middleware and Electron production embedded loopback server.
  * Returns true if the request was handled, false otherwise.
  */
 export async function handleGitApiRequest(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
   const url = req.url || '';
-  if (!url.startsWith('/api/git')) {
+  if (!url.startsWith('/api/git') && !url.startsWith('/api/fs')) {
     return false;
   }
 
@@ -347,6 +350,43 @@ export async function handleGitApiRequest(req: IncomingMessage, res: ServerRespo
       req.on('close', cleanup);
       req.on('error', cleanup);
       return true;
+    } else if (pathname === '/api/fs/tree') {
+      const repoPath = query.repoPath || '';
+      const subDir = query.dir || '';
+      if (!repoPath) {
+        res.statusCode = 400;
+        res.end(JSON.stringify({ error: 'Missing repoPath' }));
+        return true;
+      }
+      const items = fileSystemService.readDirectory(repoPath, subDir);
+      res.end(JSON.stringify(items));
+    } else if (pathname === '/api/fs/read') {
+      const repoPath = query.repoPath || '';
+      const relativePath = query.relativePath || '';
+      const filePath = query.filePath || (repoPath && relativePath ? path.join(repoPath, relativePath) : repoPath);
+      if (!filePath) {
+        res.statusCode = 400;
+        res.end(JSON.stringify({ error: 'Missing filePath' }));
+        return true;
+      }
+      const result = fileEncodingService.readFile(filePath);
+      res.end(JSON.stringify(result));
+    } else if (pathname === '/api/fs/write') {
+      const repoPath = body.repoPath || '';
+      const relativePath = body.relativePath || '';
+      const filePath = body.filePath || (repoPath && relativePath ? path.join(repoPath, relativePath) : repoPath);
+      if (!filePath) {
+        res.statusCode = 400;
+        res.end(JSON.stringify({ error: 'Missing filePath' }));
+        return true;
+      }
+      const success = fileEncodingService.writeFile(
+        filePath,
+        body.content ?? '',
+        body.encoding || 'utf-8',
+        body.eol
+      );
+      res.end(JSON.stringify({ success }));
     } else {
       res.statusCode = 404;
       res.end(JSON.stringify({ error: 'Endpoint not found' }));

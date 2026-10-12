@@ -231,7 +231,7 @@ export const zhCN: LocaleDictionary = {
     noWorkspacesGuide: '点击右上角的 [Open] 打开本地工作空间根目录，或点击 [New Window] 创建空白工作空间。',
     openFolderBtn: '打开本地工作空间目录',
     newBlankWorkspaceBtn: '新建空白工作空间',
-    cardClickTooltip: (name: string, count: number) => `单击选中，双击直接打开工作空间:\n${name} (${count} 个 Git 项目)`,
+    cardClickTooltip: (name: string, count: number) => `单击直接打开工作空间:\n${name} (${count} 个 Git 项目)`,
     moreReposBadge: (count: number) => `+${count} 个仓库...`,
   },
   settings: {

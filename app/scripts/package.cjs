@@ -42,12 +42,13 @@ fs.mkdirSync(outputAppDir, { recursive: true });
 
 // 4. Copy Electron runtime files
 console.log('[3/4] Copying Electron standalone binaries to release directory...');
-function copyRecursive(src, dest) {
+function copyRecursive(src, dest, filter) {
   const stat = fs.statSync(src);
   if (stat.isDirectory()) {
     fs.mkdirSync(dest, { recursive: true });
     for (const file of fs.readdirSync(src)) {
-      copyRecursive(path.join(src, file), path.join(dest, file));
+      if (filter && !filter(file, path.join(src, file))) continue;
+      copyRecursive(path.join(src, file), path.join(dest, file), filter);
     }
   } else {
     fs.copyFileSync(src, dest);
@@ -82,6 +83,29 @@ fs.mkdirSync(targetApp, { recursive: true });
 // Copy dist, dist-electron, and package.json
 copyRecursive(distDir, path.join(targetApp, 'dist'));
 copyRecursive(distElectronDir, path.join(targetApp, 'dist-electron'));
+
+// Bundle required production node_modules for Electron main and server processes
+console.log('Bundling runtime production dependencies into resources/app/node_modules...');
+const targetNodeModules = path.join(targetApp, 'node_modules');
+fs.mkdirSync(targetNodeModules, { recursive: true });
+
+const runtimeDeps = ['iconv-lite', 'node-pty'];
+const excludeExts = ['.pdb', '.obj', '.tlog', '.log'];
+for (const dep of runtimeDeps) {
+  const depSrc = path.join(appDir, 'node_modules', dep);
+  const depDest = path.join(targetNodeModules, dep);
+  if (fs.existsSync(depSrc)) {
+    console.log(` - Bundling module: ${dep}`);
+    copyRecursive(depSrc, depDest, (name) => {
+      const ext = path.extname(name).toLowerCase();
+      if (excludeExts.includes(ext)) return false;
+      if (name === '.git' || name === '.github') return false;
+      return true;
+    });
+  } else {
+    console.warn(`[WARN] Runtime dependency not found: ${depSrc}`);
+  }
+}
 
 // Create production package.json
 const pkg = JSON.parse(fs.readFileSync(path.join(appDir, 'package.json'), 'utf8'));

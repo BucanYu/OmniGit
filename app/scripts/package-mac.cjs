@@ -81,12 +81,13 @@ fs.mkdirSync(cacheDir, { recursive: true });
 fs.mkdirSync(releaseDir, { recursive: true });
 
 // Copy directory recursively
-function copyRecursive(src, dest) {
+function copyRecursive(src, dest, filter) {
   const stat = fs.statSync(src);
   if (stat.isDirectory()) {
     fs.mkdirSync(dest, { recursive: true });
     for (const file of fs.readdirSync(src)) {
-      copyRecursive(path.join(src, file), path.join(dest, file));
+      if (filter && !filter(file, path.join(src, file))) continue;
+      copyRecursive(path.join(src, file), path.join(dest, file), filter);
     }
   } else {
     fs.copyFileSync(src, dest);
@@ -198,6 +199,25 @@ async function packageArch(arch) {
   // Inject dist and dist-electron
   copyRecursive(distDir, path.join(bundleApp, 'dist'));
   copyRecursive(distElectronDir, path.join(bundleApp, 'dist-electron'));
+
+  // Bundle required production node_modules for Electron main and server processes
+  const targetNodeModules = path.join(bundleApp, 'node_modules');
+  fs.mkdirSync(targetNodeModules, { recursive: true });
+
+  const runtimeDeps = ['iconv-lite', 'node-pty'];
+  const excludeExts = ['.pdb', '.obj', '.tlog', '.log'];
+  for (const dep of runtimeDeps) {
+    const depSrc = path.join(appDir, 'node_modules', dep);
+    const depDest = path.join(targetNodeModules, dep);
+    if (fs.existsSync(depSrc)) {
+      copyRecursive(depSrc, depDest, (name) => {
+        const ext = path.extname(name).toLowerCase();
+        if (excludeExts.includes(ext)) return false;
+        if (name === '.git' || name === '.github') return false;
+        return true;
+      });
+    }
+  }
 
   // Write production package.json
   const prodPkg = {

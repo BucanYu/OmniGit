@@ -1,0 +1,83 @@
+import React from 'react';
+import { useWorkbenchStore } from '../../store/useWorkbenchStore';
+import { useTerminalStore } from '../terminal/useTerminalStore';
+import { useAppStore } from '../../store/useAppStore';
+import {
+  GitCommit,
+  Files,
+  Terminal,
+  Settings,
+} from 'lucide-react';
+
+export function ActivityBar() {
+  const { workbenchMode, setWorkbenchMode } = useWorkbenchStore();
+  const { isTerminalOpen, toggleTerminal } = useTerminalStore();
+  const setIsSettingsModalOpen = useAppStore((state) => state.setIsSettingsModalOpen);
+
+  return (
+    <div className="w-[42px] bg-theme-sidebar border-r border-theme-border flex flex-col items-center justify-between py-2 shrink-0 select-none z-20">
+      {/* Top Modes */}
+      <div className="flex flex-col items-center gap-2 w-full">
+        {/* 1. Git Workbench Mode */}
+        <button
+          onClick={() => setWorkbenchMode('git')}
+          className={`relative p-2 rounded-lg transition-colors cursor-pointer group ${
+            workbenchMode === 'git'
+              ? 'text-sky-400 bg-theme-hover shadow-sm'
+              : 'text-theme-muted hover:text-theme-main hover:bg-theme-hover/60'
+          }`}
+          title="Git 提交工作台 (Alt + 1)"
+        >
+          {workbenchMode === 'git' && (
+            <div className="absolute left-0 top-1.5 bottom-1.5 w-[3px] bg-sky-500 rounded-r" />
+          )}
+          <GitCommit className="w-5 h-5 stroke-[1.8]" />
+        </button>
+
+        {/* 2. Workspace Explorer Mode */}
+        <button
+          onClick={() => setWorkbenchMode('explorer')}
+          className={`relative p-2 rounded-lg transition-colors cursor-pointer group ${
+            workbenchMode === 'explorer'
+              ? 'text-sky-400 bg-theme-hover shadow-sm'
+              : 'text-theme-muted hover:text-theme-main hover:bg-theme-hover/60'
+          }`}
+          title="工作区源码资源管理器 (Alt + 2)"
+        >
+          {workbenchMode === 'explorer' && (
+            <div className="absolute left-0 top-1.5 bottom-1.5 w-[3px] bg-sky-500 rounded-r" />
+          )}
+          <Files className="w-5 h-5 stroke-[1.8]" />
+        </button>
+      </div>
+
+      {/* Bottom Tools */}
+      <div className="flex flex-col items-center gap-2 w-full">
+        {/* Terminal Toggle */}
+        <button
+          onClick={toggleTerminal}
+          className={`relative p-2 rounded-lg transition-colors cursor-pointer ${
+            isTerminalOpen
+              ? 'text-sky-400 bg-theme-hover shadow-sm'
+              : 'text-theme-muted hover:text-theme-main hover:bg-theme-hover/60'
+          }`}
+          title="集成终端 (Ctrl + `)"
+        >
+          {isTerminalOpen && (
+            <div className="absolute left-0 top-1.5 bottom-1.5 w-[3px] bg-sky-500 rounded-r" />
+          )}
+          <Terminal className="w-5 h-5 stroke-[1.8]" />
+        </button>
+
+        {/* Settings */}
+        <button
+          onClick={() => setIsSettingsModalOpen(true)}
+          className="p-2 rounded-lg text-theme-muted hover:text-theme-main hover:bg-theme-hover/60 transition-colors cursor-pointer"
+          title="系统设置 (Ctrl + ,)"
+        >
+          <Settings className="w-5 h-5 stroke-[1.8]" />
+        </button>
+      </div>
+    </div>
+  );
+}

@@ -5,6 +5,7 @@ import http from 'http';
 import { execFile } from 'child_process';
 import { handleGitApiRequest } from '../src/server/gitApiHandler';
 import { setupAutoUpdater } from './updater';
+import { setupPtyIpcHandlers, ptyManager } from './ptyManager';
 
 let mainWindow: BrowserWindow | null = null;
 const windows = new Set<BrowserWindow>();
@@ -305,6 +306,8 @@ function setupIpcHandlers() {
     }
     return result.filePaths[0];
   });
+
+  setupPtyIpcHandlers();
 }
 
 // 5. Application Lifecycle
@@ -337,11 +340,16 @@ if (!gotLock) {
   });
 
   app.on('window-all-closed', () => {
+    ptyManager.killAll();
     if (process.platform !== 'darwin') {
       if (embeddedServer) {
         embeddedServer.close();
       }
       app.quit();
     }
+  });
+
+  app.on('will-quit', () => {
+    ptyManager.killAll();
   });
 }

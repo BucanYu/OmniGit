@@ -394,240 +394,29 @@ function getSystemGitCredentials(): Promise<Array<{ target: string; host: string
   });
 }
 
-export interface GitUserInfo {
-  name: string;
-  email: string;
-}
+export * from './gitTypes';
+import {
+  OmniGitSettings,
+  GitUserInfo,
+  GitAuthorItem,
+  WorkspaceGitAccount,
+  RealGitFile,
+  RealBranchInfo,
+  RealRepoStatus,
+  ConflictBlockInfo,
+  Conflict3WayData,
+  GitCommitItem,
+  GitCommitFileChange,
+  GitCommitDetails,
+  OutgoingCommitFile,
+  OutgoingCommitItem,
+  OutgoingCommitsData,
+  PushBranchOptions,
+  SelectivePushOptions,
+  SyncCommitsOptions,
+} from './gitTypes';
+import { gitSnapshotService, loadSettings } from './gitSnapshotService';
 
-export interface GitAuthorItem {
-  name: string;
-  email: string;
-  commitCount: number;
-  isCurrent: boolean;
-}
-
-export interface WorkspaceGitAccount {
-  id: string;
-  name: string;
-  email: string;
-  username?: string;
-  remoteHost?: string;
-  remoteUrl?: string;
-  projectPaths: string[];
-  projectNames: string[];
-  isCurrent: boolean;
-  hasPassword?: boolean;
-  source: 'project' | 'credential' | 'custom' | 'global';
-}
-
-export interface RealGitFile {
-  path: string;
-  fileName: string;
-  dirPath: string;
-  status: 'modified' | 'added' | 'deleted' | 'untracked' | 'conflict';
-  group: 'changes' | 'unversioned' | 'conflict';
-  checked: boolean;
-}
-
-export interface RealBranchInfo {
-  name: string;
-  isCurrent: boolean;
-  isFavorite: boolean;
-  upstream?: string;
-  incoming: number;
-  outgoing: number;
-  category: 'recent' | 'local' | 'remote';
-}
-
-export interface RealRepoStatus {
-  repoPath: string;
-  repoName: string;
-  currentBranch: string;
-  upstream?: string;
-  incoming: number;
-  outgoing: number;
-  files: RealGitFile[];
-  isMerging?: boolean;
-  mergeMessage?: string;
-  mergeSourceBranch?: string;
-  conflictedCount?: number;
-}
-
-export interface ConflictBlockInfo {
-  id: number;
-  startLine: number;
-  midLine: number;
-  endLine: number;
-  yoursText: string;
-  theirsText: string;
-  baseText?: string;
-  yoursBranch: string;
-  theirsBranch: string;
-  resultStartLine?: number;
-  resultEndLine?: number;
-  leftStartLine?: number;
-  leftEndLine?: number;
-  rightStartLine?: number;
-  rightEndLine?: number;
-}
-
-export interface Conflict3WayData {
-  filePath: string;
-  repoPath: string;
-  yours: string;
-  theirs: string;
-  base: string;
-  result: string;
-  cleanResult?: string;
-  conflictBlocks: ConflictBlockInfo[];
-  alreadyResolved?: boolean;
-}
-
-export interface GitCommitItem {
-  hash: string;
-  shortHash: string;
-  authorName: string;
-  authorEmail: string;
-  date: string;
-  refs: string;
-  message: string;
-}
-
-export interface GitCommitFileChange {
-  path: string;
-  oldPath?: string;
-  status: 'modified' | 'added' | 'deleted' | 'renamed' | 'copied' | 'unknown';
-  statusCode: string;
-  additions?: number;
-  deletions?: number;
-}
-
-export interface GitCommitDetails {
-  hash: string;
-  shortHash: string;
-  authorName: string;
-  authorEmail: string;
-  authorDate: string;
-  committerName: string;
-  committerEmail: string;
-  committerDate: string;
-  subject: string;
-  body: string;
-  parents: string[];
-  refs: string;
-  files: GitCommitFileChange[];
-}
-
-export interface OutgoingCommitFile {
-  path: string;
-  fileName: string;
-  dirPath: string;
-  status: 'modified' | 'added' | 'deleted' | 'renamed' | 'unknown';
-  statusCode: string;
-}
-
-export interface OutgoingCommitItem {
-  hash: string;
-  shortHash: string;
-  subject: string;
-  body: string;
-  authorName: string;
-  authorEmail: string;
-  date: string;
-  files: OutgoingCommitFile[];
-  isMerge?: boolean;
-}
-
-export interface OutgoingCommitsData {
-  sourceBranch: string;
-  targetBranch: string;
-  remote: string;
-  commits: OutgoingCommitItem[];
-  allFiles: OutgoingCommitFile[];
-}
-
-export interface PushBranchOptions {
-  branch: string;
-  targetBranch?: string;
-  targetCommit?: string;
-  force?: boolean;
-  tags?: boolean;
-  setUpstream?: boolean;
-}
-
-export interface SelectivePushOptions {
-  hashes: string[];
-  sourceBranch?: string;
-  targetBranch: string;
-  remote?: string;
-  createNewBranch?: boolean;
-  newBranchName?: string;
-  force?: boolean;
-}
-
-export interface SyncCommitsOptions {
-  hashes: string[];
-  targetBranch: string;
-  remote?: string;
-  pushToRemote?: boolean;
-}
-
-// OmniGit Global Settings & Custom Cache Configuration
-export interface OmniGitSettings {
-  cacheDir: string;
-  maxCacheRepos: number;
-  cacheTTL: number;
-}
-
-function getConfigFile(): string {
-  const candidate1 = path.resolve(process.cwd(), '.omnigit_config.json');
-  const candidate2 = path.resolve(process.cwd(), '..', '.omnigit_config.json');
-  if (fs.existsSync(candidate2)) return candidate2;
-  if (fs.existsSync(candidate1)) return candidate1;
-  return candidate2;
-}
-
-function loadSettings(): OmniGitSettings {
-  const configFile = getConfigFile();
-  const defaultDir = 'D:\\OmniGitCache';
-  try {
-    if (fs.existsSync(configFile)) {
-      const raw = fs.readFileSync(configFile, 'utf8');
-      const parsed = JSON.parse(raw);
-      return {
-        cacheDir: parsed.cacheDir || defaultDir,
-        maxCacheRepos: parsed.maxCacheRepos || 30,
-        cacheTTL: parsed.cacheTTL || 15000,
-      };
-    }
-  } catch (err) {
-    console.warn('[gitService] Failed to read settings config:', err);
-  }
-  return {
-    cacheDir: defaultDir,
-    maxCacheRepos: 30,
-    cacheTTL: 15000,
-  };
-}
-
-function saveSettings(settings: OmniGitSettings): void {
-  const configFile = getConfigFile();
-  try {
-    fs.writeFileSync(configFile, JSON.stringify(settings, null, 2), 'utf8');
-  } catch (err) {
-    console.error('[gitService] Failed to write settings config:', err);
-  }
-}
-
-function getRepoSnapshotPath(cacheDir: string, repoPath: string): string {
-  const clean = repoPath.toLowerCase().replace(/[^a-zA-Z0-9]/g, '_').slice(-60);
-  const hash = Buffer.from(repoPath.toLowerCase()).toString('base64').replace(/[/+=]/g, '').slice(0, 16);
-  const snapshotsDir = path.join(cacheDir, 'snapshots');
-  if (!fs.existsSync(snapshotsDir)) {
-    fs.mkdirSync(snapshotsDir, { recursive: true });
-  }
-  return path.join(snapshotsDir, `${clean}_${hash}.json`);
-}
 
 export const gitService = {
   // 1. Get current Git user configuration (supports repo-specific local config & credential match)
@@ -3172,27 +2961,7 @@ export const gitService = {
 
   // 40. Get current settings, cache storage path and stats
   getSettingsInfo(): { settings: OmniGitSettings; cacheSize: number; repoCount: number } {
-    const settings = loadSettings();
-    const snapshotsDir = path.join(settings.cacheDir, 'snapshots');
-    let cacheSize = 0;
-    let repoCount = 0;
-    try {
-      if (fs.existsSync(snapshotsDir)) {
-        const files = fs.readdirSync(snapshotsDir);
-        for (const f of files) {
-          if (f.endsWith('.json')) {
-            repoCount++;
-            const stat = fs.statSync(path.join(snapshotsDir, f));
-            cacheSize += stat.size;
-          }
-        }
-      }
-    } catch {}
-    return {
-      settings,
-      cacheSize,
-      repoCount,
-    };
+    return gitSnapshotService.getSettingsInfo();
   },
 
   // 41. Update settings with optional snapshot migration to new directory
@@ -3200,157 +2969,27 @@ export const gitService = {
     newSettings: Partial<OmniGitSettings>,
     migrateData = false
   ): Promise<{ settings: OmniGitSettings; cacheSize: number; repoCount: number }> {
-    const current = loadSettings();
-    const oldDir = current.cacheDir;
-    const updated: OmniGitSettings = {
-      ...current,
-      ...newSettings,
-    };
-
-    const newSnapshotsDir = path.join(updated.cacheDir, 'snapshots');
-    if (!fs.existsSync(newSnapshotsDir)) {
-      fs.mkdirSync(newSnapshotsDir, { recursive: true });
-    }
-
-    if (migrateData && oldDir.toLowerCase() !== updated.cacheDir.toLowerCase()) {
-      const oldSnapshotsDir = path.join(oldDir, 'snapshots');
-      if (fs.existsSync(oldSnapshotsDir)) {
-        try {
-          const files = fs.readdirSync(oldSnapshotsDir);
-          for (const f of files) {
-            if (f.endsWith('.json')) {
-              const src = path.join(oldSnapshotsDir, f);
-              const dest = path.join(newSnapshotsDir, f);
-              fs.copyFileSync(src, dest);
-            }
-          }
-        } catch (e) {
-          console.warn('[gitService] Migration partial error:', e);
-        }
-      }
-    }
-
-    saveSettings(updated);
-    return this.getSettingsInfo();
+    return gitSnapshotService.updateSettings(newSettings, migrateData);
   },
 
   // 42. Clear cache snapshot files in user-configured cache directory
   async clearCache(): Promise<{ success: boolean; clearedCount: number }> {
-    const settings = loadSettings();
-    const snapshotsDir = path.join(settings.cacheDir, 'snapshots');
-    let clearedCount = 0;
-    if (fs.existsSync(snapshotsDir)) {
-      try {
-        const files = fs.readdirSync(snapshotsDir);
-        for (const f of files) {
-          if (f.endsWith('.json')) {
-            try {
-              fs.unlinkSync(path.join(snapshotsDir, f));
-              clearedCount++;
-            } catch {}
-          }
-        }
-      } catch {}
-    }
-    return { success: true, clearedCount };
+    return gitSnapshotService.clearCache();
   },
 
   // 43. Get all disk snapshots for fast client hydration
   getDiskSnapshots(): Record<string, any> {
-    const settings = loadSettings();
-    const snapshotsDir = path.join(settings.cacheDir, 'snapshots');
-    const result: Record<string, any> = {};
-    if (!fs.existsSync(snapshotsDir)) return result;
-
-    try {
-      const files = fs.readdirSync(snapshotsDir);
-      for (const f of files) {
-        if (f.endsWith('.json')) {
-          try {
-            const raw = fs.readFileSync(path.join(snapshotsDir, f), 'utf8');
-            const data = JSON.parse(raw);
-            if (data && data.repoPath) {
-              result[data.repoPath.toLowerCase()] = data;
-            }
-          } catch {}
-        }
-      }
-    } catch {}
-    return result;
+    return gitSnapshotService.getDiskSnapshots();
   },
 
   // 44. Save lightweight repo snapshot to disk (NEVER file diff/contents!)
   saveDiskSnapshot(repoPath: string, snapshot: any): boolean {
-    if (!repoPath) return false;
-    try {
-      const settings = loadSettings();
-      const filePath = getRepoSnapshotPath(settings.cacheDir, repoPath);
-
-      // STRICT LIGHTWEIGHT FILTER: Absolutely NO file content or Monaco Diff text!
-      const safeSnapshot = {
-        repoPath,
-        currentBranch: snapshot.currentBranch || 'main',
-        upstream: snapshot.upstream,
-        incoming: Number(snapshot.incoming) || 0,
-        outgoing: Number(snapshot.outgoing) || 0,
-        branches: (snapshot.branches || []).map((b: any) => ({
-          name: b.name,
-          isCurrent: Boolean(b.isCurrent),
-          isFavorite: Boolean(b.isFavorite),
-          upstream: b.upstream,
-          incoming: Number(b.incoming) || 0,
-          outgoing: Number(b.outgoing) || 0,
-        })),
-        files: (snapshot.files || [])
-          .filter((f: any) => f.status !== 'conflict')
-          .map((f: any) => ({
-            path: f.path,
-            status: f.status,
-            staged: Boolean(f.staged),
-            oldPath: f.oldPath,
-          })),
-        selectedFilePath: snapshot.selectedFilePath || null,
-        commitMessage: snapshot.commitMessage || '',
-        commitHistory: (snapshot.commitHistory || []).slice(0, 30),
-        commitLogs: (snapshot.commitLogs || []).slice(0, 200).map((c: any) => ({
-          hash: c.hash,
-          shortHash: c.shortHash,
-          subject: c.subject || c.message || '',
-          message: c.message || c.subject || '',
-          authorName: c.authorName || '',
-          authorEmail: c.authorEmail || '',
-          date: c.date || '',
-          refs: c.refs || '',
-        })),
-        isMerging: false, // Never persist volatile merge conflict state to cold-start cache
-        mergeMessage: '',
-        mergeSourceBranch: undefined,
-        conflictedCount: 0,
-        lastUpdated: Date.now(),
-      };
-
-      fs.writeFileSync(filePath, JSON.stringify(safeSnapshot, null, 2), 'utf8');
-      return true;
-    } catch (e) {
-      console.error('[gitService] Failed to save disk snapshot:', e);
-      return false;
-    }
+    return gitSnapshotService.saveDiskSnapshot(repoPath, snapshot);
   },
 
   // 45. Get single repo disk snapshot for 3~5ms fast promotion into L1 cache
   getSingleDiskSnapshot(repoPath: string): any | null {
-    if (!repoPath) return null;
-    try {
-      const settings = loadSettings();
-      const filePath = getRepoSnapshotPath(settings.cacheDir, repoPath);
-      if (fs.existsSync(filePath)) {
-        const raw = fs.readFileSync(filePath, 'utf8');
-        return JSON.parse(raw);
-      }
-    } catch (e) {
-      console.error('[gitService] Failed to read single disk snapshot:', e);
-    }
-    return null;
+    return gitSnapshotService.getSingleDiskSnapshot(repoPath);
   },
 
   // 46. Workspaces & Recent Projects Disk Backup (Dual-tier persistence guarantee)
@@ -3359,54 +2998,7 @@ export const gitService = {
     recentProjects?: any[];
     workspaceProjectPaths?: Record<string, string[]>;
   }): boolean {
-    try {
-      const settings = loadSettings();
-      if (!fs.existsSync(settings.cacheDir)) {
-        fs.mkdirSync(settings.cacheDir, { recursive: true });
-      }
-      const backupPath = path.join(settings.cacheDir, 'workspaces_backup.json');
-      let existing: any = {};
-      if (fs.existsSync(backupPath)) {
-        try {
-          existing = JSON.parse(fs.readFileSync(backupPath, 'utf8'));
-        } catch {}
-      }
-
-      const rawSaved =
-        data.savedWorkspaces && data.savedWorkspaces.length > 0
-          ? data.savedWorkspaces
-          : existing.savedWorkspaces || [];
-      const sanitizedSaved = Array.isArray(rawSaved)
-        ? rawSaved.filter((w: any) => w && w.id && w.id !== 'default')
-        : [];
-
-      const rawPaths =
-        data.workspaceProjectPaths && Object.keys(data.workspaceProjectPaths).length > 0
-          ? { ...(existing.workspaceProjectPaths || {}), ...data.workspaceProjectPaths }
-          : existing.workspaceProjectPaths || {};
-      const sanitizedPaths: Record<string, string[]> = {};
-      for (const [wsId, paths] of Object.entries(rawPaths)) {
-        if (wsId && wsId !== 'default' && Array.isArray(paths) && paths.length > 0) {
-          sanitizedPaths[wsId] = paths;
-        }
-      }
-
-      const merged = {
-        savedWorkspaces: sanitizedSaved,
-        recentProjects:
-          data.recentProjects && data.recentProjects.length > 0
-            ? data.recentProjects
-            : existing.recentProjects || [],
-        workspaceProjectPaths: sanitizedPaths,
-        lastBackup: Date.now(),
-      };
-
-      fs.writeFileSync(backupPath, JSON.stringify(merged, null, 2), 'utf8');
-      return true;
-    } catch (e) {
-      console.error('[gitService] Failed to save workspaces backup:', e);
-      return false;
-    }
+    return gitSnapshotService.saveWorkspacesBackup(data);
   },
 
   // 47. Get Workspaces & Recent Projects Disk Backup
@@ -3415,34 +3007,7 @@ export const gitService = {
     recentProjects: any[];
     workspaceProjectPaths: Record<string, string[]>;
   } {
-    try {
-      const settings = loadSettings();
-      const backupPath = path.join(settings.cacheDir, 'workspaces_backup.json');
-      if (fs.existsSync(backupPath)) {
-        const raw = fs.readFileSync(backupPath, 'utf8');
-        const parsed = JSON.parse(raw);
-        const rawSaved = Array.isArray(parsed.savedWorkspaces) ? parsed.savedWorkspaces : [];
-        const sanitizedSaved = rawSaved.filter((w: any) => w && w.id && w.id !== 'default');
-        const rawPaths =
-          parsed.workspaceProjectPaths && typeof parsed.workspaceProjectPaths === 'object'
-            ? parsed.workspaceProjectPaths
-            : {};
-        const sanitizedPaths: Record<string, string[]> = {};
-        for (const [wsId, paths] of Object.entries(rawPaths)) {
-          if (wsId && wsId !== 'default' && Array.isArray(paths) && paths.length > 0) {
-            sanitizedPaths[wsId] = paths;
-          }
-        }
-        return {
-          savedWorkspaces: sanitizedSaved,
-          recentProjects: Array.isArray(parsed.recentProjects) ? parsed.recentProjects : [],
-          workspaceProjectPaths: sanitizedPaths,
-        };
-      }
-    } catch (e) {
-      console.error('[gitService] Failed to read workspaces backup:', e);
-    }
-    return { savedWorkspaces: [], recentProjects: [], workspaceProjectPaths: {} };
+    return gitSnapshotService.getWorkspacesBackup();
   },
 
   // Clone a remote Git repository with real-time progress and logs streaming (No arbitrary wall-clock timeout)

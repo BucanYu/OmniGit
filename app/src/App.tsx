@@ -12,6 +12,12 @@ import { ConflictsDialog } from './features/git-conflict/ConflictsDialog';
 import { SystemSettingsModal } from './features/settings/SystemSettingsModal';
 import { WelcomeWorkspaceView } from './features/workspace/WelcomeWorkspaceView';
 import { useTranslation } from './locales';
+import { ActivityBar } from './features/activity-bar/ActivityBar';
+import { WorkspaceExplorerPanel } from './features/workspace-explorer/WorkspaceExplorerPanel';
+import { CodeEditorPanel } from './features/code-editor/CodeEditorPanel';
+import { TerminalDock } from './features/terminal/TerminalDock';
+import { useTerminalStore } from './features/terminal/useTerminalStore';
+import { useWorkbenchStore } from './store/useWorkbenchStore';
 
 export default function App() {
   const { t } = useTranslation();
@@ -28,6 +34,9 @@ export default function App() {
     setIsSettingsModalOpen,
     isWelcomeScreenOpen,
   } = useAppStore();
+
+  const { workbenchMode, setWorkbenchMode } = useWorkbenchStore();
+  const { toggleTerminal, createSession } = useTerminalStore();
 
   const [windowWidth, setWindowWidth] = React.useState(
     typeof window !== 'undefined' ? window.innerWidth : 1280
@@ -108,7 +117,7 @@ export default function App() {
     };
   }, [activeProjectId]);
 
-  // Global shortcuts (e.g. Ctrl+Shift+K for Push)
+  // Global shortcuts (Push, Settings, Terminal, Mode Switching)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const isCmdOrCtrl = e.ctrlKey || e.metaKey;
@@ -118,11 +127,24 @@ export default function App() {
       } else if (isCmdOrCtrl && (e.key === ',' || e.key === '，')) {
         e.preventDefault();
         setIsSettingsModalOpen(true);
+      } else if (e.altKey && e.key === '1') {
+        e.preventDefault();
+        setWorkbenchMode('git');
+      } else if (e.altKey && e.key === '2') {
+        e.preventDefault();
+        setWorkbenchMode('explorer');
+      } else if (isCmdOrCtrl && (e.key === '`' || e.key === '~' || e.code === 'Backquote')) {
+        e.preventDefault();
+        if (e.shiftKey) {
+          createSession();
+        } else {
+          toggleTerminal();
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [openPushModal, setIsSettingsModalOpen]);
+  }, [openPushModal, setIsSettingsModalOpen, setWorkbenchMode, toggleTerminal, createSession]);
 
   if (isWelcomeScreenOpen) {
     return (
@@ -146,39 +168,67 @@ export default function App() {
 
       {/* 2. Main Workbench Body with Horizontal Resizable Dividers (只允许左右拖拉调整宽度) */}
       <div className="flex flex-1 overflow-hidden relative">
-        {/* 2.1 Leftmost Sidebar: Multi-repository Projects */}
-        <Sidebar />
+        {/* Activity Bar on Leftmost Edge */}
+        <ActivityBar />
 
-        {/* Horizontal Resizer: Between Repositories and Changes */}
-        <ResizeDivider
-          currentWidth={sidebarWidth}
-          minWidth={160}
-          maxWidth={Math.max(160, Math.min(480, windowWidth - (isRightPanelOpen ? 580 : 260)))}
-          onResize={setSidebarWidth}
-          onDoubleClickReset={() => setSidebarWidth(256)}
-          title={t.common.dragResizeHorizontal}
-        />
-
-        {/* 2.2 Left Commit Panel: IDEA-exact Commit tool window */}
-        <StatusPanel />
-
-        {isRightPanelOpen && (
+        {workbenchMode === 'git' ? (
           <>
-            {/* Horizontal Resizer: Between Changes/Log and Diff Editor */}
+            {/* 2.1 Leftmost Sidebar: Multi-repository Projects */}
+            <Sidebar />
+
+            {/* Horizontal Resizer: Between Repositories and Changes */}
             <ResizeDivider
-              currentWidth={statusPanelWidth}
-              minWidth={240}
-              maxWidth={Math.max(260, windowWidth - sidebarWidth - 320)}
-              onResize={setStatusPanelWidth}
-              onDoubleClickReset={() => setStatusPanelWidth(380)}
+              currentWidth={sidebarWidth}
+              minWidth={160}
+              maxWidth={Math.max(160, Math.min(480, windowWidth - (isRightPanelOpen ? 580 : 260)))}
+              onResize={setSidebarWidth}
+              onDoubleClickReset={() => setSidebarWidth(256)}
               title={t.common.dragResizeHorizontal}
             />
 
-            {/* 2.3 Right Main: Interactive Monaco Diff Editor */}
-            <DiffEditorPanel />
+            {/* 2.2 Left Commit Panel: IDEA-exact Commit tool window */}
+            <StatusPanel />
+
+            {isRightPanelOpen && (
+              <>
+                {/* Horizontal Resizer: Between Changes/Log and Diff Editor */}
+                <ResizeDivider
+                  currentWidth={statusPanelWidth}
+                  minWidth={240}
+                  maxWidth={Math.max(260, windowWidth - sidebarWidth - 320)}
+                  onResize={setStatusPanelWidth}
+                  onDoubleClickReset={() => setStatusPanelWidth(380)}
+                  title={t.common.dragResizeHorizontal}
+                />
+
+                {/* 2.3 Right Main: Interactive Monaco Diff Editor */}
+                <DiffEditorPanel />
+              </>
+            )}
+          </>
+        ) : (
+          <>
+            {/* Multi-Root Workspace Explorer */}
+            <WorkspaceExplorerPanel />
+
+            {/* Horizontal Resizer: Between Explorer and Code Editor */}
+            <ResizeDivider
+              currentWidth={sidebarWidth}
+              minWidth={180}
+              maxWidth={Math.max(200, windowWidth - 400)}
+              onResize={setSidebarWidth}
+              onDoubleClickReset={() => setSidebarWidth(260)}
+              title={t.common.dragResizeHorizontal}
+            />
+
+            {/* Multi-Tab Code Editor Panel */}
+            <CodeEditorPanel />
           </>
         )}
       </div>
+
+      {/* Integrated Terminal Dock */}
+      <TerminalDock />
 
       {/* 3. Global Notification Toast (IDEA bottom-right sync toast) */}
       <NotificationToast />
