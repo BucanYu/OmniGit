@@ -5,7 +5,13 @@
 ## 核心摘要速查：
 1. **最高安全红线**：严禁自主执行 `git commit` / `git push`（除非用户在对话中明确指示）；严禁执行破坏性 Git 命令（`--force`, `--hard`）；数据库操作严格只读。
 2. **环境与端口**：全量工具链自适应系统环境与相对路径；专属开发端口固定为 `5345`；优先调用 `scripts/` 下启停与构建脚本。
-3. **编译校验**：前端与主进程变动必须在 `app/` 执行 `npm run build:all` 或 `npm run build`，确保 0 错误 0 警告后方可交付。
+3. **编译校验与类型防欺骗红线 (Strict Type-Check & Anti-Deceptive Build)**：
+   - **绝对禁止空跑假通过**：`app/` 根目录 `tsconfig.json` 为 Solution 引用模式，裸跑 `tsc` 仅校验空数组（0.01s 假通过退出码 0）。所有开发校验必须严格指定子工程配置：
+     - 前端应用：`tsc -p tsconfig.app.json --noEmit`
+     - Electron 主进程：`tsc -p electron/tsconfig.json --noEmit`
+     - 或统一运行命令：`npm run typecheck`（或 `npm run build:all`）。
+   - **严禁仅凭 Vite 转译断言成功**：Vite 底层 esbuild 转译仅剥离类型，会静默放行未导入/未定义的全局变量（如漏掉的 `import`），导致打包产物在用户电脑上引发 `ReferenceError` 致命白屏。
+   - **交付零错误红线**：代码修改后交付前，必须实际执行完整类型检查，必须保证 **0 错误、0 警告**；若存在任何未导入变量或类型报错，绝对禁止交付、打包或宣称完成。
 4. **多语言规范与交互红线**：
    - 对用户的所有回复、方案阐述与日常沟通必须一律严格使用**中文**；
    - 系统支持中英双语（`zh-CN` / `en-US`），严格遵循 `app/src/locales/` 国际化架构：

@@ -42,11 +42,27 @@
 
 ---
 
-## 4. 前后端代码修改与编译校验规则
+## 4. 前后端代码修改与编译校验规则 (Build & Verification Redline)
 
 - **前端与主进程修改规则 (`app/src/`, `app/electron/`)**：
   - 若仅为纯样式（CSS）微调或文案变动，无需强制触发构建。
-  - 若涉及 TypeScript 语法、类型定义、组件 Props 接口、Zustand Store 状态、Electron 主进程或新依赖引入，**必须**在 `app/` 目录下执行构建校验（`npm run build:all` 或 `npm run build`），确保 0 错误 0 警告后方可交付。
+  - 若涉及 TypeScript 语法、类型定义、组件 Props 接口、Zustand Store 状态、Electron 主进程或新依赖引入，**必须**在 `app/` 目录下执行构建校验（`npm run build:all` 或 `npm run typecheck`），确保 **0 错误、0 警告**后方可交付。
+
+- **历史经验与教训备忘（根因2：构建校验空跑导致未定义变量致命崩溃）**：
+  - **惨痛教训**：
+    1. `app/package.json` 此前配置为 `"build": "tsc && vite build"`。
+    2. 根目录 `tsconfig.json` 配置为 Solution 引用工程（含有 `"files": []`），当裸跑 `tsc` 时，编译器在 0.01 秒内仅扫描空数组并立即以退出码 0 返回（虚假的通过！）。
+    3. Vite 默认采用 esbuild 转译，esbuild 仅负责剥离 TypeScript 类型生成 JS，**完全不执行类型校验和变量作用域检查**。
+    4. 结果导致多个 Slice 文件中漏写的 `import`（如 `repoSnapshotCache`、`syncRuntime`）被原样打包进 bundle，在桌面端和浏览器运行时瞬间抛出 `Uncaught ReferenceError: repoSnapshotCache is not defined`，导致 `initApp()` 致命崩溃、旧工作空间打不开、点击卡片毫无反应。
+  - **防假通过强制流水线规约 (Anti-Deceptive Verification Protocol)**：
+    1. **强制显式指定配置文件**：
+       - 前端代码校验必须显式指定子工程：`tsc -p tsconfig.app.json --noEmit`；
+       - Electron 主进程校验必须显式指定：`tsc -p electron/tsconfig.json --noEmit`；
+       - 统一校验脚本：`npm run typecheck`（已同时包含上述两条指令）。
+    2. **构建脚本物理绑定**：
+       - `package.json` 中的 `"build"` 指令强制设定为 `"tsc -p tsconfig.app.json --noEmit && vite build"`，只要存在任何 1 个未导入变量或类型报错，构建流水线立即报错中断，严禁产出打包文件。
+    3. **交付前自动化核验铁律**：
+       - Agent 和开发者在交付任何代码改动、生成安装包或向用户汇报完成前，必须在控制台完整运行 `tsc -p tsconfig.app.json --noEmit`，亲自确认其输出为 `exit code 0` 且无任何报错信息后，才允许向用户汇报！
 
 ---
 
