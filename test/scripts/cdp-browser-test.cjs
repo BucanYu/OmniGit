@@ -67,10 +67,14 @@ class CDPClient {
     if (method === 'Runtime.consoleAPICalled') {
       if (params.type === 'error') {
         const text = params.args.map((a) => a.value || a.description || JSON.stringify(a)).join(' ');
-        this.consoleErrors.push(text);
+        this.consoleErrors.push(`[Console.Error] ${text}`);
       }
+    } else if (method === 'Runtime.exceptionThrown') {
+      const details = params.exceptionDetails;
+      const text = details?.exception?.description || details?.text || 'Unknown exception';
+      this.consoleErrors.push(`[Uncaught.Exception] ${text}`);
     } else if (method === 'Network.loadingFailed') {
-      this.networkFailures.push(`${params.errorText}: requestId ${params.requestId}`);
+      this.networkFailures.push(`[Network.Failed] ${params.errorText}: requestId ${params.requestId}`);
     }
   }
 
@@ -250,18 +254,34 @@ async function runBrowserE2E() {
     console.log('    ▶ Opening source file in Monaco Editor & Markdown Preview...');
     const fileClickResult = await cdp.evaluate(`
       (async function() {
+        const appStore = window.__appStore ? window.__appStore.getState() : null;
+        const explorerStore = window.__workspaceExplorerStore ? window.__workspaceExplorerStore.getState() : null;
+        if (!appStore || !explorerStore) return { opened: false, reason: 'no_store' };
+
+        // Ensure active project or OmniGit is expanded
+        const targetProj = (appStore.projects || []).find(p => p.name === 'OmniGit') ||
+          (appStore.projects || []).find(p => p.id === appStore.activeProjectId) ||
+          appStore.projects[0];
+
+        if (targetProj) {
+          const normP = targetProj.path.replace(/\\\\/g, '/');
+          if (!explorerStore.expandedDirs.has(normP)) {
+            await explorerStore.toggleExpandDir(targetProj.path, '');
+          }
+        }
+
+        // Wait up to 6 seconds for children to load
         for (let i = 0; i < 30; i++) {
-          const store = window.__workspaceExplorerStore ? window.__workspaceExplorerStore.getState() : null;
-          if (store && Object.keys(store.dirChildren).length > 0 && store.loadingDirs.size === 0) {
+          const store = window.__workspaceExplorerStore.getState();
+          const hasChildren = Object.values(store.dirChildren).some(arr => arr && arr.length > 0);
+          if (hasChildren && store.loadingDirs.size === 0) {
             break;
           }
           await new Promise(r => setTimeout(r, 200));
         }
 
-        const store = window.__workspaceExplorerStore ? window.__workspaceExplorerStore.getState() : null;
-        if (!store) return { opened: false, reason: 'no_store' };
-
-        // Look for markdown file across loaded trees
+        const store = window.__workspaceExplorerStore.getState();
+        // Look for markdown file across loaded trees (e.g. CHANGELOG.md, README.md, AGENTS.md)
         for (const [repoKey, items] of Object.entries(store.dirChildren)) {
           const mdItem = (items || []).find(item => !item.isDirectory && item.name.endsWith('.md'));
           if (mdItem) {
@@ -274,17 +294,20 @@ async function runBrowserE2E() {
             return { opened: true, fileName: mdItem.name, filePath: mdItem.path, tabId };
           }
         }
-        return { opened: false, reason: 'no_md_file_found' };
+        return { opened: false, reason: 'no_md_file_found', dirKeys: Object.keys(store.dirChildren) };
       })()
     `);
     console.log('    ✓ File open result:', fileClickResult);
+    if (!fileClickResult || !fileClickResult.opened) {
+      throw new Error(`Failed to open source file: ${fileClickResult ? fileClickResult.reason : 'unknown'}`);
+    }
     await sleep(2000);
 
     // Verify Monaco editor is rendered and Markdown live preview is present
     console.log('    ▶ Waiting for Monaco Editor & Markdown Preview mounting...');
     const monacoStatus = await cdp.evaluate(`
       (async function() {
-        for (let i = 0; i < 50; i++) {
+        for (let i = 0; i < 60; i++) {
           const monacoRoot = document.querySelector('.monaco-editor');
           const lines = document.querySelectorAll('.view-line');
           const mdBody = document.querySelector('.markdown-body');
@@ -297,16 +320,19 @@ async function runBrowserE2E() {
               mdHeadingsCount: mdBody.querySelectorAll('h1, h2, h3').length,
             };
           }
-          await new Promise(r => setTimeout(r, 200));
+          await new Promise(r => setTimeout(r, 250));
         }
         return {
           monacoEditorPresent: Boolean(document.querySelector('.monaco-editor')),
-          stuckInLoading: document.body.innerText.includes('Loading...'),
+          stuckInLoading: document.body.innerText.includes('加载编辑器中...') || document.body.innerText.includes('Loading...'),
           markdownPreviewPresent: Boolean(document.querySelector('.markdown-body')),
         };
       })()
     `);
     console.log('    ✓ Editor & Markdown Preview status:', monacoStatus);
+    if (!monacoStatus.monacoEditorPresent || !monacoStatus.markdownPreviewPresent) {
+      throw new Error(`Monaco editor or Markdown preview failed to render: ${JSON.stringify(monacoStatus)}`);
+    }
 
     // Test Ctrl+/ Comment Shortcut
     console.log('    ▶ Testing Ctrl+/ comment toggle and untoggle shortcut...');
@@ -337,6 +363,9 @@ async function runBrowserE2E() {
       })()
     `);
     console.log('    ✓ Comment toggle action tested:', commentTestResult);
+    if (!commentTestResult.tested || !commentTestResult.commentSuccess || !commentTestResult.uncommentSuccess) {
+      throw new Error(`Comment toggle/untoggle test failed: ${JSON.stringify(commentTestResult)}`);
+    }
     await sleep(500);
 
     // Capture Split Editor & Markdown Preview screenshot
@@ -370,12 +399,20 @@ async function runBrowserE2E() {
     `);
     await sleep(500);
 
-    // Verify console errors
+    // Verify console errors & network failures
     const fatalErrors = cdp.consoleErrors.filter((e) => !e.includes('favicon') && !e.includes('DevTools'));
-    if (fatalErrors.length > 0) {
-      console.warn('    ⚠ Console warnings/errors detected:', fatalErrors);
+    const fatalNetwork = cdp.networkFailures.filter((e) => !e.includes('favicon'));
+
+    if (fatalErrors.length > 0 || fatalNetwork.length > 0) {
+      if (fatalErrors.length > 0) {
+        console.error('\n✖ Critical console errors detected during browser test:\n', fatalErrors.join('\n'));
+      }
+      if (fatalNetwork.length > 0) {
+        console.error('\n✖ Network failures detected during browser test:\n', fatalNetwork.join('\n'));
+      }
+      throw new Error(`Browser test failed due to ${fatalErrors.length} console error(s) and ${fatalNetwork.length} network failure(s)`);
     } else {
-      console.log('    ✓ Zero critical console errors in browser runtime!');
+      console.log('    ✓ Zero critical console errors & zero network failures in browser runtime!');
     }
 
     console.log('\n======================================================');
