@@ -1056,4 +1056,55 @@ export interface LocaleDictionary {
       existingDirNotice: string;
     };
   };
+  activityBar: {
+    gitWorkbench: string;
+    workspaceExplorer: string;
+    terminal: string;
+    settings: string;
+  };
+  workspaceExplorer: {
+    title: (count: number) => string;
+    refreshTree: string;
+    addRepo: string;
+    emptyTitle: string;
+    emptyDesc: string;
+    openInSystemExplorer: (path: string) => string;
+    emptyDirOrLoading: string;
+  };
+  editor: {
+    noFileOpenTitle: string;
+    noFileOpenDesc: string;
+    unsaved: string;
+    unsavedChanges: string;
+    viewSource: string;
+    viewSplit: string;
+    viewPreview: string;
+    viewSourceTooltip: string;
+    viewSplitTooltip: string;
+    viewPreviewTooltip: string;
+    toggleCommentTooltip: string;
+    toggleCommentContextMenu: string;
+    toggleWordWrapTooltip: string;
+    saveFileTooltip: string;
+    save: string;
+    saved: string;
+    binaryFileWarning: string;
+    loadingEditor: string;
+    dragSplitTooltip: string;
+    cursorPosition: (line: number, col: number) => string;
+    closeTabTooltip: string;
+    closeCurrentTab: string;
+    closeOtherTabs: string;
+    closeAllTabs: string;
+    copyRelativePath: string;
+    copyAbsolutePath: string;
+    markdownPreviewTitle: string;
+    lines: (count: number) => string;
+    words: (count: number) => string;
+    sections: (count: number) => string;
+    copySource: string;
+    copiedSource: string;
+    copySourceTooltip: string;
+  };
 }
+

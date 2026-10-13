@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { marked } from 'marked';
+import { useTranslation } from '../../locales';
 import {
   FileText,
   Copy,
@@ -17,13 +18,14 @@ interface MarkdownPreviewProps {
 
 export function MarkdownPreview({ content, theme = 'darcula', filePath }: MarkdownPreviewProps) {
   const [copied, setCopied] = useState(false);
+  const { t } = useTranslation();
 
   // Configure marked options
   const htmlContent = useMemo(() => {
     try {
       marked.setOptions({
         gfm: true,
-        breaks: true,
+        breaks: false,
       });
       return marked.parse(content || '') as string;
     } catch (err) {
@@ -65,20 +67,20 @@ export function MarkdownPreview({ content, theme = 'darcula', filePath }: Markdo
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5 font-medium">
             <BookOpen className="w-3.5 h-3.5 text-sky-400" />
-            <span className="font-semibold">Markdown 渲染预览</span>
+            <span className="font-semibold">{t.editor.markdownPreviewTitle}</span>
           </div>
 
           <div className="hidden sm:flex items-center gap-3 text-[11px] opacity-75">
             <span className="flex items-center gap-1">
               <AlignLeft className="w-3 h-3" />
-              {stats.lines} 行
+              {t.editor.lines(stats.lines)}
             </span>
             <span>·</span>
-            <span>{stats.words} 词</span>
+            <span>{t.editor.words(stats.words)}</span>
             <span>·</span>
             <span className="flex items-center gap-1">
               <Hash className="w-3 h-3" />
-              {stats.headings} 个章节
+              {t.editor.sections(stats.headings)}
             </span>
           </div>
         </div>
@@ -90,17 +92,17 @@ export function MarkdownPreview({ content, theme = 'darcula', filePath }: Markdo
               ? 'hover:bg-slate-200 text-slate-700'
               : 'hover:bg-theme-hover text-theme-muted hover:text-theme-main'
           }`}
-          title="复制 Markdown 源码"
+          title={t.editor.copySourceTooltip}
         >
           {copied ? (
             <>
               <Check className="w-3 h-3 text-emerald-400" />
-              <span className="text-emerald-400 font-medium">已复制</span>
+              <span className="text-emerald-400 font-medium">{t.editor.copiedSource}</span>
             </>
           ) : (
             <>
               <Copy className="w-3 h-3" />
-              <span>复制源码</span>
+              <span>{t.editor.copySource}</span>
             </>
           )}
         </button>
@@ -240,9 +242,10 @@ export function MarkdownPreview({ content, theme = 'darcula', filePath }: Markdo
         .markdown-body img {
           max-width: 100%;
           height: auto;
-          border-radius: 6px;
-          margin: 0.8em auto;
-          display: block;
+          border-radius: 4px;
+          display: inline-block;
+          vertical-align: middle;
+          margin: 2px 3px;
         }
         .markdown-body input[type="checkbox"] {
           margin-right: 0.5em;

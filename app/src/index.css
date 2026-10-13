@@ -442,18 +442,20 @@ div[widget-id*="hover"] {
   visibility: hidden !important;
 }
 
-/* Monaco Find & Replace Widget - Modern Floating Card Aesthetic */
+/* =========================================================
+   Monaco Find & Replace Widget - Sleek Floating Card
+   Preserves Monaco's internal coordinate geometry while delivering
+   clean modern aesthetics, rounded corners and theme styling.
+   ========================================================= */
 .monaco-editor .find-widget {
   border-radius: 8px !important;
   margin-top: 6px !important;
-  margin-right: 14px !important;
-  padding: 2px 0 3px 0 !important;
-  box-sizing: border-box !important;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  margin-right: 12px !important;
+  transition: transform 0.15s ease, opacity 0.15s ease !important;
   border: 1px solid var(--border-card) !important;
   background-color: var(--bg-card) !important;
-  box-shadow: 0 14px 30px -4px rgba(0, 0, 0, 0.38), 0 4px 12px -2px rgba(0, 0, 0, 0.2) !important;
-  overflow: visible !important;
+  box-shadow: 0 12px 32px -4px rgba(0, 0, 0, 0.4), 0 4px 12px -2px rgba(0, 0, 0, 0.2) !important;
+  min-width: 360px !important;
 }
 
 /* Dark theme floating cards (default) */
@@ -480,103 +482,49 @@ div[widget-id*="hover"] {
   color: #eceff4 !important;
 }
 
-/* Light theme (idea-light) floating card - Strict overrides */
+/* Light theme (idea-light) floating card */
 :root[data-theme="idea-light"] .monaco-editor .find-widget,
 :root[data-theme="light"] .monaco-editor .find-widget,
 [data-theme="idea-light"] .monaco-editor .find-widget,
 [data-theme="light"] .monaco-editor .find-widget,
 .monaco-editor.vs .find-widget {
   background-color: #ffffff !important;
-  border: 1px solid #dbe0ea !important;
-  box-shadow: 0 14px 32px -4px rgba(15, 23, 42, 0.16), 0 4px 12px -2px rgba(15, 23, 42, 0.08) !important;
+  border: 1px solid #cbd5e1 !important;
+  box-shadow: 0 12px 30px -4px rgba(15, 23, 42, 0.16), 0 4px 10px -2px rgba(15, 23, 42, 0.08) !important;
   color: #0f172a !important;
 }
 
-/* Close button - absolutely positioned in top-right corner of card */
-.monaco-editor .find-widget > .button.codicon-widget-close,
-.monaco-editor .find-widget > .button[aria-label*="Close"],
-.monaco-editor .find-widget > .close-button {
-  position: absolute !important;
-  top: 7px !important;
-  right: 7px !important;
-  width: 20px !important;
-  height: 20px !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
+/* Close button and toggle button subtle styling */
+.monaco-editor .find-widget .button {
   border-radius: 4px !important;
-  cursor: pointer !important;
-  pointer-events: auto !important;
-  z-index: 1000 !important;
-  transition: all 0.15s ease !important;
-  color: var(--text-muted) !important;
-  opacity: 0.8 !important;
+  transition: all 0.12s ease !important;
 }
 
-.monaco-editor .find-widget > .button.codicon-widget-close:hover,
-.monaco-editor .find-widget > .button[aria-label*="Close"]:hover {
-  opacity: 1 !important;
+.monaco-editor .find-widget .button:hover {
   background-color: rgba(140, 140, 140, 0.22) !important;
-  color: var(--text-main) !important;
 }
 
-/* Left toggle replace arrow button - sleek vertical strip */
-.monaco-editor .find-widget .button.toggle {
-  position: absolute !important;
-  top: 0 !important;
-  left: 0 !important;
-  width: 22px !important;
-  height: 100% !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  cursor: pointer !important;
-  border-radius: 8px 0 0 8px !important;
-  transition: background-color 0.15s ease, color 0.15s ease !important;
-  color: var(--text-muted) !important;
-  opacity: 0.8 !important;
+:root[data-theme="idea-light"] .monaco-editor .find-widget .button,
+:root[data-theme="light"] .monaco-editor .find-widget .button,
+[data-theme="idea-light"] .monaco-editor .find-widget .button,
+[data-theme="light"] .monaco-editor .find-widget .button,
+.monaco-editor.vs .find-widget .button {
+  color: #64748b !important;
 }
 
-.monaco-editor .find-widget .button.toggle:hover {
-  opacity: 1 !important;
-  background-color: rgba(140, 140, 140, 0.18) !important;
-  color: var(--text-main) !important;
-}
-
-/* Main find and replace row margins to respect toggle button and close button */
-.monaco-editor .find-widget > .find-part,
-.monaco-editor .find-widget > .replace-part {
-  margin: 4px 30px 4px 24px !important;
-  display: flex !important;
-  align-items: center !important;
+:root[data-theme="idea-light"] .monaco-editor .find-widget .button:hover,
+:root[data-theme="light"] .monaco-editor .find-widget .button:hover,
+[data-theme="idea-light"] .monaco-editor .find-widget .button:hover,
+[data-theme="light"] .monaco-editor .find-widget .button:hover,
+.monaco-editor.vs .find-widget .button:hover {
+  background-color: #e2e8f0 !important;
+  color: #0f172a !important;
 }
 
 /* Find and Replace Input Boxes */
-.monaco-editor .find-widget .monaco-findInput {
-  border-radius: 5px !important;
-}
-
 .monaco-editor .find-widget .monaco-inputbox {
-  border-radius: 5px !important;
-  padding: 0 4px !important;
+  border-radius: 4px !important;
   transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease !important;
-  min-height: 24px !important;
-  height: 24px !important;
-  box-sizing: border-box !important;
-  display: flex !important;
-  align-items: center !important;
-}
-
-.monaco-editor .find-widget .monaco-inputbox .wrapper {
-  height: 100% !important;
-  display: flex !important;
-  align-items: center !important;
-}
-
-.monaco-editor .find-widget .monaco-inputbox input.input {
-  font-size: 12px !important;
-  line-height: 20px !important;
-  padding: 0 2px !important;
 }
 
 /* Dark theme inputs */
@@ -640,37 +588,16 @@ div[widget-id*="hover"] {
 }
 
 /* Checkbox Toggle Buttons inside Find/Replace Inputs (Aa, ab, .*, AB) */
-.monaco-editor .find-widget .monaco-findInput .controls {
-  display: flex !important;
-  align-items: center !important;
-  right: 2px !important;
-  top: 2px !important;
-}
-
 .monaco-editor .find-widget .monaco-custom-checkbox {
-  border-radius: 4px !important;
-  margin: 0 1px !important;
-  padding: 0 3px !important;
-  min-width: 17px !important;
-  height: 17px !important;
-  font-size: 11px !important;
-  font-weight: 600 !important;
-  letter-spacing: 0.2px !important;
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: center !important;
+  border-radius: 3px !important;
   transition: all 0.12s ease !important;
   cursor: pointer !important;
-  border: 1px solid transparent !important;
-  opacity: 0.72 !important;
 }
 
 .monaco-editor .find-widget .monaco-custom-checkbox:hover {
-  opacity: 1 !important;
   background-color: rgba(140, 140, 140, 0.2) !important;
 }
 
-/* Checked toggle button state */
 .monaco-editor .find-widget .monaco-custom-checkbox.checked,
 .monaco-editor .find-widget .monaco-custom-checkbox[aria-checked="true"] {
   opacity: 1 !important;
@@ -684,7 +611,6 @@ div[widget-id*="hover"] {
   background-color: rgba(56, 189, 248, 0.22) !important;
   color: #38bdf8 !important;
   border-color: rgba(56, 189, 248, 0.45) !important;
-  font-weight: 700 !important;
 }
 
 :root[data-theme="idea-light"] .monaco-editor .find-widget .monaco-custom-checkbox.checked,
@@ -695,24 +621,15 @@ div[widget-id*="hover"] {
   background-color: #e0f2fe !important;
   color: #0284c7 !important;
   border-color: #7dd3fc !important;
-  font-weight: 700 !important;
 }
 
 /* Matches Count Badge */
 .monaco-editor .find-widget .matchesCount {
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: center !important;
+  border-radius: 9999px !important;
   font-size: 11px !important;
   font-weight: 500 !important;
-  border-radius: 9999px !important;
   padding: 1px 7px !important;
   margin: 0 4px !important;
-  min-height: 18px !important;
-  height: 18px !important;
-  line-height: 16px !important;
-  letter-spacing: 0.2px !important;
-  white-space: nowrap !important;
 }
 
 :root .monaco-editor .find-widget .matchesCount,
@@ -733,46 +650,6 @@ div[widget-id*="hover"] {
   background-color: #f1f5f9 !important;
   color: #475569 !important;
   border: 1px solid #e2e8f0 !important;
-}
-
-/* Action Icon Buttons */
-.monaco-editor .find-widget .find-actions .button,
-.monaco-editor .find-widget .replace-actions .button {
-  border-radius: 4px !important;
-  width: 20px !important;
-  height: 20px !important;
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  margin: 0 1px !important;
-  cursor: pointer !important;
-  transition: all 0.15s ease !important;
-  color: var(--text-muted) !important;
-  opacity: 0.85 !important;
-}
-
-.monaco-editor .find-widget .find-actions .button:hover,
-.monaco-editor .find-widget .replace-actions .button:hover {
-  opacity: 1 !important;
-  background-color: rgba(140, 140, 140, 0.22) !important;
-  color: var(--text-main) !important;
-}
-
-:root[data-theme="idea-light"] .monaco-editor .find-widget .button,
-:root[data-theme="light"] .monaco-editor .find-widget .button,
-[data-theme="idea-light"] .monaco-editor .find-widget .button,
-[data-theme="light"] .monaco-editor .find-widget .button,
-.monaco-editor.vs .find-widget .button {
-  color: #64748b !important;
-}
-
-:root[data-theme="idea-light"] .monaco-editor .find-widget .button:hover,
-:root[data-theme="light"] .monaco-editor .find-widget .button:hover,
-[data-theme="idea-light"] .monaco-editor .find-widget .button:hover,
-[data-theme="light"] .monaco-editor .find-widget .button:hover,
-.monaco-editor.vs .find-widget .button:hover {
-  background-color: #f1f5f9 !important;
-  color: #0f172a !important;
 }
 
 .monaco-editor .find-widget .button.disabled {

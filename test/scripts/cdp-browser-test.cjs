@@ -281,17 +281,29 @@ async function runBrowserE2E() {
         }
 
         const store = window.__workspaceExplorerStore.getState();
-        // Look for markdown file across loaded trees (e.g. CHANGELOG.md, README.md, AGENTS.md)
-        for (const [repoKey, items] of Object.entries(store.dirChildren)) {
-          const mdItem = (items || []).find(item => !item.isDirectory && item.name.endsWith('.md'));
-          if (mdItem) {
-            const tabId = await window.__editorTabsStore.getState().openFileTab({
-              filePath: mdItem.path,
-              repoPath: repoKey,
-              relativePath: mdItem.relativePath,
-              repoName: mdItem.name,
-            });
-            return { opened: true, fileName: mdItem.name, filePath: mdItem.path, tabId };
+        // Specifically open OmniGit README.md to test rich Markdown badge rendering
+        try {
+          const omnigitReadme = 'd:/projects/OmniGit/README.md';
+          const tabId = await window.__editorTabsStore.getState().openFileTab({
+            filePath: omnigitReadme,
+            repoPath: 'd:/projects/OmniGit',
+            relativePath: 'README.md',
+            repoName: 'OmniGit',
+          });
+          return { opened: true, fileName: 'README.md', filePath: omnigitReadme, tabId };
+        } catch (e) {
+          // Fallback to first found md file
+          for (const [repoKey, items] of Object.entries(store.dirChildren)) {
+            const mdItem = (items || []).find(item => !item.isDirectory && item.name.endsWith('.md'));
+            if (mdItem) {
+              const tabId = await window.__editorTabsStore.getState().openFileTab({
+                filePath: mdItem.path,
+                repoPath: repoKey,
+                relativePath: mdItem.relativePath,
+                repoName: mdItem.name,
+              });
+              return { opened: true, fileName: mdItem.name, filePath: mdItem.path, tabId };
+            }
           }
         }
         return { opened: false, reason: 'no_md_file_found', dirKeys: Object.keys(store.dirChildren) };
@@ -556,6 +568,106 @@ async function runBrowserE2E() {
         }
       })()
     `);
+    await sleep(400);
+
+    // -----------------------------------------------------------------
+    // Step 5D: Validate Markdown Inline Badges (display: inline-block)
+    // -----------------------------------------------------------------
+    console.log('    ▶ Validating Markdown preview inline badges display style...');
+    const badgeStyleResult = await cdp.evaluate(`
+      (function() {
+        const mdImages = Array.from(document.querySelectorAll('.markdown-body img'));
+        if (mdImages.length === 0) return { tested: false, reason: 'no_images' };
+        const nonInline = mdImages.filter(img => window.getComputedStyle(img).display !== 'inline-block');
+        return {
+          tested: true,
+          totalImages: mdImages.length,
+          allInlineBlock: nonInline.length === 0,
+          nonInlineCount: nonInline.length,
+        };
+      })()
+    `);
+    console.log('    ✓ Markdown inline badges check result:', badgeStyleResult);
+    if (badgeStyleResult.tested && !badgeStyleResult.allInlineBlock) {
+      throw new Error(`Markdown images failed inline badge check: ${JSON.stringify(badgeStyleResult)}`);
+    }
+
+    // -----------------------------------------------------------------
+    // Step 5E: Dynamic Multi-Language (i18n) Switch Verification
+    // -----------------------------------------------------------------
+    console.log('    ▶ Testing Dynamic Multi-Language (i18n) Switch: zh-CN -> en-US -> zh-CN...');
+    const i18nSwitchResult = await cdp.evaluate(`
+      (async function() {
+        if (!window.__appStore) return { success: false, reason: 'no_app_store' };
+        
+        // 1. Switch to English
+        window.__appStore.getState().setLanguage('en-US');
+        await new Promise(r => setTimeout(r, 400));
+        
+        const asideHeader = document.querySelector('aside .uppercase')?.textContent || '';
+        const previewHeader = document.querySelector('.markdown-body')?.closest('.select-text')?.querySelector('.font-semibold')?.textContent || '';
+        const modeButtons = Array.from(document.querySelectorAll('button')).map(b => b.textContent?.trim()).filter(Boolean);
+        
+        const hasEnExplorer = asideHeader.includes('Explorer');
+        const hasEnPreview = previewHeader.includes('Markdown Live Preview');
+        const hasEnSource = modeButtons.includes('Source');
+        const hasEnSplit = modeButtons.includes('Split');
+        const hasEnPreviewBtn = modeButtons.includes('Preview');
+        const hasEnSave = modeButtons.includes('Save') || modeButtons.includes('Saved');
+
+        return {
+          success: true,
+          en: {
+            asideHeader,
+            previewHeader,
+            hasEnExplorer,
+            hasEnPreview,
+            hasEnSource,
+            hasEnSplit,
+            hasEnPreviewBtn,
+            hasEnSave
+          }
+        };
+      })()
+    `);
+    console.log('    ✓ English Mode verification result:', i18nSwitchResult);
+    if (!i18nSwitchResult.success || !i18nSwitchResult.en.hasEnExplorer || !i18nSwitchResult.en.hasEnSource) {
+      throw new Error(`Dynamic English language switching failed: ${JSON.stringify(i18nSwitchResult)}`);
+    }
+
+    // Capture English Mode UI Screenshot
+    console.log('    ▶ Capturing English Mode UI Screenshot...');
+    const screenshotEnMode = await cdp.send('Page.captureScreenshot', { format: 'png' });
+    const screenshotEnPath = path.join(REPORTS_DIR, '06_english_mode_ui.png');
+    fs.writeFileSync(screenshotEnPath, Buffer.from(screenshotEnMode.data, 'base64'));
+    console.log(`    ✓ English Mode UI screenshot saved: ${screenshotEnPath}`);
+
+    // Switch back to Chinese and verify restoration
+    const i18nRestoreResult = await cdp.evaluate(`
+      (async function() {
+        window.__appStore.getState().setLanguage('zh-CN');
+        await new Promise(r => setTimeout(r, 400));
+        
+        const asideHeaderZh = document.querySelector('aside .uppercase')?.textContent || '';
+        const previewHeaderZh = document.querySelector('.markdown-body')?.closest('.select-text')?.querySelector('.font-semibold')?.textContent || '';
+        const hasZhExplorer = asideHeaderZh.includes('资源管理器');
+        const hasZhPreview = previewHeaderZh.includes('Markdown 渲染预览');
+
+        return {
+          success: true,
+          zh: {
+            asideHeaderZh,
+            previewHeaderZh,
+            hasZhExplorer,
+            hasZhPreview
+          }
+        };
+      })()
+    `);
+    console.log('    ✓ Chinese Mode restoration result:', i18nRestoreResult);
+    if (!i18nRestoreResult.success || !i18nRestoreResult.zh.hasZhExplorer) {
+      throw new Error(`Restoring Chinese language failed: ${JSON.stringify(i18nRestoreResult)}`);
+    }
     await sleep(400);
 
     // Verify console errors & network failures

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useEditorTabsStore, type EditorTabItem } from './useEditorTabsStore';
+import { useTranslation } from '../../locales';
 import {
   X,
   FileCode,
@@ -70,6 +71,7 @@ export function EditorTabStrip() {
     closeOtherTabs,
     closeAllTabs,
   } = useEditorTabsStore();
+  const { t } = useTranslation();
 
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -161,7 +163,7 @@ export function EditorTabStrip() {
                 className={`w-4 h-4 flex items-center justify-center rounded hover:bg-theme-main/10 text-theme-muted hover:text-red-400 transition ${
                   tab.isDirty ? 'hidden group-hover:flex' : 'flex'
                 }`}
-                title="关闭 (Ctrl+W)"
+                title={t.editor.closeTabTooltip}
               >
                 <X className="w-3 h-3" />
               </button>
@@ -183,7 +185,7 @@ export function EditorTabStrip() {
             }}
             className="px-3 py-1.5 hover:bg-theme-hover cursor-pointer"
           >
-            关闭当前标签
+            {t.editor.closeCurrentTab}
           </div>
           <div
             onClick={() => {
@@ -192,7 +194,7 @@ export function EditorTabStrip() {
             }}
             className="px-3 py-1.5 hover:bg-theme-hover cursor-pointer"
           >
-            关闭其他标签
+            {t.editor.closeOtherTabs}
           </div>
           <div
             onClick={() => {
@@ -201,14 +203,14 @@ export function EditorTabStrip() {
             }}
             className="px-3 py-1.5 hover:bg-theme-hover cursor-pointer"
           >
-            关闭全部标签
+            {t.editor.closeAllTabs}
           </div>
           <div className="border-t border-theme-border my-1" />
           <div
             onClick={() => handleCopy(contextMenu.tab.relativePath)}
             className="px-3 py-1.5 hover:bg-theme-hover cursor-pointer flex items-center justify-between"
           >
-            <span>复制相对路径</span>
+            <span>{t.editor.copyRelativePath}</span>
             {copiedPath === contextMenu.tab.relativePath && (
               <Check className="w-3.5 h-3.5 text-emerald-400" />
             )}
@@ -217,7 +219,7 @@ export function EditorTabStrip() {
             onClick={() => handleCopy(contextMenu.tab.filePath)}
             className="px-3 py-1.5 hover:bg-theme-hover cursor-pointer flex items-center justify-between"
           >
-            <span>复制绝对路径</span>
+            <span>{t.editor.copyAbsolutePath}</span>
             {copiedPath === contextMenu.tab.filePath && (
               <Check className="w-3.5 h-3.5 text-emerald-400" />
             )}

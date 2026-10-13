@@ -4,6 +4,7 @@ import { useEditorTabsStore } from './useEditorTabsStore';
 import { EditorTabStrip } from './EditorTabStrip';
 import { useAppStore } from '../../store/useAppStore';
 import { MarkdownPreview } from './MarkdownPreview';
+import { useTranslation } from '../../locales';
 import {
   toggleEditorComment,
   registerAllLanguageComments,
@@ -31,6 +32,7 @@ export function CodeEditorPanel() {
     saveTab,
   } = useEditorTabsStore();
   const theme = useAppStore((state) => state.theme);
+  const { t } = useTranslation();
 
   const [cursorPos, setCursorPos] = useState({ line: 1, col: 1 });
   const [wordWrap, setWordWrap] = useState(true);
@@ -165,7 +167,7 @@ export function CodeEditorPanel() {
     // Add context menu action
     editor.addAction({
       id: 'omnigit-toggle-line-comment',
-      label: '注释 / 取消注释 (Toggle Comment)',
+      label: t.editor.toggleCommentContextMenu,
       keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Slash],
       contextMenuGroupId: '1_modification',
       contextMenuOrder: 1.5,
@@ -190,9 +192,9 @@ export function CodeEditorPanel() {
           <div className="p-4 rounded-2xl bg-theme-hover border border-theme-border mb-4 text-theme-muted">
             <FileCode className="w-10 h-10 text-sky-400 stroke-[1.5]" />
           </div>
-          <h3 className="text-sm font-semibold text-theme-main mb-1">未打开任何文件</h3>
+          <h3 className="text-sm font-semibold text-theme-main mb-1">{t.editor.noFileOpenTitle}</h3>
           <p className="text-xs text-theme-muted max-w-sm leading-relaxed">
-            请从左侧资源管理器中点击任意源文件，即可进行多标签查看与快速编辑
+            {t.editor.noFileOpenDesc}
           </p>
         </div>
       </div>
@@ -212,7 +214,7 @@ export function CodeEditorPanel() {
           </span>
           {activeTab.isDirty && (
             <span className="text-[10px] text-amber-400 font-medium px-1 rounded bg-amber-400/10">
-              未保存
+              {t.editor.unsaved}
             </span>
           )}
         </div>
@@ -228,10 +230,10 @@ export function CodeEditorPanel() {
                     ? 'bg-sky-600 text-white shadow-xs'
                     : 'text-theme-muted hover:text-theme-main hover:bg-theme-hover'
                 }`}
-                title="纯源码编辑模式"
+                title={t.editor.viewSourceTooltip}
               >
                 <Code2 className="w-3 h-3" />
-                <span>源码</span>
+                <span>{t.editor.viewSource}</span>
               </button>
               <button
                 onClick={() => setMdViewMode('split')}
@@ -240,10 +242,10 @@ export function CodeEditorPanel() {
                     ? 'bg-sky-600 text-white shadow-xs'
                     : 'text-theme-muted hover:text-theme-main hover:bg-theme-hover'
                 }`}
-                title="双栏实时对照预览模式"
+                title={t.editor.viewSplitTooltip}
               >
                 <Columns className="w-3 h-3" />
-                <span>分栏</span>
+                <span>{t.editor.viewSplit}</span>
               </button>
               <button
                 onClick={() => setMdViewMode('preview')}
@@ -252,10 +254,10 @@ export function CodeEditorPanel() {
                     ? 'bg-sky-600 text-white shadow-xs'
                     : 'text-theme-muted hover:text-theme-main hover:bg-theme-hover'
                 }`}
-                title="全屏纯阅读预览模式"
+                title={t.editor.viewPreviewTooltip}
               >
                 <Eye className="w-3 h-3" />
-                <span>预览</span>
+                <span>{t.editor.viewPreview}</span>
               </button>
             </div>
           )}
@@ -265,7 +267,7 @@ export function CodeEditorPanel() {
             <button
               onClick={handleToggleComment}
               className="p-1 rounded hover:bg-theme-hover text-theme-muted hover:text-sky-400 transition cursor-pointer"
-              title="注释 / 取消注释当前行或选中块 (Ctrl + /)"
+              title={t.editor.toggleCommentTooltip}
             >
               <MessageSquareCode className="w-3.5 h-3.5" />
             </button>
@@ -278,7 +280,7 @@ export function CodeEditorPanel() {
               className={`p-1 rounded hover:bg-theme-hover transition cursor-pointer ${
                 wordWrap ? 'text-sky-400 bg-theme-hover' : 'text-theme-muted'
               }`}
-              title="自动折行切换"
+              title={t.editor.toggleWordWrapTooltip}
             >
               <WrapText className="w-3.5 h-3.5" />
             </button>
@@ -293,17 +295,17 @@ export function CodeEditorPanel() {
                 ? 'bg-sky-600 hover:bg-sky-500 text-white font-medium cursor-pointer shadow-sm'
                 : 'text-theme-muted/50 cursor-not-allowed'
             }`}
-            title="保存文件 (Ctrl + S)"
+            title={t.editor.saveFileTooltip}
           >
             {savedSuccess ? (
               <>
                 <Check className="w-3 h-3 text-emerald-300" />
-                <span>已保存</span>
+                <span>{t.editor.saved}</span>
               </>
             ) : (
               <>
                 <Save className="w-3 h-3" />
-                <span>保存</span>
+                <span>{t.editor.save}</span>
               </>
             )}
           </button>
@@ -315,7 +317,7 @@ export function CodeEditorPanel() {
         {activeTab.isBinary ? (
           <div className="flex flex-col items-center justify-center h-full text-theme-muted text-xs">
             <AlertCircle className="w-8 h-8 text-amber-400 mb-2" />
-            <p>该文件为二进制文件，无法在文本编辑器中显示</p>
+            <p>{t.editor.binaryFileWarning}</p>
           </div>
         ) : isMarkdown && mdViewMode === 'preview' ? (
           /* Pure Fullscreen Markdown Preview */
@@ -343,7 +345,7 @@ export function CodeEditorPanel() {
                 loading={
                   <div className="flex items-center justify-center h-full gap-2 text-xs text-theme-muted">
                     <Loader2 className="w-4 h-4 animate-spin text-sky-400" />
-                    <span>加载编辑器中...</span>
+                    <span>{t.editor.loadingEditor}</span>
                   </div>
                 }
                 options={{
@@ -364,7 +366,7 @@ export function CodeEditorPanel() {
             <div
               onMouseDown={handleSplitMouseDown}
               onDoubleClick={handleSplitDoubleClick}
-              title="按住左右拖拽调整编辑区与预览区宽度，双击恢复 50:50 等宽"
+              title={t.editor.dragSplitTooltip}
               className={`relative z-20 w-[5px] -mx-[2px] h-full cursor-col-resize select-none shrink-0 transition-colors flex items-center justify-center group ${
                 isSplitDragging ? 'bg-sky-500' : 'bg-theme-border/60 hover:bg-sky-500/50 active:bg-sky-500'
               }`}
@@ -395,7 +397,7 @@ export function CodeEditorPanel() {
             loading={
               <div className="flex items-center justify-center h-full gap-2 text-xs text-theme-muted">
                 <Loader2 className="w-4 h-4 animate-spin text-sky-400" />
-                <span>加载编辑器中...</span>
+                <span>{t.editor.loadingEditor}</span>
               </div>
             }
             options={{
@@ -417,7 +419,7 @@ export function CodeEditorPanel() {
       <div className="h-6 px-3 bg-theme-sidebar border-t border-theme-border flex items-center justify-between text-[11px] text-theme-muted select-none">
         <div className="flex items-center gap-3">
           <span>
-            行 {cursorPos.line}, 列 {cursorPos.col}
+            {t.editor.cursorPosition(cursorPos.line, cursorPos.col)}
           </span>
           <span>{activeTab.language.toUpperCase()}</span>
           {isMarkdown && (

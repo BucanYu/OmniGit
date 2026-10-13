@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { useAppStore } from '../../store/useAppStore';
 import { useWorkspaceExplorerStore } from './useWorkspaceExplorerStore';
 import { FileTreeNode } from './FileTreeNode';
+import { useTranslation } from '../../locales';
 import {
   FolderGit2,
   GitBranch,
@@ -29,6 +30,8 @@ export function WorkspaceExplorerPanel() {
     toggleExpandDir,
     refreshDir,
   } = useWorkspaceExplorerStore();
+
+  const { t } = useTranslation();
 
   // Auto-expand the active project or first project on mount if not expanded
   useEffect(() => {
@@ -61,20 +64,20 @@ export function WorkspaceExplorerPanel() {
         <div className="flex items-center gap-1.5 min-w-0">
           <FolderGit2 className="w-3.5 h-3.5 text-sky-400 shrink-0" />
           <span className="font-bold text-[11px] text-theme-main uppercase tracking-wider truncate">
-            资源管理器 ({projects.length})
+            {t.workspaceExplorer.title(projects.length)}
           </span>
         </div>
         <div className="flex items-center gap-0.5">
           <button
             onClick={handleRefreshAll}
-            title="刷新文件树"
+            title={t.workspaceExplorer.refreshTree}
             className="p-1 hover:bg-theme-hover rounded text-theme-muted hover:text-sky-400 transition cursor-pointer"
           >
             <RefreshCw className="w-3.5 h-3.5" />
           </button>
           <button
             onClick={() => setIsAddRepoModalOpen(true)}
-            title="添加项目到工作区"
+            title={t.workspaceExplorer.addRepo}
             className="p-1 hover:bg-theme-hover rounded text-theme-muted hover:text-theme-main transition cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
@@ -89,9 +92,9 @@ export function WorkspaceExplorerPanel() {
             <div className="p-3 rounded-xl bg-theme-hover text-theme-muted border border-theme-border">
               <Layers className="w-6 h-6 text-sky-400 stroke-[1.8]" />
             </div>
-            <p className="text-theme-main font-semibold text-xs">工作区暂无项目</p>
+            <p className="text-theme-main font-semibold text-xs">{t.workspaceExplorer.emptyTitle}</p>
             <p className="text-theme-dim text-[10px] leading-relaxed">
-              请点击右上角加号添加本地代码仓库
+              {t.workspaceExplorer.emptyDesc}
             </p>
           </div>
         ) : (
@@ -135,7 +138,7 @@ export function WorkspaceExplorerPanel() {
                           e.stopPropagation();
                           openProjectFolder(project.path);
                         }}
-                        title={`在系统资源管理器中打开 (${project.path})`}
+                        title={t.workspaceExplorer.openInSystemExplorer(project.path)}
                         className="p-1 text-theme-muted hover:text-sky-400 hover:bg-theme-hover rounded transition cursor-pointer"
                       >
                         <FolderOpen className="w-3.5 h-3.5 text-sky-400" />
@@ -157,7 +160,7 @@ export function WorkspaceExplorerPanel() {
                   <div>
                     {rootChildren.length === 0 ? (
                       <div className="pl-6 py-1 text-theme-muted text-[11px] italic">
-                        (空目录或加载中...)
+                        {t.workspaceExplorer.emptyDirOrLoading}
                       </div>
                     ) : (
                       rootChildren.map((child) => (
