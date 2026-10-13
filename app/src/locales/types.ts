@@ -1106,5 +1106,23 @@ export interface LocaleDictionary {
     copiedSource: string;
     copySourceTooltip: string;
   };
+  terminal: {
+    newTerminalDefault: (name: string) => string;
+    openInProjectHeader: string;
+    selectShellHeader: string;
+    activeBadge: string;
+    closeTerminal: string;
+    newTerminalTooltip: string;
+    selectShellTooltip: string;
+    restoreWindowTooltip: string;
+    maximizeWindowTooltip: string;
+    collapseDockTooltip: string;
+    noSessionPlaceholder: string;
+    dragResizeTooltip: string;
+    renameTerminal: string;
+    renamePromptPlaceholder: string;
+    copyTerminalName: string;
+    newTerminalContext: string;
+  };
 }
 

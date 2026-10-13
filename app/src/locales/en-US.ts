@@ -1106,5 +1106,23 @@ export const enUS: LocaleDictionary = {
     copiedSource: 'Copied',
     copySourceTooltip: 'Copy Markdown Source',
   },
+  terminal: {
+    newTerminalDefault: (name: string) => `New Terminal (Default: ${name})`,
+    openInProjectHeader: 'Open in Workspace Project:',
+    selectShellHeader: 'Select Shell Type:',
+    activeBadge: 'Active',
+    closeTerminal: 'Close Terminal',
+    newTerminalTooltip: 'New Terminal (Current Project)',
+    selectShellTooltip: 'Select Repository or Shell to New Terminal',
+    restoreWindowTooltip: 'Restore Terminal Window',
+    maximizeWindowTooltip: 'Maximize Terminal Window',
+    collapseDockTooltip: 'Collapse Terminal Dock (Ctrl + `)',
+    noSessionPlaceholder: 'No active terminal session. Click "+" above to create one.',
+    dragResizeTooltip: 'Drag up/down to adjust terminal height',
+    renameTerminal: 'Rename Terminal',
+    renamePromptPlaceholder: 'Enter terminal title...',
+    copyTerminalName: 'Copy Terminal Name',
+    newTerminalContext: 'New Terminal',
+  },
 };
 

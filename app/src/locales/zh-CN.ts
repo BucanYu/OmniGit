@@ -1106,5 +1106,23 @@ export const zhCN: LocaleDictionary = {
     copiedSource: '已复制',
     copySourceTooltip: '复制 Markdown 源码',
   },
+  terminal: {
+    newTerminalDefault: (name: string) => `新建终端 (默认: ${name})`,
+    openInProjectHeader: '在工作区项目中打开:',
+    selectShellHeader: '选择 Shell 类型:',
+    activeBadge: '活跃',
+    closeTerminal: '关闭终端',
+    newTerminalTooltip: '新建终端 (当前项目)',
+    selectShellTooltip: '选择工程或 Shell 新建终端',
+    restoreWindowTooltip: '还原终端视窗',
+    maximizeWindowTooltip: '最大化终端视窗',
+    collapseDockTooltip: '折叠终端面板 (Ctrl + `)',
+    noSessionPlaceholder: '暂无活动终端会话，点击上方 “+” 新建',
+    dragResizeTooltip: '上下拖动调整终端高度',
+    renameTerminal: '重命名终端',
+    renamePromptPlaceholder: '输入终端名称...',
+    copyTerminalName: '复制终端名称',
+    newTerminalContext: '新建终端',
+  },
 };
 

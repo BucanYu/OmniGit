@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { useAppStore } from '../../store/useAppStore';
 
 export interface EditorTabItem {
   id: string;
@@ -14,6 +15,18 @@ export interface EditorTabItem {
   isDirty: boolean;
   language: string;
   isBinary?: boolean;
+}
+
+export interface PersistedEditorTab {
+  filePath: string;
+  repoPath: string;
+  relativePath: string;
+  repoName: string;
+}
+
+export interface PersistedEditorTabsData {
+  tabs: PersistedEditorTab[];
+  activeFilePath?: string;
 }
 
 export function getLanguageFromPath(filePath: string): string {
@@ -104,11 +117,104 @@ interface EditorTabsState {
   setActiveTabId: (id: string) => void;
   updateTabContent: (id: string, newContent: string) => void;
   saveTab: (id: string) => Promise<boolean>;
+  savePersistedTabs: (wsId?: string) => void;
+  restorePersistedTabs: (workspaceId: string) => Promise<void>;
 }
 
 export const useEditorTabsStore = create<EditorTabsState>((set, get) => ({
   tabs: [],
   activeTabId: null,
+
+  savePersistedTabs: (wsId?: string) => {
+    if (typeof window === 'undefined') return;
+    let targetWsId = wsId;
+    if (!targetWsId) {
+      try {
+        targetWsId = useAppStore.getState().workspaceId;
+      } catch {}
+    }
+    if (!targetWsId || targetWsId === 'default') return;
+
+    const { tabs, activeTabId } = get();
+    const activeTab = tabs.find((t) => t.id === activeTabId);
+    const data: PersistedEditorTabsData = {
+      tabs: tabs.map((t) => ({
+        filePath: t.filePath,
+        repoPath: t.repoPath,
+        relativePath: t.relativePath,
+        repoName: t.repoName,
+      })),
+      activeFilePath: activeTab?.filePath,
+    };
+    try {
+      localStorage.setItem(`omnigit_editor_tabs_${targetWsId}`, JSON.stringify(data));
+    } catch {}
+  },
+
+  restorePersistedTabs: async (workspaceId: string) => {
+    if (!workspaceId || workspaceId === 'default' || typeof window === 'undefined') return;
+    const raw = localStorage.getItem(`omnigit_editor_tabs_${workspaceId}`);
+    if (!raw) return;
+
+    let data: PersistedEditorTabsData;
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      return;
+    }
+
+    if (!data || !Array.isArray(data.tabs) || data.tabs.length === 0) return;
+
+    // Concurrently fetch all tabs' file contents
+    const fetchPromises = data.tabs.map(async (item) => {
+      try {
+        const res = await fetch(`/api/fs/read?filePath=${encodeURIComponent(item.filePath)}`);
+        const fileData = await res.json();
+        if (fileData && fileData.content !== undefined) {
+          const id = `tab_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+          const fileName = item.filePath.split(/[\\/]/).pop() || 'Untitled';
+          const language = getLanguageFromPath(item.filePath);
+          return {
+            id,
+            filePath: item.filePath,
+            relativePath: item.relativePath,
+            fileName,
+            repoPath: item.repoPath,
+            repoName: item.repoName,
+            content: fileData.content || '',
+            originalContent: fileData.content || '',
+            encoding: fileData.encoding || 'utf-8',
+            eol: fileData.eol || 'LF',
+            isDirty: false,
+            language,
+            isBinary: Boolean(fileData.isBinary),
+          } as EditorTabItem;
+        }
+      } catch (err) {
+        console.warn('[EditorTabs] Failed to restore file:', item.filePath, err);
+      }
+      return null;
+    });
+
+    const results = await Promise.all(fetchPromises);
+    const validTabs = results.filter((t): t is EditorTabItem => t !== null);
+
+    if (validTabs.length === 0) return;
+
+    let matchedActiveId = validTabs[0].id;
+    if (data.activeFilePath) {
+      const normActive = data.activeFilePath.replace(/\\/g, '/').toLowerCase();
+      const found = validTabs.find((t) => t.filePath.replace(/\\/g, '/').toLowerCase() === normActive);
+      if (found) {
+        matchedActiveId = found.id;
+      }
+    }
+
+    set({
+      tabs: validTabs,
+      activeTabId: matchedActiveId,
+    });
+  },
 
   openFileTab: async ({ filePath, repoPath, relativePath, repoName }) => {
     const { tabs } = get();
@@ -118,6 +224,7 @@ export const useEditorTabsStore = create<EditorTabsState>((set, get) => ({
 
     if (existing) {
       set({ activeTabId: existing.id });
+      get().savePersistedTabs();
       return existing.id;
     }
 
@@ -150,6 +257,7 @@ export const useEditorTabsStore = create<EditorTabsState>((set, get) => ({
         tabs: [...state.tabs, newTab],
         activeTabId: id,
       }));
+      get().savePersistedTabs();
 
       return id;
     } catch (err) {
@@ -177,6 +285,7 @@ export const useEditorTabsStore = create<EditorTabsState>((set, get) => ({
     }
 
     set({ tabs: filtered, activeTabId: nextActive });
+    get().savePersistedTabs();
   },
 
   closeOtherTabs: (id: string) => {
@@ -184,13 +293,18 @@ export const useEditorTabsStore = create<EditorTabsState>((set, get) => ({
       tabs: state.tabs.filter((t) => t.id === id),
       activeTabId: id,
     }));
+    get().savePersistedTabs();
   },
 
   closeAllTabs: () => {
     set({ tabs: [], activeTabId: null });
+    get().savePersistedTabs();
   },
 
-  setActiveTabId: (id: string) => set({ activeTabId: id }),
+  setActiveTabId: (id: string) => {
+    set({ activeTabId: id });
+    get().savePersistedTabs();
+  },
 
   updateTabContent: (id: string, newContent: string) => {
     set((state) => ({

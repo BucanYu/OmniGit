@@ -2,8 +2,10 @@ import React, { useRef, useState, useEffect } from 'react';
 import { useTerminalStore } from './useTerminalStore';
 import { TerminalTabs } from './TerminalTabs';
 import { TerminalView } from './TerminalView';
+import { useTranslation } from '../../locales';
 
 export function TerminalDock() {
+  const { t } = useTranslation();
   const {
     isTerminalOpen,
     terminalHeight,
@@ -67,7 +69,7 @@ export function TerminalDock() {
         <div
           onMouseDown={handleMouseDown}
           className="h-1 w-full hover:bg-sky-500/50 cursor-row-resize transition-colors absolute -top-0.5 left-0 z-20"
-          title="上下拖动调整终端高度"
+          title={t.terminal.dragResizeTooltip}
         />
       )}
 
@@ -80,7 +82,7 @@ export function TerminalDock() {
           <TerminalView key={activeSession.id} sessionId={activeSession.id} />
         ) : (
           <div className="flex items-center justify-center h-full text-theme-muted text-xs">
-            暂无活动终端会话，点击上方 “+” 新建
+            {t.terminal.noSessionPlaceholder}
           </div>
         )}
       </div>

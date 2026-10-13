@@ -66,8 +66,17 @@ export default function App() {
     (window as any).__workbenchStore = useWorkbenchStore;
     (window as any).__workspaceExplorerStore = useWorkspaceExplorerStore;
     (window as any).__editorTabsStore = useEditorTabsStore;
+    (window as any).__terminalStore = useTerminalStore;
     initApp();
   }, [initApp]);
+
+  // Restore persisted open editor tabs for active workspace on startup or workspace switch
+  const workspaceId = useAppStore((state) => state.workspaceId);
+  useEffect(() => {
+    if (workspaceId && workspaceId !== 'default') {
+      useEditorTabsStore.getState().restorePersistedTabs(workspaceId);
+    }
+  }, [workspaceId]);
 
   // Real-time external file modifications sync: SSE watcher + Window focus (zero polling storm)
   useEffect(() => {

@@ -670,6 +670,167 @@ async function runBrowserE2E() {
     }
     await sleep(400);
 
+    // -----------------------------------------------------------------
+    // Step 5F: Version Constant & UI Verification (0.5.0)
+    // -----------------------------------------------------------------
+    console.log('    ▶ Validating OmniGit Version Bump to 0.5.0...');
+    const versionCheckResult = await cdp.evaluate(`
+      (function() {
+        const bodyText = document.body.innerText || '';
+        const hasVersion = bodyText.includes('v0.5.0') || bodyText.includes('0.5.0');
+        return {
+          success: true,
+          hasVersion,
+        };
+      })()
+    `);
+    console.log('    ✓ Version 0.5.0 check result:', versionCheckResult);
+    if (!versionCheckResult.success || !versionCheckResult.hasVersion) {
+      throw new Error(`Version 0.5.0 check failed: ${JSON.stringify(versionCheckResult)}`);
+    }
+
+    // -----------------------------------------------------------------
+    // Step 5G: Workspace Open Editor Tabs Persistence Verification
+    // -----------------------------------------------------------------
+    console.log('    ▶ Validating Workspace Open Editor Tabs Persistence (localStorage & restore)...');
+    const tabsPersistenceResult = await cdp.evaluate(`
+      (async function() {
+        if (!window.__editorTabsStore || !window.__appStore) {
+          return { success: false, reason: 'no_store' };
+        }
+        const wsId = window.__appStore.getState().workspaceId;
+        const storageKey = 'omnigit_editor_tabs_' + wsId;
+        const rawSaved = localStorage.getItem(storageKey);
+        if (!rawSaved) {
+          return { success: false, reason: 'no_local_storage_key', storageKey };
+        }
+        const parsed = JSON.parse(rawSaved);
+        const tabCount = parsed.tabs ? parsed.tabs.length : 0;
+        const activeFile = parsed.activeFilePath;
+
+        // Verify restore function
+        await window.__editorTabsStore.getState().restorePersistedTabs(wsId);
+        const currentTabs = window.__editorTabsStore.getState().tabs;
+
+        return {
+          success: true,
+          storageKey,
+          persistedTabCount: tabCount,
+          activeFile,
+          restoredTabCount: currentTabs.length,
+          restoredActiveTabId: window.__editorTabsStore.getState().activeTabId
+        };
+      })()
+    `);
+    console.log('    ✓ Workspace Tabs Persistence verification result:', tabsPersistenceResult);
+    if (!tabsPersistenceResult.success || tabsPersistenceResult.persistedTabCount === 0) {
+      throw new Error(`Workspace tabs persistence failed: ${JSON.stringify(tabsPersistenceResult)}`);
+    }
+
+    // -----------------------------------------------------------------
+    // Step 5H: Terminal Dock, Upward Dropdown Menu & Right-Click Rename
+    // -----------------------------------------------------------------
+    console.log('    ▶ Validating Terminal Dock, Upward Dropdown Menu & Rename...');
+    const terminalValidationResult = await cdp.evaluate(`
+      (async function() {
+        if (!window.__terminalStore) {
+          return { success: false, reason: 'no_terminal_store' };
+        }
+        const termStore = window.__terminalStore.getState();
+
+        // 1. Create session and open terminal dock
+        const sessionId = await termStore.createSession({
+          shell: 'powershell',
+          projectName: 'OmniGit'
+        });
+        await new Promise(r => setTimeout(r, 400));
+
+        // 2. Open dropdown menu
+        const dropdownBtn = document.querySelector('[data-testid="terminal-dropdown-trigger"]') ||
+          document.querySelector('button[title*="选择工程"]') ||
+          document.querySelector('button[title*="Select shell"]');
+        if (dropdownBtn) {
+          dropdownBtn.click();
+        }
+        await new Promise(r => setTimeout(r, 400));
+
+        // Check dropdown menu element and bounding box
+        const menuEl = document.querySelector('[data-testid="terminal-dropdown-menu"]');
+        let menuPositionCheck = { exists: false };
+        if (menuEl) {
+          const rect = menuEl.getBoundingClientRect();
+          const windowHeight = window.innerHeight;
+          menuPositionCheck = {
+            exists: true,
+            hasBottomFull: menuEl.classList.contains('bottom-full'),
+            rectTop: rect.top,
+            rectBottom: rect.bottom,
+            windowHeight,
+            isWithinViewport: rect.top >= 0 && rect.bottom <= windowHeight,
+            opensUpwards: rect.bottom <= (windowHeight - 50)
+          };
+        }
+
+        // Close dropdown menu
+        if (dropdownBtn) dropdownBtn.click();
+        await new Promise(r => setTimeout(r, 200));
+
+        // 3. Tab rename test: trigger renameSession
+        const oldName = window.__terminalStore.getState().sessions.find(s => s.id === sessionId)?.name || '';
+        window.__terminalStore.getState().renameSession(sessionId, 'Dev Console 01');
+        await new Promise(r => setTimeout(r, 200));
+
+        const updatedSession = window.__terminalStore.getState().sessions.find(s => s.id === sessionId);
+        const tabEl = document.querySelector('[data-testid="terminal-tab"]');
+        const tabText = tabEl ? tabEl.textContent : '';
+
+        return {
+          success: true,
+          sessionId,
+          oldName,
+          newName: updatedSession ? updatedSession.name : '',
+          tabTextMatches: tabText.includes('Dev Console 01'),
+          menuPositionCheck
+        };
+      })()
+    `);
+    console.log('    ✓ Terminal validation result:', terminalValidationResult);
+    if (!terminalValidationResult.success ||
+        !terminalValidationResult.menuPositionCheck.isWithinViewport ||
+        terminalValidationResult.newName !== 'Dev Console 01' ||
+        !terminalValidationResult.tabTextMatches) {
+      throw new Error(`Terminal validation failed: ${JSON.stringify(terminalValidationResult)}`);
+    }
+
+    // Capture Terminal Dock & Upward Dropdown Screenshot
+    console.log('    ▶ Capturing Terminal Dock screenshot with upward menu & renamed tab...');
+    await cdp.evaluate(`
+      (function() {
+        const dropdownBtn = document.querySelector('[data-testid="terminal-dropdown-trigger"]') ||
+          document.querySelector('button[title*="选择工程"]') ||
+          document.querySelector('button[title*="Select shell"]');
+        if (dropdownBtn) dropdownBtn.click();
+      })()
+    `);
+    await sleep(400);
+
+    const screenshotTerminal = await cdp.send('Page.captureScreenshot', { format: 'png' });
+    const screenshotTerminalPath = path.join(REPORTS_DIR, '07_terminal_dock_and_menu.png');
+    fs.writeFileSync(screenshotTerminalPath, Buffer.from(screenshotTerminal.data, 'base64'));
+    console.log(`    ✓ Terminal dock & upward menu screenshot saved: ${screenshotTerminalPath}`);
+    await sleep(300);
+
+    // Close menu before continuing
+    await cdp.evaluate(`
+      (function() {
+        const dropdownBtn = document.querySelector('[data-testid="terminal-dropdown-trigger"]') ||
+          document.querySelector('button[title*="选择工程"]') ||
+          document.querySelector('button[title*="Select shell"]');
+        if (dropdownBtn) dropdownBtn.click();
+      })()
+    `);
+    await sleep(200);
+
     // Verify console errors & network failures
     const fatalErrors = cdp.consoleErrors.filter((e) => !e.includes('favicon') && !e.includes('DevTools'));
     const fatalNetwork = cdp.networkFailures.filter((e) => !e.includes('favicon'));
