@@ -1,4 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
+import { Plus } from 'lucide-react';
 import { useTerminalStore } from './useTerminalStore';
 import { TerminalTabs } from './TerminalTabs';
 import { TerminalView } from './TerminalView';
@@ -13,6 +14,7 @@ export function TerminalDock() {
     isMaximized,
     activeSessionId,
     sessions,
+    createSession,
   } = useTerminalStore();
 
   const isDraggingRef = useRef(false);
@@ -81,8 +83,15 @@ export function TerminalDock() {
         {activeSession ? (
           <TerminalView key={activeSession.id} sessionId={activeSession.id} />
         ) : (
-          <div className="flex items-center justify-center h-full text-theme-muted text-xs">
-            {t.terminal.noSessionPlaceholder}
+          <div className="flex flex-col items-center justify-center h-full text-theme-muted text-xs gap-3 select-none">
+            <span>{t.terminal.noSessionPlaceholder}</span>
+            <button
+              onClick={() => createSession()}
+              className="px-3 py-1.5 rounded-md bg-sky-600 hover:bg-sky-500 text-white flex items-center gap-1.5 transition text-xs font-medium cursor-pointer shadow-sm"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>{t.terminal.newTerminalContext}</span>
+            </button>
           </div>
         )}
       </div>

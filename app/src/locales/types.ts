@@ -1112,6 +1112,7 @@ export interface LocaleDictionary {
     selectShellHeader: string;
     activeBadge: string;
     closeTerminal: string;
+    killTerminalTooltip: string;
     newTerminalTooltip: string;
     selectShellTooltip: string;
     restoreWindowTooltip: string;

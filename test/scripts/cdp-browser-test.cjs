@@ -832,13 +832,21 @@ async function runBrowserE2E() {
         const tabEl = document.querySelector('[data-testid="terminal-tab"]');
         const tabText = tabEl ? tabEl.textContent : '';
 
+        // 4. Verify VS Code aligned buttons: Minus collapse, Kill (trash), Maximize/Restore
+        const collapseBtn = document.querySelector('[data-testid="terminal-collapse-btn"]');
+        const killBtn = document.querySelector('[data-testid="terminal-kill-btn"]');
+        const maximizeBtn = document.querySelector('[data-testid="terminal-maximize-btn"]');
+
         return {
           success: true,
           sessionId,
           oldName,
           newName: updatedSession ? updatedSession.name : '',
           tabTextMatches: tabText.includes('Dev Console 01'),
-          menuPositionCheck
+          menuPositionCheck,
+          hasCollapseBtnWithMinus: Boolean(collapseBtn && collapseBtn.querySelector('svg')),
+          hasKillTerminalBtn: Boolean(killBtn),
+          hasMaximizeBtn: Boolean(maximizeBtn),
         };
       })()
     `);
@@ -846,7 +854,9 @@ async function runBrowserE2E() {
     if (!terminalValidationResult.success ||
         !terminalValidationResult.menuPositionCheck.isWithinViewport ||
         terminalValidationResult.newName !== 'Dev Console 01' ||
-        !terminalValidationResult.tabTextMatches) {
+        !terminalValidationResult.tabTextMatches ||
+        !terminalValidationResult.hasCollapseBtnWithMinus ||
+        !terminalValidationResult.hasKillTerminalBtn) {
       throw new Error(`Terminal validation failed: ${JSON.stringify(terminalValidationResult)}`);
     }
 

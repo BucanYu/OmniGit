@@ -6,9 +6,9 @@ import {
   Terminal as TerminalIcon,
   Plus,
   ChevronDown,
+  ChevronUp,
+  Minus,
   X,
-  Maximize2,
-  Minimize2,
   Trash2,
   FolderGit2,
   Edit3,
@@ -261,22 +261,41 @@ export function TerminalTabs() {
           </div>
         )}
 
-        {/* Maximize / Restore Toggle */}
+        {/* Separator */}
+        {activeSessionId && (
+          <div className="h-3.5 w-[1px] bg-theme-border/60 mx-0.5" />
+        )}
+
+        {/* Kill Terminal (VS Code standard: Trash Can icon to kill active session) */}
+        {activeSessionId && (
+          <button
+            data-testid="terminal-kill-btn"
+            onClick={() => closeSession(activeSessionId)}
+            className="p-1 hover:bg-theme-hover rounded text-theme-muted hover:text-rose-400 transition cursor-pointer"
+            title={t.terminal.killTerminalTooltip}
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        )}
+
+        {/* Maximize / Restore Toggle (VS Code standard: ChevronUp / ChevronDown) */}
         <button
+          data-testid="terminal-maximize-btn"
           onClick={toggleMaximized}
           className="p-1 hover:bg-theme-hover rounded text-theme-muted hover:text-theme-main transition cursor-pointer"
           title={isMaximized ? t.terminal.restoreWindowTooltip : t.terminal.maximizeWindowTooltip}
         >
-          {isMaximized ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+          {isMaximized ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
         </button>
 
-        {/* Close Dock */}
+        {/* Collapse Dock (User requested: "-" icon instead of "❌") */}
         <button
+          data-testid="terminal-collapse-btn"
           onClick={toggleTerminal}
           className="p-1 hover:bg-theme-hover rounded text-theme-muted hover:text-theme-main transition cursor-pointer"
           title={t.terminal.collapseDockTooltip}
         >
-          <X className="w-3.5 h-3.5" />
+          <Minus className="w-3.5 h-3.5" />
         </button>
       </div>
 
