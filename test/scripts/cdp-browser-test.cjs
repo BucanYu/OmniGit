@@ -728,6 +728,54 @@ async function runBrowserE2E() {
     }
 
     // -----------------------------------------------------------------
+    // Step 5G2: Concurrency & Duplicate Tab Prevention Verification
+    // -----------------------------------------------------------------
+    console.log('    ▶ Validating File Tab Deduplication under concurrent / rapid opening...');
+    const deduplicationResult = await cdp.evaluate(`
+      (async function() {
+        if (!window.__editorTabsStore) return { success: false, reason: 'no_store' };
+        
+        const testFile = {
+          filePath: 'd:/projects/OmniGit/package.json',
+          repoPath: 'd:/projects/OmniGit',
+          relativePath: 'package.json',
+          repoName: 'OmniGit'
+        };
+
+        // Fire 5 concurrent openFileTab requests for the exact same file (with mixed slashes and cases)
+        const promises = [
+          window.__editorTabsStore.getState().openFileTab(testFile),
+          window.__editorTabsStore.getState().openFileTab(testFile),
+          window.__editorTabsStore.getState().openFileTab({ ...testFile, filePath: 'D:\\\\projects\\\\OmniGit\\\\package.json' }),
+          window.__editorTabsStore.getState().openFileTab(testFile),
+          window.__editorTabsStore.getState().openFileTab(testFile),
+        ];
+
+        const tabIds = await Promise.all(promises);
+        await new Promise(r => setTimeout(r, 400));
+
+        const tabs = window.__editorTabsStore.getState().tabs;
+        const matchingTabs = tabs.filter(t => t.filePath.toLowerCase().replace(/\\\\/g, '/').includes('package.json'));
+        
+        // Check DOM tab count
+        const domTabHeaders = Array.from(document.querySelectorAll('.select-none span.truncate')).filter(el => el.textContent === 'package.json');
+
+        return {
+          success: true,
+          returnedIds: tabIds,
+          allReturnedSameId: tabIds.every(id => id === tabIds[0]),
+          matchingTabsCountInStore: matchingTabs.length,
+          domTabCount: domTabHeaders.length,
+          strictlyNoDuplicates: matchingTabs.length === 1 && domTabHeaders.length === 1
+        };
+      })()
+    `);
+    console.log('    ✓ Concurrent Tab Deduplication verification result:', deduplicationResult);
+    if (!deduplicationResult.success || !deduplicationResult.strictlyNoDuplicates) {
+      throw new Error(`Concurrent tab deduplication check failed: ${JSON.stringify(deduplicationResult)}`);
+    }
+
+    // -----------------------------------------------------------------
     // Step 5H: Terminal Dock, Upward Dropdown Menu & Right-Click Rename
     // -----------------------------------------------------------------
     console.log('    ▶ Validating Terminal Dock, Upward Dropdown Menu & Rename...');

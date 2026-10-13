@@ -87,7 +87,18 @@ export function EditorTabStrip() {
     return () => window.removeEventListener('click', handleClose);
   }, []);
 
-  if (tabs.length === 0) {
+  // Defensive deduplication to guarantee that the UI never displays duplicate tabs for the same file
+  const uniqueTabs = React.useMemo(() => {
+    const seen = new Set<string>();
+    return tabs.filter((t) => {
+      const norm = (t.filePath || '').trim().replace(/\\/g, '/').toLowerCase();
+      if (!norm || seen.has(norm)) return false;
+      seen.add(norm);
+      return true;
+    });
+  }, [tabs]);
+
+  if (uniqueTabs.length === 0) {
     return null;
   }
 
@@ -110,7 +121,7 @@ export function EditorTabStrip() {
   return (
     <div className="h-9 bg-theme-sidebar border-b border-theme-border flex items-center px-1 overflow-x-auto no-scrollbar select-none text-xs shrink-0">
       <div className="flex items-center gap-0.5">
-        {tabs.map((tab) => {
+        {uniqueTabs.map((tab) => {
           const isActive = tab.id === activeTabId;
           return (
             <div

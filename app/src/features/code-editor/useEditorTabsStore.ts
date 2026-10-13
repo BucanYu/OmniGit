@@ -121,6 +121,14 @@ interface EditorTabsState {
   restorePersistedTabs: (workspaceId: string) => Promise<void>;
 }
 
+export function normalizeFilePath(filePath: string): string {
+  if (!filePath) return '';
+  return filePath.trim().replace(/\\/g, '/').toLowerCase();
+}
+
+// Global in-flight lock map to eliminate concurrent duplicate opens of the same file
+const pendingOpens = new Map<string, Promise<string>>();
+
 export const useEditorTabsStore = create<EditorTabsState>((set, get) => ({
   tabs: [],
   activeTabId: null,
@@ -137,13 +145,24 @@ export const useEditorTabsStore = create<EditorTabsState>((set, get) => ({
 
     const { tabs, activeTabId } = get();
     const activeTab = tabs.find((t) => t.id === activeTabId);
-    const data: PersistedEditorTabsData = {
-      tabs: tabs.map((t) => ({
+
+    // Strictly deduplicate by normalized path when persisting
+    const seen = new Set<string>();
+    const deduplicatedTabs: PersistedEditorTab[] = [];
+    for (const t of tabs) {
+      const norm = normalizeFilePath(t.filePath);
+      if (!norm || seen.has(norm)) continue;
+      seen.add(norm);
+      deduplicatedTabs.push({
         filePath: t.filePath,
         repoPath: t.repoPath,
         relativePath: t.relativePath,
         repoName: t.repoName,
-      })),
+      });
+    }
+
+    const data: PersistedEditorTabsData = {
+      tabs: deduplicatedTabs,
       activeFilePath: activeTab?.filePath,
     };
     try {
@@ -165,8 +184,21 @@ export const useEditorTabsStore = create<EditorTabsState>((set, get) => ({
 
     if (!data || !Array.isArray(data.tabs) || data.tabs.length === 0) return;
 
-    // Concurrently fetch all tabs' file contents
-    const fetchPromises = data.tabs.map(async (item) => {
+    // 1. Strictly deduplicate saved tabs first to heal any historical duplicates in localStorage
+    const seenPaths = new Set<string>();
+    const uniqueSavedTabs: PersistedEditorTab[] = [];
+    for (const item of data.tabs) {
+      if (!item || !item.filePath) continue;
+      const norm = normalizeFilePath(item.filePath);
+      if (seenPaths.has(norm)) continue;
+      seenPaths.add(norm);
+      uniqueSavedTabs.push(item);
+    }
+
+    if (uniqueSavedTabs.length === 0) return;
+
+    // 2. Concurrently fetch all tabs' file contents
+    const fetchPromises = uniqueSavedTabs.map(async (item) => {
       try {
         const res = await fetch(`/api/fs/read?filePath=${encodeURIComponent(item.filePath)}`);
         const fileData = await res.json();
@@ -201,26 +233,42 @@ export const useEditorTabsStore = create<EditorTabsState>((set, get) => ({
 
     if (validTabs.length === 0) return;
 
-    let matchedActiveId = validTabs[0].id;
+    // 3. Final deduplication on restored items
+    const finalSeen = new Set<string>();
+    const deduplicatedResults: EditorTabItem[] = [];
+    for (const t of validTabs) {
+      const norm = normalizeFilePath(t.filePath);
+      if (!finalSeen.has(norm)) {
+        finalSeen.add(norm);
+        deduplicatedResults.push(t);
+      }
+    }
+
+    let matchedActiveId = deduplicatedResults[0].id;
     if (data.activeFilePath) {
-      const normActive = data.activeFilePath.replace(/\\/g, '/').toLowerCase();
-      const found = validTabs.find((t) => t.filePath.replace(/\\/g, '/').toLowerCase() === normActive);
+      const normActive = normalizeFilePath(data.activeFilePath);
+      const found = deduplicatedResults.find((t) => normalizeFilePath(t.filePath) === normActive);
       if (found) {
         matchedActiveId = found.id;
       }
     }
 
     set({
-      tabs: validTabs,
+      tabs: deduplicatedResults,
       activeTabId: matchedActiveId,
     });
+
+    // Write back cleansed, deduplicated tab list to localStorage
+    get().savePersistedTabs(workspaceId);
   },
 
   openFileTab: async ({ filePath, repoPath, relativePath, repoName }) => {
+    const normTarget = normalizeFilePath(filePath);
+    if (!normTarget) return '';
+
+    // 1. Pre-check: if file is already open in state, activate it immediately
     const { tabs } = get();
-    // Normalize path for lookup
-    const normTarget = filePath.replace(/\\/g, '/').toLowerCase();
-    const existing = tabs.find((t) => t.filePath.replace(/\\/g, '/').toLowerCase() === normTarget);
+    const existing = tabs.find((t) => normalizeFilePath(t.filePath) === normTarget);
 
     if (existing) {
       set({ activeTabId: existing.id });
@@ -228,42 +276,68 @@ export const useEditorTabsStore = create<EditorTabsState>((set, get) => ({
       return existing.id;
     }
 
-    const id = `tab_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    const fileName = filePath.split(/[\\/]/).pop() || 'Untitled';
-    const language = getLanguageFromPath(filePath);
-
-    // Read content from backend API
-    try {
-      const res = await fetch(`/api/fs/read?filePath=${encodeURIComponent(filePath)}`);
-      const data = await res.json();
-
-      const newTab: EditorTabItem = {
-        id,
-        filePath,
-        relativePath,
-        fileName,
-        repoPath,
-        repoName,
-        content: data.content || '',
-        originalContent: data.content || '',
-        encoding: data.encoding || 'utf-8',
-        eol: data.eol || 'LF',
-        isDirty: false,
-        language,
-        isBinary: Boolean(data.isBinary),
-      };
-
-      set((state) => ({
-        tabs: [...state.tabs, newTab],
-        activeTabId: id,
-      }));
-      get().savePersistedTabs();
-
-      return id;
-    } catch (err) {
-      console.error('[EditorTabs] Failed to read file:', err);
-      return '';
+    // 2. In-flight check: if this file is currently being fetched, return the existing promise
+    const inFlight = pendingOpens.get(normTarget);
+    if (inFlight) {
+      return inFlight;
     }
+
+    // 3. Create a single fetch promise guarded against duplicate insertions
+    const openPromise = (async () => {
+      const id = `tab_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const fileName = filePath.split(/[\\/]/).pop() || 'Untitled';
+      const language = getLanguageFromPath(filePath);
+
+      // Read content from backend API
+      try {
+        const res = await fetch(`/api/fs/read?filePath=${encodeURIComponent(filePath)}`);
+        const data = await res.json();
+
+        const newTab: EditorTabItem = {
+          id,
+          filePath,
+          relativePath,
+          fileName,
+          repoPath,
+          repoName,
+          content: data.content || '',
+          originalContent: data.content || '',
+          encoding: data.encoding || 'utf-8',
+          eol: data.eol || 'LF',
+          isDirty: false,
+          language,
+          isBinary: Boolean(data.isBinary),
+        };
+
+        let resultId = id;
+
+        // Atomic check inside updater: guarantee no duplicate tab is inserted
+        set((state) => {
+          const alreadyInState = state.tabs.find(
+            (t) => normalizeFilePath(t.filePath) === normTarget
+          );
+          if (alreadyInState) {
+            resultId = alreadyInState.id;
+            return { activeTabId: alreadyInState.id };
+          }
+          return {
+            tabs: [...state.tabs, newTab],
+            activeTabId: id,
+          };
+        });
+
+        get().savePersistedTabs();
+        return resultId;
+      } catch (err) {
+        console.error('[EditorTabs] Failed to read file:', filePath, err);
+        return '';
+      } finally {
+        pendingOpens.delete(normTarget);
+      }
+    })();
+
+    pendingOpens.set(normTarget, openPromise);
+    return openPromise;
   },
 
   closeTab: (id: string) => {
