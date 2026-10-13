@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'http';
 import * as path from 'path';
+import * as fs from 'fs';
 import { gitService } from './gitService';
 import { fileSystemService } from './fileSystemService';
 import { fileEncodingService } from './fileEncodingService';
@@ -371,6 +372,42 @@ export async function handleGitApiRequest(req: IncomingMessage, res: ServerRespo
       }
       const result = fileEncodingService.readFile(filePath);
       res.end(JSON.stringify(result));
+    } else if (pathname === '/api/fs/raw') {
+      const repoPath = query.repoPath || '';
+      const relativePath = query.relativePath || '';
+      const targetFilePath = query.filePath || (repoPath && relativePath ? path.join(repoPath, relativePath) : repoPath);
+      if (!targetFilePath) {
+        res.statusCode = 400;
+        res.end(JSON.stringify({ error: 'Missing filePath' }));
+        return true;
+      }
+      const resolvedPath = path.resolve(targetFilePath);
+      if (!fs.existsSync(resolvedPath)) {
+        res.statusCode = 404;
+        res.end(JSON.stringify({ error: 'File not found' }));
+        return true;
+      }
+      const ext = path.extname(resolvedPath).toLowerCase();
+      const mimeTypes: Record<string, string> = {
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.gif': 'image/gif',
+        '.svg': 'image/svg+xml',
+        '.webp': 'image/webp',
+        '.ico': 'image/x-icon',
+        '.bmp': 'image/bmp',
+        '.mp4': 'video/mp4',
+        '.webm': 'video/webm',
+        '.pdf': 'application/pdf',
+      };
+      const contentType = mimeTypes[ext] || 'application/octet-stream';
+      res.writeHead(200, {
+        'Content-Type': contentType,
+        'Cache-Control': 'public, max-age=3600',
+      });
+      fs.createReadStream(resolvedPath).pipe(res);
+      return true;
     } else if (pathname === '/api/fs/write') {
       const repoPath = body.repoPath || '';
       const relativePath = body.relativePath || '';

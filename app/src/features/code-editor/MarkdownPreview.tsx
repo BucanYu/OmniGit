@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { marked } from 'marked';
+import { Marked } from 'marked';
 import { useTranslation } from '../../locales';
 import {
   FileText,
@@ -20,19 +20,91 @@ export function MarkdownPreview({ content, theme = 'darcula', filePath }: Markdo
   const [copied, setCopied] = useState(false);
   const { t } = useTranslation();
 
-  // Configure marked options
+  // Configure marked options with local asset resolution
   const htmlContent = useMemo(() => {
     try {
-      marked.setOptions({
+      // Calculate file directory for relative asset resolution
+      // Standardize Windows backslashes to forward slashes
+      const normalizedFilePath = (filePath || '').replace(/\\/g, '/');
+      const baseDir = normalizedFilePath.includes('/')
+        ? normalizedFilePath.substring(0, normalizedFilePath.lastIndexOf('/'))
+        : '';
+
+      const markedInstance = new Marked({
         gfm: true,
         breaks: false,
       });
-      return marked.parse(content || '') as string;
+
+      // Hook walkTokens to rewrite relative image paths to local /api/fs/raw endpoint
+      markedInstance.use({
+        walkTokens(token: any) {
+          if (token.type === 'image' && token.href) {
+            const rawHref = token.href.trim();
+            // Ignore external URLs, data URLs, and blob URLs
+            if (
+              !rawHref.startsWith('http://') &&
+              !rawHref.startsWith('https://') &&
+              !rawHref.startsWith('data:') &&
+              !rawHref.startsWith('blob:') &&
+              !rawHref.startsWith('/api/')
+            ) {
+              let targetPath = rawHref;
+              if (baseDir) {
+                if (rawHref.startsWith('./')) {
+                  targetPath = `${baseDir}/${rawHref.slice(2)}`;
+                } else if (rawHref.startsWith('../')) {
+                  const parts = baseDir.split('/');
+                  const relParts = rawHref.split('/');
+                  for (const part of relParts) {
+                    if (part === '..') {
+                      parts.pop();
+                    } else if (part !== '.') {
+                      parts.push(part);
+                    }
+                  }
+                  targetPath = parts.join('/');
+                } else if (!rawHref.startsWith('/') && !/^[a-zA-Z]:/.test(rawHref)) {
+                  targetPath = `${baseDir}/${rawHref}`;
+                }
+              }
+              token.href = `/api/fs/raw?filePath=${encodeURIComponent(targetPath)}`;
+            }
+          }
+        },
+      });
+
+      let parsedHtml = markedInstance.parse(content || '') as string;
+
+      // Also rewrite any raw HTML <img> tags with relative src
+      if (baseDir) {
+        parsedHtml = parsedHtml.replace(
+          /<img\s+([^>]*?)src=["']((?!\/|http:\/\/|https:\/\/|data:|blob:)[^"']+)["']/gi,
+          (_match, prefix, relSrc) => {
+            let targetPath = relSrc;
+            if (relSrc.startsWith('./')) {
+              targetPath = `${baseDir}/${relSrc.slice(2)}`;
+            } else if (relSrc.startsWith('../')) {
+              const parts = baseDir.split('/');
+              const relParts = relSrc.split('/');
+              for (const part of relParts) {
+                if (part === '..') parts.pop();
+                else if (part !== '.') parts.push(part);
+              }
+              targetPath = parts.join('/');
+            } else if (!relSrc.startsWith('/') && !/^[a-zA-Z]:/.test(relSrc)) {
+              targetPath = `${baseDir}/${relSrc}`;
+            }
+            return `<img ${prefix}src="/api/fs/raw?filePath=${encodeURIComponent(targetPath)}"`;
+          }
+        );
+      }
+
+      return parsedHtml;
     } catch (err) {
       console.error('[MarkdownPreview] Parsing failed:', err);
       return `<pre>${content}</pre>`;
     }
-  }, [content]);
+  }, [content, filePath]);
 
   // Statistics
   const stats = useMemo(() => {
