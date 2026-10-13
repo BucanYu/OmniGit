@@ -114,6 +114,7 @@ interface EditorTabsState {
   closeTab: (id: string) => void;
   closeOtherTabs: (id: string) => void;
   closeAllTabs: () => void;
+  closeSavedTabs: () => void;
   setActiveTabId: (id: string) => void;
   updateTabContent: (id: string, newContent: string) => void;
   saveTab: (id: string) => Promise<boolean>;
@@ -372,6 +373,17 @@ export const useEditorTabsStore = create<EditorTabsState>((set, get) => ({
 
   closeAllTabs: () => {
     set({ tabs: [], activeTabId: null });
+    get().savePersistedTabs();
+  },
+
+  closeSavedTabs: () => {
+    const { tabs, activeTabId } = get();
+    const remaining = tabs.filter((t) => t.isDirty);
+    let nextActive = activeTabId;
+    if (activeTabId && !remaining.some((t) => t.id === activeTabId)) {
+      nextActive = remaining.length > 0 ? remaining[0].id : null;
+    }
+    set({ tabs: remaining, activeTabId: nextActive });
     get().savePersistedTabs();
   },
 

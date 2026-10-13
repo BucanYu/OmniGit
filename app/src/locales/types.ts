@@ -1096,6 +1096,11 @@ export interface LocaleDictionary {
     closeCurrentTab: string;
     closeOtherTabs: string;
     closeAllTabs: string;
+    closeSavedTabs: string;
+    openTabsListTitle: (count: number) => string;
+    searchTabsPlaceholder: string;
+    scrollTabsLeft: string;
+    scrollTabsRight: string;
     copyRelativePath: string;
     copyAbsolutePath: string;
     markdownPreviewTitle: string;
