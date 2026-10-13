@@ -399,6 +399,165 @@ async function runBrowserE2E() {
     `);
     await sleep(500);
 
+    // Test Markdown Split Drag Resizing & Double-Click Reset
+    console.log('    ▶ Testing Markdown split divider dragging & double-click reset...');
+    const splitDragResult = await cdp.evaluate(`
+      (async function() {
+        const divider = document.querySelector('div[title*="按住左右拖拽调整"]');
+        if (!divider) return { success: false, reason: 'divider_not_found' };
+
+        const editorPane = divider.previousElementSibling;
+        if (!editorPane) return { success: false, reason: 'editor_pane_not_found' };
+
+        const initialWidth = editorPane.style.width;
+
+        // Simulate mousedown on divider
+        const rect = divider.getBoundingClientRect();
+        const startX = rect.left + rect.width / 2;
+        const startY = rect.top + rect.height / 2;
+
+        divider.dispatchEvent(new MouseEvent('mousedown', {
+          bubbles: true,
+          clientX: startX,
+          clientY: startY
+        }));
+        // Wait for React to attach mousemove listener in useEffect
+        await new Promise(r => setTimeout(r, 200));
+
+        // Drag to left by 120px
+        window.dispatchEvent(new MouseEvent('mousemove', {
+          bubbles: true,
+          clientX: startX - 120,
+          clientY: startY
+        }));
+        await new Promise(r => setTimeout(r, 200));
+
+        window.dispatchEvent(new MouseEvent('mouseup', {
+          bubbles: true,
+          clientX: startX - 120,
+          clientY: startY
+        }));
+        await new Promise(r => setTimeout(r, 200));
+
+        const draggedWidth = editorPane.style.width;
+
+        // Simulate double click to reset to 50%
+        divider.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+        await new Promise(r => setTimeout(r, 200));
+
+        const resetWidth = editorPane.style.width;
+
+        return {
+          success: true,
+          initialWidth,
+          draggedWidth,
+          resetWidth,
+          dragResized: draggedWidth !== initialWidth,
+          resetSuccess: resetWidth === '50%'
+        };
+      })()
+    `);
+    console.log('    ✓ Markdown split drag test result:', splitDragResult);
+    if (!splitDragResult.success || !splitDragResult.dragResized || !splitDragResult.resetSuccess) {
+      throw new Error(`Split drag resizing test failed: ${JSON.stringify(splitDragResult)}`);
+    }
+    await sleep(500);
+
+    // Test Ctrl+F / Find & Replace Widget Redesign
+    console.log('    ▶ Testing Monaco Find & Replace widget display & redesign...');
+    const findWidgetResult = await cdp.evaluate(`
+      (async function() {
+        const editor = window.__currentCodeEditor;
+        if (!editor) return { success: false, reason: 'no_editor' };
+
+        // Trigger find or startFindReplace action
+        const replaceAction = editor.getAction('editor.action.startFindReplaceAction');
+        const findAction = editor.getAction('actions.find');
+
+        if (replaceAction) {
+          replaceAction.run();
+        } else if (findAction) {
+          findAction.run();
+        } else {
+          editor.trigger('test', 'actions.find', null);
+        }
+
+        await new Promise(r => setTimeout(r, 500));
+
+        const widget = document.querySelector('.monaco-editor .find-widget');
+        if (!widget) return { success: false, reason: 'find_widget_not_found' };
+
+        // If replace row is not yet expanded, click left toggle button
+        if (!widget.classList.contains('replaceToggled')) {
+          const toggleBtn = widget.querySelector('.button.left') || widget.querySelector('.codicon-find-collapsed');
+          if (toggleBtn) toggleBtn.click();
+          await new Promise(r => setTimeout(r, 300));
+        }
+
+        // Set search text
+        const findInput = widget.querySelector('.find-input input.input');
+        if (findInput) {
+          findInput.value = 'OmniGit';
+          findInput.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+
+        await new Promise(r => setTimeout(r, 400));
+
+        const isVisible = widget.classList.contains('visible');
+        const isReplaceToggled = widget.classList.contains('replaceToggled');
+        const matchesBadge = widget.querySelector('.matchesCount');
+        const matchesText = matchesBadge ? matchesBadge.textContent.trim() : '';
+
+        return {
+          success: true,
+          isVisible,
+          isReplaceToggled,
+          matchesText,
+          hasMatchesBadge: Boolean(matchesBadge)
+        };
+      })()
+    `);
+    console.log('    ✓ Monaco Find & Replace widget test result:', findWidgetResult);
+    if (!findWidgetResult.success || !findWidgetResult.isVisible) {
+      throw new Error(`Find & Replace widget failed to open: ${JSON.stringify(findWidgetResult)}`);
+    }
+    await sleep(600);
+
+    // Capture Find & Replace Widget Screenshot (Darcula Dark theme)
+    console.log('    ▶ Capturing Find & Replace Widget redesigned screenshot (Darcula)...');
+    const screenshotFindWidget = await cdp.send('Page.captureScreenshot', { format: 'png' });
+    const screenshotFindPath = path.join(REPORTS_DIR, '04_find_replace_widget.png');
+    fs.writeFileSync(screenshotFindPath, Buffer.from(screenshotFindWidget.data, 'base64'));
+    console.log(`    ✓ Find & Replace widget screenshot saved: ${screenshotFindPath}`);
+    await sleep(500);
+
+    // Switch to Light Theme (IDEA Light) and capture Find/Replace widget screenshot
+    console.log('    ▶ Switching to IDEA Light theme to verify Light mode Find & Replace styling...');
+    await cdp.evaluate(`
+      (function() {
+        if (window.__appStore) {
+          window.__appStore.getState().setTheme('idea-light');
+        }
+      })()
+    `);
+    await sleep(600);
+
+    const screenshotLightFindWidget = await cdp.send('Page.captureScreenshot', { format: 'png' });
+    const screenshotLightFindPath = path.join(REPORTS_DIR, '05_find_replace_light.png');
+    fs.writeFileSync(screenshotLightFindPath, Buffer.from(screenshotLightFindWidget.data, 'base64'));
+    console.log(`    ✓ IDEA Light Find & Replace widget screenshot saved: ${screenshotLightFindPath}`);
+    await sleep(400);
+
+    // Switch back to darcula
+    await cdp.evaluate(`
+      (function() {
+        if (window.__appStore) {
+          window.__appStore.getState().setTheme('darcula');
+        }
+      })()
+    `);
+    await sleep(400);
+
     // Verify console errors & network failures
     const fatalErrors = cdp.consoleErrors.filter((e) => !e.includes('favicon') && !e.includes('DevTools'));
     const fatalNetwork = cdp.networkFailures.filter((e) => !e.includes('favicon'));

@@ -36,6 +36,9 @@ export function CodeEditorPanel() {
   const [wordWrap, setWordWrap] = useState(true);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [mdViewMode, setMdViewMode] = useState<'editor' | 'split' | 'preview'>('split');
+  const [splitPercent, setSplitPercent] = useState<number>(50);
+  const [isSplitDragging, setIsSplitDragging] = useState(false);
+  const splitContainerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
 
@@ -97,6 +100,54 @@ export function CodeEditorPanel() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activeTabId, activeTab?.content, handleToggleComment]);
+
+  const handleSplitMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsSplitDragging(true);
+  };
+
+  const handleSplitDoubleClick = () => {
+    setSplitPercent(50);
+  };
+
+  useEffect(() => {
+    if (!isSplitDragging) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!splitContainerRef.current) return;
+      const rect = splitContainerRef.current.getBoundingClientRect();
+      if (rect.width <= 0) return;
+      const offsetX = e.clientX - rect.left;
+      const percent = (offsetX / rect.width) * 100;
+      // Clamp between 15% and 85% to ensure neither pane collapses to invisible
+      const clamped = Math.max(15, Math.min(85, percent));
+      setSplitPercent(clamped);
+    };
+
+    const handleMouseUp = () => {
+      setIsSplitDragging(false);
+    };
+
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isSplitDragging]);
+
+  useEffect(() => {
+    if (!isSplitDragging && editorRef.current) {
+      editorRef.current.layout();
+    }
+  }, [isSplitDragging, splitPercent]);
 
   const handleEditorMount = (editor: any, monaco: any) => {
     editorRef.current = editor;
@@ -270,9 +321,18 @@ export function CodeEditorPanel() {
           /* Pure Fullscreen Markdown Preview */
           <MarkdownPreview content={activeTab.content} theme={theme} filePath={activeTab.filePath} />
         ) : isMarkdown && mdViewMode === 'split' ? (
-          /* Split Dual-Pane: Editor on Left, Markdown Preview on Right */
-          <div className="flex h-full w-full overflow-hidden">
-            <div className="flex-1 h-full relative overflow-hidden">
+          /* Split Dual-Pane: Editor on Left, Markdown Preview on Right (支持左右拖拽调节宽度与双击重置) */
+          <div ref={splitContainerRef} className="flex h-full w-full overflow-hidden relative">
+            {/* 全局拖拽遮罩：防止拖拽过程中 Monaco Editor 捕获鼠标事件 */}
+            {isSplitDragging && (
+              <div className="fixed inset-0 z-[9999] cursor-col-resize select-none" />
+            )}
+
+            {/* Left: Monaco Editor */}
+            <div
+              style={{ width: `${splitPercent}%` }}
+              className="h-full relative overflow-hidden shrink-0"
+            >
               <Editor
                 height="100%"
                 language={activeTab.language}
@@ -299,8 +359,27 @@ export function CodeEditorPanel() {
                 }}
               />
             </div>
-            <div className="w-[1px] bg-theme-border shrink-0" />
-            <div className="flex-1 h-full relative overflow-hidden">
+
+            {/* Middle: Interactive Draggable Divider */}
+            <div
+              onMouseDown={handleSplitMouseDown}
+              onDoubleClick={handleSplitDoubleClick}
+              title="按住左右拖拽调整编辑区与预览区宽度，双击恢复 50:50 等宽"
+              className={`relative z-20 w-[5px] -mx-[2px] h-full cursor-col-resize select-none shrink-0 transition-colors flex items-center justify-center group ${
+                isSplitDragging ? 'bg-sky-500' : 'bg-theme-border/60 hover:bg-sky-500/50 active:bg-sky-500'
+              }`}
+            >
+              <div
+                className={`w-[1px] h-8 rounded-full transition-all duration-150 ${
+                  isSplitDragging
+                    ? 'bg-white h-16'
+                    : 'bg-transparent group-hover:bg-white group-hover:h-10'
+                }`}
+              />
+            </div>
+
+            {/* Right: Markdown Preview */}
+            <div className="flex-1 h-full relative overflow-hidden min-w-0">
               <MarkdownPreview content={activeTab.content} theme={theme} filePath={activeTab.filePath} />
             </div>
           </div>
