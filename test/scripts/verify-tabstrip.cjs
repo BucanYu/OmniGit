@@ -84,7 +84,19 @@ async function main() {
 
     console.log('2. Navigating to OmniGit...');
     await send('Page.navigate', { url: APP_URL });
-    await sleep(3500);
+
+    console.log('Waiting for app stores to be ready...');
+    for (let i = 0; i < 30; i++) {
+      await sleep(400);
+      const check = await send('Runtime.evaluate', {
+        expression: 'Boolean(window.__editorTabsStore && window.__workbenchStore)',
+        returnByValue: true
+      });
+      if (check.result && check.result.value) {
+        console.log('App stores ready!');
+        break;
+      }
+    }
 
     console.log('3. Switching to Workspace Explorer Mode...');
     await send('Runtime.evaluate', {
@@ -100,42 +112,51 @@ async function main() {
 
     console.log('4. Opening multiple files to populate tab strip...');
     const filesToOpen = [
+      // The user's exact case: same filename in different projects
+      { filePath: 'D:/projects/farmland-engineer-quality-inspect/land-quality-sys-web/.env.development', repoPath: 'D:/projects/farmland-engineer-quality-inspect/land-quality-sys-web', relativePath: '.env.development', repoName: 'land-quality-sys-web' },
+      { filePath: 'D:/projects/farmland-engineer-quality-inspect/land-quality-sys/.env.development', repoPath: 'D:/projects/farmland-engineer-quality-inspect/land-quality-sys', relativePath: '.env.development', repoName: 'land-quality-sys' },
+      // Other workspace files
       { filePath: 'd:/projects/OmniGit/README.md', repoPath: 'd:/projects/OmniGit', relativePath: 'README.md', repoName: 'OmniGit' },
       { filePath: 'd:/projects/OmniGit/package.json', repoPath: 'd:/projects/OmniGit', relativePath: 'package.json', repoName: 'OmniGit' },
       { filePath: 'd:/projects/OmniGit/app/package.json', repoPath: 'd:/projects/OmniGit', relativePath: 'app/package.json', repoName: 'OmniGit' },
       { filePath: 'd:/projects/OmniGit/.gitignore', repoPath: 'd:/projects/OmniGit', relativePath: '.gitignore', repoName: 'OmniGit' },
-      { filePath: 'd:/projects/farmland-engineer-quality-inspect/.gitignore', repoPath: 'd:/projects/farmland-engineer-quality-inspect', relativePath: '.gitignore', repoName: 'farmland' },
-      { filePath: 'd:/projects/farmland-engineer-quality-inspect/pom.xml', repoPath: 'd:/projects/farmland-engineer-quality-inspect', relativePath: 'pom.xml', repoName: 'farmland' },
+      { filePath: 'd:/projects/farmland-engineer-quality-inspect/farmland-engineer-quality-inspect/pom.xml', repoPath: 'd:/projects/farmland-engineer-quality-inspect/farmland-engineer-quality-inspect', relativePath: 'pom.xml', repoName: 'farmland' },
       { filePath: 'd:/projects/OmniGit/app/src/App.tsx', repoPath: 'd:/projects/OmniGit', relativePath: 'app/src/App.tsx', repoName: 'OmniGit' },
       { filePath: 'd:/projects/OmniGit/app/src/features/code-editor/EditorTabStrip.tsx', repoPath: 'd:/projects/OmniGit', relativePath: 'app/src/features/code-editor/EditorTabStrip.tsx', repoName: 'OmniGit' },
-      { filePath: 'd:/projects/OmniGit/app/src/features/code-editor/useEditorTabsStore.ts', repoPath: 'd:/projects/OmniGit', relativePath: 'app/src/features/code-editor/useEditorTabsStore.ts', repoName: 'OmniGit' },
       { filePath: 'd:/projects/OmniGit/app/src/locales/zh-CN.ts', repoPath: 'd:/projects/OmniGit', relativePath: 'app/src/locales/zh-CN.ts', repoName: 'OmniGit' },
-      { filePath: 'd:/projects/OmniGit/app/src/locales/en-US.ts', repoPath: 'd:/projects/OmniGit', relativePath: 'app/src/locales/en-US.ts', repoName: 'OmniGit' },
-      { filePath: 'd:/projects/OmniGit/app/src/server/gitApiHandler.ts', repoPath: 'd:/projects/OmniGit', relativePath: 'app/src/server/gitApiHandler.ts', repoName: 'OmniGit' },
     ];
 
     const openResult = await send('Runtime.evaluate', {
       expression: `
         (async function() {
-          const files = ${JSON.stringify(filesToOpen)};
-          const store = window.__editorTabsStore.getState();
-          const openedTabs = [];
-          for (const f of files) {
-            const id = await store.openFileTab(f);
-            openedTabs.push(id);
+          try {
+            if (!window.__editorTabsStore) return { error: 'no __editorTabsStore' };
+            const files = ${JSON.stringify(filesToOpen)};
+            const store = window.__editorTabsStore.getState();
+            store.closeAllTabs();
+            const openedTabs = [];
+            for (const f of files) {
+              const id = await store.openFileTab(f);
+              openedTabs.push(id);
+            }
+            if (openedTabs[0]) {
+              store.setActiveTabId(openedTabs[0]);
+            }
+            const latestStore = window.__editorTabsStore.getState();
+            return {
+              count: latestStore.tabs.length,
+              tabIds: openedTabs,
+              activeTabId: latestStore.activeTabId
+            };
+          } catch (e) {
+            return { error: e.message, stack: e.stack };
           }
-          const latestStore = window.__editorTabsStore.getState();
-          return {
-            count: latestStore.tabs.length,
-            tabIds: openedTabs,
-            activeTabId: latestStore.activeTabId
-          };
         })()
       `,
       awaitPromise: true,
       returnByValue: true
     });
-    console.log('Opened tabs status:', openResult.result.value);
+    console.log('Opened tabs status:', openResult.result ? openResult.result.value : openResult);
     await sleep(2000);
 
     // Verify DOM state of tabs
@@ -143,23 +164,27 @@ async function main() {
       expression: `
         (function() {
           const tabElements = Array.from(document.querySelectorAll('[data-tab-id]'));
-          const overflowDropdownBtn = Array.from(document.querySelectorAll('button')).find(b => b.textContent && b.textContent.includes('12'));
+          const overflowDropdownBtn = Array.from(document.querySelectorAll('button')).find(b => b.title && (b.title.includes('已打开') || b.title.includes('Open Files')));
           const scrollButtons = Array.from(document.querySelectorAll('button[title*="滚动"], button[title*="Scroll"]'));
           const repoBadges = Array.from(document.querySelectorAll('[data-tab-id] span.font-mono'));
           
           return {
             tabCount: tabElements.length,
+            tabsInfo: tabElements.map(el => ({
+              text: el.textContent.trim().replace(/\\s+/g, ' '),
+              title: el.title
+            })),
             hasOverflowDropdownBtn: !!overflowDropdownBtn,
             overflowBtnText: overflowDropdownBtn ? overflowDropdownBtn.textContent.trim() : null,
             scrollButtonsCount: scrollButtons.length,
-            repoBadgesCount: repoBadges.length, // Should only be duplicate file names
+            repoBadgesCount: repoBadges.length,
             repoBadgesTexts: repoBadges.map(b => b.textContent.trim()),
           };
         })()
       `,
       returnByValue: true
     });
-    console.log('DOM Check result:', domCheck.result.value);
+    console.log('DOM Check result:', JSON.stringify(domCheck.result.value, null, 2));
 
     // Capture Multi-Tab Strip Screenshot
     console.log('5. Capturing 08_multi_tabs_redesign.png...');
@@ -175,7 +200,7 @@ async function main() {
     await send('Runtime.evaluate', {
       expression: `
         (function() {
-          const btn = Array.from(document.querySelectorAll('button')).find(b => b.textContent && b.textContent.includes('12'));
+          const btn = Array.from(document.querySelectorAll('button')).find(b => b.title && (b.title.includes('已打开') || b.title.includes('Open Files')));
           if (btn) btn.click();
         })()
       `

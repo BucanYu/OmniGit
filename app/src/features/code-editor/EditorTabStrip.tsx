@@ -108,15 +108,45 @@ export function EditorTabStrip() {
     });
   }, [tabs]);
 
+/**
+ * Resolves a smart, compact disambiguation label when multiple tabs share the same fileName.
+ * Following VS Code's tab description strategy:
+ * 1. If duplicate files belong to different repositories/projects, return the repoName.
+ * 2. If duplicate files are in the same repository, return the distinctive parent folder from relativePath.
+ */
+function getDisambiguationLabel(tab: EditorTabItem, allTabs: EditorTabItem[]): string {
+  const targetLower = tab.fileName.toLowerCase();
+  const sameNameTabs = allTabs.filter(
+    (t) => t.fileName.toLowerCase() === targetLower
+  );
+  if (sameNameTabs.length <= 1) return '';
+
+  const distinctRepos = new Set(sameNameTabs.map((t) => (t.repoName || t.repoPath || '').toLowerCase()));
+  if (distinctRepos.size > 1) {
+    return tab.repoName || tab.repoPath.split(/[\\/]/).pop() || '';
+  }
+
+  // Same repository: disambiguate by parent directory
+  if (tab.relativePath) {
+    const parts = tab.relativePath.replace(/\\/g, '/').split('/').filter(Boolean);
+    if (parts.length > 1) {
+      return parts[parts.length - 2];
+    }
+  }
+
+  return tab.repoName || '';
+}
+
   // Smart disambiguation: detect if there are multiple tabs with the same fileName
   const duplicateFileNames = useMemo(() => {
     const counts = new Map<string, number>();
     for (const tab of uniqueTabs) {
-      counts.set(tab.fileName, (counts.get(tab.fileName) || 0) + 1);
+      const key = tab.fileName.toLowerCase();
+      counts.set(key, (counts.get(key) || 0) + 1);
     }
     const dupes = new Set<string>();
-    counts.forEach((cnt, name) => {
-      if (cnt > 1) dupes.add(name);
+    counts.forEach((cnt, key) => {
+      if (cnt > 1) dupes.add(key);
     });
     return dupes;
   }, [uniqueTabs]);
@@ -235,7 +265,8 @@ export function EditorTabStrip() {
         <div className="flex items-center gap-0.5 px-1 h-full">
           {uniqueTabs.map((tab) => {
             const isActive = tab.id === activeTabId;
-            const isDuplicate = duplicateFileNames.has(tab.fileName);
+            const isDuplicate = duplicateFileNames.has(tab.fileName.toLowerCase());
+            const disambigLabel = isDuplicate ? getDisambiguationLabel(tab, uniqueTabs) : '';
 
             return (
               <div
@@ -251,12 +282,18 @@ export function EditorTabStrip() {
                     closeTab(tab.id);
                   }
                 }}
-                className={`group relative flex items-center gap-1.5 px-2.5 h-[32px] rounded-t text-xs cursor-pointer border-r border-theme-border/40 transition-colors shrink-0 max-w-[155px] min-w-[70px] ${
+                className={`group relative flex items-center gap-1.5 px-2.5 h-[32px] rounded-t text-xs cursor-pointer border-r border-theme-border/40 transition-colors shrink-0 ${
+                  isDuplicate ? 'max-w-[285px] min-w-[85px]' : 'max-w-[180px] min-w-[70px]'
+                } ${
                   isActive
                     ? 'bg-theme-app text-theme-main font-medium shadow-xs'
                     : 'bg-theme-sidebar/80 text-theme-muted hover:text-theme-main hover:bg-theme-hover/40'
                 }`}
-                title={`${tab.fileName}\n${tab.filePath}`}
+                title={
+                  isDuplicate && disambigLabel
+                    ? `${tab.fileName} • ${disambigLabel}\n${tab.filePath}`
+                    : `${tab.fileName}\n${tab.filePath}`
+                }
               >
                 {/* Active Top Accent Line */}
                 {isActive && (
@@ -266,20 +303,33 @@ export function EditorTabStrip() {
                 {/* File Icon */}
                 {getTabIcon(tab.fileName)}
 
-                {/* Truncated File Name */}
-                <span className="truncate text-[12px] flex-1 min-w-0 select-none">
-                  {tab.fileName}
-                </span>
-
-                {/* Smart Disambiguation: ONLY display repo badge if duplicate filenames exist */}
-                {isDuplicate && tab.repoName && (
+                {/* Text Content: File Name (Primary Priority) + Disambiguation Badge (Secondary Priority) */}
+                <div className="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden select-none">
+                  {/* 1. File Name: High priority, always displayed first, protected from shrinking when normal length */}
                   <span
-                    className="text-[9.5px] text-theme-muted px-1 py-0.2 rounded bg-theme-border/40 shrink-0 font-mono scale-95"
-                    title={tab.filePath}
+                    className={`text-[12px] truncate leading-none ${
+                      isActive ? 'text-theme-main font-medium' : 'text-theme-main/90'
+                    }`}
+                    style={{
+                      flexShrink: tab.fileName.length > 20 ? 1 : 0,
+                      minWidth: '38px',
+                      maxWidth: '180px',
+                    }}
                   >
-                    {tab.repoName}
+                    {tab.fileName}
                   </span>
-                )}
+
+                  {/* 2. Disambiguation Description (Project / Folder Context): Secondary, capped, yields space to file name */}
+                  {isDuplicate && disambigLabel ? (
+                    <span
+                      className="text-[10px] text-theme-muted/75 px-1.5 py-0.5 rounded bg-theme-border/40 font-mono truncate max-w-[95px] min-w-0 scale-95"
+                      style={{ flexShrink: 2 }}
+                      title={`${tab.fileName} • ${disambigLabel}\n${tab.filePath}`}
+                    >
+                      {disambigLabel}
+                    </span>
+                  ) : null}
+                </div>
 
                 {/* Dirty Indicator / Close Button */}
                 <div className="w-4 h-4 flex items-center justify-center shrink-0">
