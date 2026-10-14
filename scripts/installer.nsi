@@ -9,6 +9,7 @@ Unicode true
 !endif
 !define PRODUCT_PUBLISHER "OmniGit Team"
 !define PRODUCT_WEB_SITE "https://github.com/BucanYu/OmniGit"
+!define PRODUCT_APP_KEY "Software\OmniGit"
 !define PRODUCT_DIR_REGKEY "Software\Microsoft\Windows\CurrentVersion\App Paths\OmniGit.exe"
 !define PRODUCT_UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}"
 !define PRODUCT_UNINST_ROOT_KEY "HKCU"
@@ -48,13 +49,14 @@ SetCompressor /SOLID lzma
 Name "${PRODUCT_NAME} ${PRODUCT_VERSION}"
 OutFile "..\app\release\OmniGit-Setup-${PRODUCT_VERSION}.exe"
 InstallDir "$LOCALAPPDATA\Programs\OmniGit"
-InstallDirRegKey HKCU "${PRODUCT_DIR_REGKEY}" ""
+InstallDirRegKey HKCU "${PRODUCT_APP_KEY}" "InstallDir"
 ShowInstDetails show
 ShowUnInstDetails show
 
 Section "MainSection" SEC01
   ; Terminate running OmniGit instance before installing/updating
   nsExec::Exec 'taskkill /F /IM OmniGit.exe /T'
+  Sleep 1000
 
   SetOutPath "$INSTDIR"
   SetOverwrite on
@@ -62,8 +64,9 @@ Section "MainSection" SEC01
   ; Copy all binary files from the packaged bundle
   File /r "..\app\release\OmniGit-win32-x64\*.*"
 
-  ; Create Shortcuts (Explicitly point to icon.ico so Windows always displays our custom brand icon)
+  ; Create Shortcuts (Explicitly set OutPath so shortcut working directory is always $INSTDIR)
   CreateDirectory "$SMPROGRAMS\OmniGit"
+  SetOutPath "$INSTDIR"
   CreateShortcut "$SMPROGRAMS\OmniGit\OmniGit.lnk" "$INSTDIR\OmniGit.exe" "" "$INSTDIR\icon.ico" 0
   CreateShortcut "$SMPROGRAMS\OmniGit\Uninstall OmniGit.lnk" "$INSTDIR\Uninstall.exe" "" "$INSTDIR\icon.ico" 0
   CreateShortcut "$DESKTOP\OmniGit.lnk" "$INSTDIR\OmniGit.exe" "" "$INSTDIR\icon.ico" 0
@@ -72,7 +75,9 @@ Section "MainSection" SEC01
   WriteUninstaller "$INSTDIR\Uninstall.exe"
 
   ; Write Registry
+  WriteRegStr HKCU "${PRODUCT_APP_KEY}" "InstallDir" "$INSTDIR"
   WriteRegStr HKCU "${PRODUCT_DIR_REGKEY}" "" "$INSTDIR\OmniGit.exe"
+  WriteRegStr HKCU "${PRODUCT_DIR_REGKEY}" "Path" "$INSTDIR"
   WriteRegStr HKCU "${PRODUCT_UNINST_KEY}" "DisplayName" "${PRODUCT_NAME}"
   WriteRegStr HKCU "${PRODUCT_UNINST_KEY}" "UninstallString" "$INSTDIR\Uninstall.exe"
   WriteRegStr HKCU "${PRODUCT_UNINST_KEY}" "DisplayIcon" "$INSTDIR\icon.ico,0"
@@ -94,6 +99,7 @@ SectionEnd
 Section Uninstall
   ; Terminate running OmniGit instance before uninstalling
   nsExec::Exec 'taskkill /F /IM OmniGit.exe /T'
+  Sleep 1000
 
   ; Remove shortcuts
   Delete "$DESKTOP\OmniGit.lnk"
@@ -104,6 +110,7 @@ Section Uninstall
   ; Remove registry
   DeleteRegKey HKCU "${PRODUCT_UNINST_KEY}"
   DeleteRegKey HKCU "${PRODUCT_DIR_REGKEY}"
+  DeleteRegKey HKCU "${PRODUCT_APP_KEY}"
 
   ; Remove application files
   RMDir /r "$INSTDIR"

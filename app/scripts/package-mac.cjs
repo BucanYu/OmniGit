@@ -204,12 +204,32 @@ async function packageArch(arch) {
   const targetNodeModules = path.join(bundleApp, 'node_modules');
   fs.mkdirSync(targetNodeModules, { recursive: true });
 
-  const runtimeDeps = ['iconv-lite', 'node-pty'];
+  function findModuleDir(depName) {
+    const directPath = path.join(appDir, 'node_modules', depName);
+    if (fs.existsSync(directPath)) {
+      return fs.realpathSync(directPath);
+    }
+    const pnpmDir = path.join(appDir, 'node_modules', '.pnpm');
+    if (fs.existsSync(pnpmDir)) {
+      const entries = fs.readdirSync(pnpmDir);
+      for (const entry of entries) {
+        if (entry.startsWith(`${depName}@`)) {
+          const candidate = path.join(pnpmDir, entry, 'node_modules', depName);
+          if (fs.existsSync(candidate)) {
+            return candidate;
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  const runtimeDeps = ['iconv-lite', 'safer-buffer', 'node-pty'];
   const excludeExts = ['.pdb', '.obj', '.tlog', '.log'];
   for (const dep of runtimeDeps) {
-    const depSrc = path.join(appDir, 'node_modules', dep);
+    const depSrc = findModuleDir(dep);
     const depDest = path.join(targetNodeModules, dep);
-    if (fs.existsSync(depSrc)) {
+    if (depSrc && fs.existsSync(depSrc)) {
       copyRecursive(depSrc, depDest, (name) => {
         const ext = path.extname(name).toLowerCase();
         if (excludeExts.includes(ext)) return false;

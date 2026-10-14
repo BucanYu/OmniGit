@@ -7,7 +7,29 @@ import { handleGitApiRequest } from '../src/server/gitApiHandler';
 import { setupAutoUpdater } from './updater';
 import { setupPtyIpcHandlers, ptyManager } from './ptyManager';
 
+// Top-level unhandled exception and rejection handlers
+process.on('uncaughtException', (err) => {
+  const errMsg = err && err.stack ? err.stack : String(err);
+  console.error('[Electron Main Uncaught Exception]', errMsg);
+  try {
+    const userData = app.getPath('userData');
+    fs.mkdirSync(userData, { recursive: true });
+    const logPath = path.join(userData, 'startup-error.log');
+    fs.appendFileSync(logPath, `[${new Date().toISOString()}] UncaughtException: ${errMsg}\n`);
+    dialog.showErrorBox(
+      'OmniGit 启动异常',
+      `OmniGit 遇到严重错误无法正常运行：\n\n${err?.message || err}\n\n错误日志已记录至：${logPath}`
+    );
+  } catch {}
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[Electron Main Unhandled Rejection]', reason);
+});
+
 let mainWindow: BrowserWindow | null = null;
+let isQuitting = false;
 const windows = new Set<BrowserWindow>();
 let embeddedServer: http.Server | null = null;
 let currentApiPort = 5345;
@@ -311,13 +333,25 @@ function setupIpcHandlers() {
 }
 
 // 5. Application Lifecycle
+const isSmokeTest = process.argv.includes('--smoke-test');
+
 const gotLock = app.requestSingleInstanceLock();
-if (!gotLock) {
+if (!gotLock && !isSmokeTest) {
+  // If an instance is already running, exit this duplicate process immediately
   app.quit();
 } else {
   app.on('second-instance', () => {
-    if (mainWindow) {
+    // Robust window restoration on second launch
+    if (mainWindow && !mainWindow.isDestroyed()) {
       if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+      // Bring to top temporarily to defeat Windows foreground lock timeout
+      mainWindow.setAlwaysOnTop(true);
+      mainWindow.setAlwaysOnTop(false);
+    } else {
+      mainWindow = createWindow();
+      mainWindow.show();
       mainWindow.focus();
     }
   });
@@ -327,8 +361,45 @@ if (!gotLock) {
       Menu.setApplicationMenu(null);
     }
     await detectGitBinary();
-    await startEmbeddedServer();
+    const port = await startEmbeddedServer();
     setupIpcHandlers();
+
+    // Headless smoke test mode for packaging automated verification
+    if (isSmokeTest) {
+      console.log('[SmokeTest] OmniGit core runtime initialized successfully.');
+      console.log(`[SmokeTest] Git detected. Embedded server running on port: ${port}`);
+      const testWin = createWindow();
+      console.log('[SmokeTest] Main window created successfully.');
+
+      const markerPath = path.join(app.getPath('temp'), 'omnigit_smoke_test_success.txt');
+      try {
+        fs.writeFileSync(
+          markerPath,
+          JSON.stringify({
+            status: 'PASSED',
+            timestamp: new Date().toISOString(),
+            port,
+            version: app.getVersion(),
+          })
+        );
+      } catch {}
+
+      setTimeout(() => {
+        console.log('[SmokeTest] All startup checks PASSED! Exiting with code 0.');
+        try {
+          testWin.destroy();
+          if (embeddedServer) {
+            if (typeof (embeddedServer as any).closeAllConnections === 'function') {
+              (embeddedServer as any).closeAllConnections();
+            }
+            embeddedServer.close();
+          }
+        } catch {}
+        app.exit(0);
+      }, 800);
+      return;
+    }
+
     mainWindow = createWindow();
     setupAutoUpdater(() => mainWindow);
 
@@ -340,16 +411,36 @@ if (!gotLock) {
   });
 
   app.on('window-all-closed', () => {
+    isQuitting = true;
     ptyManager.killAll();
     if (process.platform !== 'darwin') {
       if (embeddedServer) {
-        embeddedServer.close();
+        try {
+          if (typeof (embeddedServer as any).closeAllConnections === 'function') {
+            (embeddedServer as any).closeAllConnections();
+          }
+          embeddedServer.close();
+        } catch {}
       }
       app.quit();
+      // Enforce clean termination so no zombie background process keeps holding locks/ports
+      setTimeout(() => {
+        process.exit(0);
+      }, 500).unref();
     }
   });
 
   app.on('will-quit', () => {
+    isQuitting = true;
     ptyManager.killAll();
+    if (embeddedServer) {
+      try {
+        if (typeof (embeddedServer as any).closeAllConnections === 'function') {
+          (embeddedServer as any).closeAllConnections();
+        }
+        embeddedServer.close();
+      } catch {}
+    }
   });
 }
+

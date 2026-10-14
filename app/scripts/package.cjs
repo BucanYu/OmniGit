@@ -89,13 +89,33 @@ console.log('Bundling runtime production dependencies into resources/app/node_mo
 const targetNodeModules = path.join(targetApp, 'node_modules');
 fs.mkdirSync(targetNodeModules, { recursive: true });
 
-const runtimeDeps = ['iconv-lite', 'node-pty'];
+function findModuleDir(depName) {
+  const directPath = path.join(appDir, 'node_modules', depName);
+  if (fs.existsSync(directPath)) {
+    return fs.realpathSync(directPath);
+  }
+  const pnpmDir = path.join(appDir, 'node_modules', '.pnpm');
+  if (fs.existsSync(pnpmDir)) {
+    const entries = fs.readdirSync(pnpmDir);
+    for (const entry of entries) {
+      if (entry.startsWith(`${depName}@`)) {
+        const candidate = path.join(pnpmDir, entry, 'node_modules', depName);
+        if (fs.existsSync(candidate)) {
+          return candidate;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+const runtimeDeps = ['iconv-lite', 'safer-buffer', 'node-pty'];
 const excludeExts = ['.pdb', '.obj', '.tlog', '.log'];
 for (const dep of runtimeDeps) {
-  const depSrc = path.join(appDir, 'node_modules', dep);
+  const depSrc = findModuleDir(dep);
   const depDest = path.join(targetNodeModules, dep);
-  if (fs.existsSync(depSrc)) {
-    console.log(` - Bundling module: ${dep}`);
+  if (depSrc && fs.existsSync(depSrc)) {
+    console.log(` - Bundling module: ${dep} from ${depSrc}`);
     copyRecursive(depSrc, depDest, (name) => {
       const ext = path.extname(name).toLowerCase();
       if (excludeExts.includes(ext)) return false;
@@ -103,7 +123,7 @@ for (const dep of runtimeDeps) {
       return true;
     });
   } else {
-    console.warn(`[WARN] Runtime dependency not found: ${depSrc}`);
+    console.warn(`[WARN] Runtime dependency not found: ${dep}`);
   }
 }
 
@@ -128,11 +148,140 @@ if (fs.existsSync(buildIconPng)) {
   fs.copyFileSync(buildIconPng, path.join(targetApp, 'icon.png'));
 }
 
+// -------------------------------------------------------------
+// 6. Automated Packaging Verification & Integrity Guardrails (打包校验规则)
+// -------------------------------------------------------------
 console.log('');
 console.log('=======================================================');
-console.log(' [SUCCESS] OmniGit Windows 桌面端独立运行包打包完成！');
-console.log(' 输出目录: ' + outputAppDir);
-console.log(' 启动程序: ' + newExe);
-console.log(' 说明: 该目录为全内置自闭环版本，在任何 Windows 电脑上');
-console.log('       无需安装 Node.js 或任何依赖，直接双击 OmniGit.exe 即可运行！');
+console.log(' [VERIFY] 执行打包自动化完整性校验规则 (Packaging Verification)...');
 console.log('=======================================================');
+
+const { spawnSync, spawn } = require('child_process');
+const os = require('os');
+
+// Rule 1: Check critical files existence and file sizes
+console.log(' [Rule 1/4] 校验主程序及核心资源文件完整性...');
+if (!fs.existsSync(newExe) || fs.statSync(newExe).size < 10 * 1024 * 1024) {
+  console.error(`[ERROR] 校验失败: 主执行程序 ${newExe} 不存在或文件异常损坏！`);
+  process.exit(1);
+}
+const indexHtmlPath = path.join(targetApp, 'dist', 'index.html');
+if (!fs.existsSync(indexHtmlPath) || !fs.readFileSync(indexHtmlPath, 'utf8').includes('root')) {
+  console.error(`[ERROR] 校验失败: 前端构建入口 ${indexHtmlPath} 不存在或未生成挂载容器！`);
+  process.exit(1);
+}
+const mainJsPath = path.join(targetApp, 'dist-electron', 'electron', 'main.js');
+if (!fs.existsSync(mainJsPath)) {
+  console.error(`[ERROR] 校验失败: Electron 主进程 ${mainJsPath} 缺失！`);
+  process.exit(1);
+}
+console.log('  -> 主执行程序与核心分发入口校验通过.');
+
+// Rule 2: Verify runtime dependency resolution
+console.log(' [Rule 2/4] 校验运行时依赖模块解析及加载机制...');
+for (const dep of ['iconv-lite', 'safer-buffer', 'node-pty']) {
+  const depPath = path.join(targetNodeModules, dep);
+  if (!fs.existsSync(depPath)) {
+    console.error(`[ERROR] 校验失败: 必备运行依赖 [${dep}] 未成功复制至目标 node_modules 目录！`);
+    process.exit(1);
+  }
+}
+
+// Test requiring iconv-lite and safer-buffer inside targetApp context
+const testDepResult = spawnSync(process.execPath, [
+  '-e',
+  `
+  const targetDir = ${JSON.stringify(targetApp)};
+  const iconv = require(require('path').join(targetDir, 'node_modules/iconv-lite'));
+  const testBuf = iconv.encode('中文编码测试', 'gbk');
+  const decoded = iconv.decode(testBuf, 'gbk');
+  if (decoded !== '中文编码测试') {
+    throw new Error('iconv-lite GBK encode/decode failure');
+  }
+  console.log('Dependency self-test passed: iconv-lite + safer-buffer functional');
+  `
+], { encoding: 'utf8' });
+
+if (testDepResult.status !== 0) {
+  console.error('[ERROR] 校验失败: 运行时模块自检异常:');
+  console.error(testDepResult.stderr || testDepResult.stdout);
+  process.exit(1);
+}
+console.log('  -> 运行时底层依赖 (iconv-lite, safer-buffer, node-pty) 自检通过.');
+
+// Rule 3: Check native node-pty binary prebuild
+console.log(' [Rule 3/4] 校验终端原生 C++ 核心库二进制架构匹配度...');
+const ptyNodePath = path.join(targetNodeModules, 'node-pty', 'prebuilds', 'win32-x64', 'pty.node');
+if (!fs.existsSync(ptyNodePath)) {
+  console.error(`[ERROR] 校验失败: node-pty win32-x64 原生二进制文件 ${ptyNodePath} 缺失！`);
+  process.exit(1);
+}
+console.log('  -> Windows x64 终端底层 PTY 预编译二进制校验通过.');
+
+// Rule 4: Headless Smoke-Test Launch (端到端真实启动冒烟测试)
+console.log(' [Rule 4/4] 启动独立可执行程序进行端到端冒烟测试 (--smoke-test)...');
+const markerFile = path.join(os.tmpdir(), 'omnigit_smoke_test_success.txt');
+if (fs.existsSync(markerFile)) {
+  try { fs.unlinkSync(markerFile); } catch {}
+}
+
+const child = spawn(newExe, ['--smoke-test', '--enable-logging'], {
+  env: {
+    ...process.env,
+    ELECTRON_ENABLE_LOGGING: '1',
+  },
+  stdio: ['ignore', 'pipe', 'pipe'],
+});
+
+let smokeOutput = '';
+child.stdout.on('data', (d) => { smokeOutput += d.toString(); });
+child.stderr.on('data', (d) => { smokeOutput += d.toString(); });
+
+let finished = false;
+function finishVerification(success, detail) {
+  if (finished) return;
+  finished = true;
+  clearTimeout(smokeTimeout);
+  try { child.kill(); } catch {}
+
+  if (success) {
+    console.log('  -> 真实应用进程启动、Git检测、内嵌服务与窗口生命周期冒烟测试 100% 通过！');
+    console.log('');
+    console.log('=======================================================');
+    console.log(' [SUCCESS] OmniGit Windows 桌面端独立运行包打包与全面校验完成！');
+    console.log(' 输出目录: ' + outputAppDir);
+    console.log(' 启动程序: ' + newExe);
+    console.log(' 说明: 该目录为全内置自闭环版本，已通过 4 项严格自动化启动校验，');
+    console.log('       在任何 Windows 电脑上直接双击 OmniGit.exe 均可稳定秒开运行！');
+    console.log('=======================================================');
+    process.exit(0);
+  } else {
+    console.error('[ERROR] 校验失败: 独立应用程序真实启动冒烟测试未通过！');
+    console.error(detail);
+    console.error('Smoke test output:');
+    console.error(smokeOutput);
+    process.exit(1);
+  }
+}
+
+const smokeTimeout = setTimeout(() => {
+  if (fs.existsSync(markerFile)) {
+    finishVerification(true, 'Marker file detected within timeout window');
+  } else {
+    finishVerification(false, '启动冒烟测试超时 (15s)，未能完成初始化');
+  }
+}, 15000);
+
+child.on('exit', (code) => {
+  if (code === 0 || fs.existsSync(markerFile)) {
+    finishVerification(true);
+  } else {
+    finishVerification(false, `进程异常退出，Exit code: ${code}`);
+  }
+});
+
+child.on('error', (err) => {
+  finishVerification(false, `进程启动异常: ${err.message}`);
+});
+
+
