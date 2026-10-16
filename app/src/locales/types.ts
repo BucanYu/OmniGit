@@ -534,6 +534,7 @@ export interface LocaleDictionary {
     workingCopy: string;
     wordWrap: string;
     exitHistory: string;
+    exitHistoryCompact: string;
     save: string;
     saved: string;
     conflictWarning: string;
@@ -1058,6 +1059,7 @@ export interface LocaleDictionary {
   };
   activityBar: {
     gitWorkbench: string;
+    search: string;
     workspaceExplorer: string;
     terminal: string;
     settings: string;
@@ -1066,6 +1068,8 @@ export interface LocaleDictionary {
     title: (count: number) => string;
     refreshTree: string;
     addRepo: string;
+    locateCurrentFile: string;
+    locateNoActiveFile: string;
     emptyTitle: string;
     emptyDesc: string;
     openInSystemExplorer: (path: string) => string;
@@ -1076,6 +1080,12 @@ export interface LocaleDictionary {
     noFileOpenDesc: string;
     unsaved: string;
     unsavedChanges: string;
+    reloadFromDisk: string;
+    reloadFromDiskTooltip: string;
+    diskConflictWarning: string;
+    reloadDiskAction: string;
+    keepLocalAction: string;
+    syncedFromDiskToast: string;
     viewSource: string;
     viewSplit: string;
     viewPreview: string;
@@ -1103,6 +1113,7 @@ export interface LocaleDictionary {
     scrollTabsRight: string;
     copyRelativePath: string;
     copyAbsolutePath: string;
+    openContainingFolder: string;
     markdownPreviewTitle: string;
     lines: (count: number) => string;
     words: (count: number) => string;
@@ -1110,6 +1121,7 @@ export interface LocaleDictionary {
     copySource: string;
     copiedSource: string;
     copySourceTooltip: string;
+    openTabsListCloseHint: string;
   };
   terminal: {
     newTerminalDefault: (name: string) => string;
@@ -1129,6 +1141,58 @@ export interface LocaleDictionary {
     renamePromptPlaceholder: string;
     copyTerminalName: string;
     newTerminalContext: string;
+  };
+  globalSearch: {
+    title: string;
+    searchPlaceholder: string;
+    matchCase: string;
+    matchWord: string;
+    useRegex: string;
+    scopePrefix: string;
+    scopeAllProjects: string;
+    scopeCurrentProject: string;
+    fileMaskPlaceholder: string;
+    searching: string;
+    noResults: string;
+    matchesSummary: (matchCount: number, fileCount: number) => string;
+    matchesTruncated: (max: number) => string;
+    jumpToCode: string;
+    jumpAction: string;
+    jumpTitle: string;
+    previewTitle: string;
+    previewPlaceholder: string;
+    fileNameMatchTitle: string;
+    fileBadge: string;
+    fileBadgeUpper: string;
+    shortcutHint: string;
+    shortcutNavigate: string;
+    shortcutJump: string;
+    shortcutClose: string;
+  };
+  imageViewer: {
+    zoomIn: string;
+    zoomOut: string;
+    actualSize: string;
+    fitWindow: string;
+    rotate: string;
+    flipH: string;
+    flipV: string;
+    resetView: string;
+    bgCheckerboard: string;
+    bgDark: string;
+    bgLight: string;
+    copyImage: string;
+    copiedImageToast: string;
+    copyPath: string;
+    copiedPathToast: string;
+    openInFolder: string;
+    openInApp: string;
+    animatedBadge: string;
+    vectorBadge: string;
+    resolution: (w: number, h: number) => string;
+    fileSize: string;
+    loadError: string;
+    reload: string;
   };
 }
 

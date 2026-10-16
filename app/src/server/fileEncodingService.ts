@@ -13,6 +13,7 @@ export interface FileReadResult {
   eol: 'CRLF' | 'LF';
   isBinary: boolean;
   size: number;
+  mtime: number;
   tooLarge?: boolean;
 }
 
@@ -120,6 +121,7 @@ export class FileEncodingService {
         eol: 'LF',
         isBinary: false,
         size,
+        mtime: stat.mtimeMs,
         tooLarge: true,
       };
     }
@@ -134,6 +136,7 @@ export class FileEncodingService {
         eol: 'LF',
         isBinary: true,
         size,
+        mtime: stat.mtimeMs,
       };
     }
 
@@ -163,7 +166,27 @@ export class FileEncodingService {
       eol,
       isBinary: false,
       size,
+      mtime: stat.mtimeMs,
     };
+  }
+
+  /**
+   * Fast file stat check for lightweight modification detection
+   */
+  public getFileStat(fullPath: string): { exists: boolean; mtime: number; size: number } {
+    try {
+      if (!fs.existsSync(fullPath)) {
+        return { exists: false, mtime: 0, size: 0 };
+      }
+      const stat = fs.statSync(fullPath);
+      return {
+        exists: true,
+        mtime: stat.mtimeMs,
+        size: stat.size,
+      };
+    } catch {
+      return { exists: false, mtime: 0, size: 0 };
+    }
   }
 
   /**

@@ -159,8 +159,18 @@ console.log('=======================================================');
 const { spawnSync, spawn } = require('child_process');
 const os = require('os');
 
-// Rule 1: Check critical files existence and file sizes
-console.log(' [Rule 1/4] 校验主程序及核心资源文件完整性...');
+// Rule 1: Verify React Hooks order across all components
+console.log(' [Rule 1/5] 校验全量 React 组件 Hook 调用规则 (AST 静态检测)...');
+const hookCheckResult = spawnSync(process.execPath, [path.join(__dirname, 'check-hooks.cjs')], { encoding: 'utf8' });
+if (hookCheckResult.status !== 0) {
+  console.error('[ERROR] 校验失败: React Hook 规则检测未通过！');
+  console.error(hookCheckResult.stderr || hookCheckResult.stdout);
+  process.exit(1);
+}
+console.log('  -> 全量 React 组件 Hook 规则 (无条件顶部声明) 校验 100% 通过.');
+
+// Rule 2: Check critical files existence and file sizes
+console.log(' [Rule 2/5] 校验主程序及核心资源文件完整性...');
 if (!fs.existsSync(newExe) || fs.statSync(newExe).size < 10 * 1024 * 1024) {
   console.error(`[ERROR] 校验失败: 主执行程序 ${newExe} 不存在或文件异常损坏！`);
   process.exit(1);
@@ -177,8 +187,8 @@ if (!fs.existsSync(mainJsPath)) {
 }
 console.log('  -> 主执行程序与核心分发入口校验通过.');
 
-// Rule 2: Verify runtime dependency resolution
-console.log(' [Rule 2/4] 校验运行时依赖模块解析及加载机制...');
+// Rule 3: Verify runtime dependency resolution
+console.log(' [Rule 3/5] 校验运行时依赖模块解析及加载机制...');
 for (const dep of ['iconv-lite', 'safer-buffer', 'node-pty']) {
   const depPath = path.join(targetNodeModules, dep);
   if (!fs.existsSync(depPath)) {
@@ -209,8 +219,8 @@ if (testDepResult.status !== 0) {
 }
 console.log('  -> 运行时底层依赖 (iconv-lite, safer-buffer, node-pty) 自检通过.');
 
-// Rule 3: Check native node-pty binary prebuild
-console.log(' [Rule 3/4] 校验终端原生 C++ 核心库二进制架构匹配度...');
+// Rule 4: Check native node-pty binary prebuild
+console.log(' [Rule 4/5] 校验终端原生 C++ 核心库二进制架构匹配度...');
 const ptyNodePath = path.join(targetNodeModules, 'node-pty', 'prebuilds', 'win32-x64', 'pty.node');
 if (!fs.existsSync(ptyNodePath)) {
   console.error(`[ERROR] 校验失败: node-pty win32-x64 原生二进制文件 ${ptyNodePath} 缺失！`);
@@ -218,14 +228,25 @@ if (!fs.existsSync(ptyNodePath)) {
 }
 console.log('  -> Windows x64 终端底层 PTY 预编译二进制校验通过.');
 
-// Rule 4: Headless Smoke-Test Launch (端到端真实启动冒烟测试)
-console.log(' [Rule 4/4] 启动独立可执行程序进行端到端冒烟测试 (--smoke-test)...');
+// Rule 5: Headless Smoke-Test Launch (端到端真实启动冒烟测试与 Web 挂载校验)
+console.log(' [Rule 5/5] 启动独立可执行程序进行后台隐式冒烟测试与 Web 挂载校验 (Headless --smoke-test)...');
 const markerFile = path.join(os.tmpdir(), 'omnigit_smoke_test_success.txt');
 if (fs.existsSync(markerFile)) {
   try { fs.unlinkSync(markerFile); } catch {}
 }
 
-const child = spawn(newExe, ['--smoke-test', '--enable-logging'], {
+const smokeUserDataDir = path.join(os.tmpdir(), 'omnigit-smoke-test-profile');
+try {
+  if (fs.existsSync(smokeUserDataDir)) {
+    fs.rmSync(smokeUserDataDir, { recursive: true, force: true });
+  }
+} catch {}
+
+const child = spawn(newExe, [
+  '--smoke-test',
+  `--user-data-dir=${smokeUserDataDir}`,
+  '--enable-logging'
+], {
   env: {
     ...process.env,
     ELECTRON_ENABLE_LOGGING: '1',
@@ -245,13 +266,13 @@ function finishVerification(success, detail) {
   try { child.kill(); } catch {}
 
   if (success) {
-    console.log('  -> 真实应用进程启动、Git检测、内嵌服务与窗口生命周期冒烟测试 100% 通过！');
+    console.log('  -> 真实应用进程启动、Git检测、内嵌服务、窗口渲染与 Web DOM 挂载冒烟测试 100% 通过！');
     console.log('');
     console.log('=======================================================');
     console.log(' [SUCCESS] OmniGit Windows 桌面端独立运行包打包与全面校验完成！');
     console.log(' 输出目录: ' + outputAppDir);
     console.log(' 启动程序: ' + newExe);
-    console.log(' 说明: 该目录为全内置自闭环版本，已通过 4 项严格自动化启动校验，');
+    console.log(' 说明: 该目录为全内置自闭环版本，已通过 5 项严格自动化启动校验，');
     console.log('       在任何 Windows 电脑上直接双击 OmniGit.exe 均可稳定秒开运行！');
     console.log('=======================================================');
     process.exit(0);

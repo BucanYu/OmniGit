@@ -15,6 +15,10 @@ export interface EditorTabItem {
   isDirty: boolean;
   language: string;
   isBinary?: boolean;
+  size?: number;
+  mtime?: number;
+  hasDiskConflict?: boolean;
+  diskMtime?: number;
 }
 
 export interface PersistedEditorTab {
@@ -118,6 +122,9 @@ interface EditorTabsState {
   setActiveTabId: (id: string) => void;
   updateTabContent: (id: string, newContent: string) => void;
   saveTab: (id: string) => Promise<boolean>;
+  reloadTabFromDisk: (id: string) => Promise<boolean>;
+  dismissConflict: (id: string) => void;
+  syncActiveTabWithDisk: () => Promise<void>;
   savePersistedTabs: (wsId?: string) => void;
   restorePersistedTabs: (workspaceId: string) => Promise<void>;
 }
@@ -221,6 +228,9 @@ export const useEditorTabsStore = create<EditorTabsState>((set, get) => ({
             isDirty: false,
             language,
             isBinary: Boolean(fileData.isBinary),
+            size: fileData.size || 0,
+            mtime: fileData.mtime || Date.now(),
+            hasDiskConflict: false,
           } as EditorTabItem;
         }
       } catch (err) {
@@ -308,6 +318,9 @@ export const useEditorTabsStore = create<EditorTabsState>((set, get) => ({
           isDirty: false,
           language,
           isBinary: Boolean(data.isBinary),
+          size: data.size || 0,
+          mtime: data.mtime || Date.now(),
+          hasDiskConflict: false,
         };
 
         let resultId = id;
@@ -411,6 +424,9 @@ export const useEditorTabsStore = create<EditorTabsState>((set, get) => ({
     const { tabs } = get();
     const tab = tabs.find((t) => t.id === id);
     if (!tab) return false;
+    if (!tab.isDirty) {
+      return true;
+    }
 
     try {
       const res = await fetch('/api/fs/write', {
@@ -426,7 +442,17 @@ export const useEditorTabsStore = create<EditorTabsState>((set, get) => ({
       const data = await res.json();
       if (data && data.success) {
         set((state) => ({
-          tabs: state.tabs.map((t) => (t.id === id ? { ...t, originalContent: t.content, isDirty: false } : t)),
+          tabs: state.tabs.map((t) =>
+            t.id === id
+              ? {
+                  ...t,
+                  originalContent: t.content,
+                  isDirty: false,
+                  mtime: data.mtime || Date.now(),
+                  hasDiskConflict: false,
+                }
+              : t
+          ),
         }));
         return true;
       }
@@ -435,5 +461,69 @@ export const useEditorTabsStore = create<EditorTabsState>((set, get) => ({
       console.error('[EditorTabs] Save failed:', err);
       return false;
     }
+  },
+
+  reloadTabFromDisk: async (id: string) => {
+    const tab = get().tabs.find((t) => t.id === id);
+    if (!tab) return false;
+    try {
+      const res = await fetch(`/api/fs/read?filePath=${encodeURIComponent(tab.filePath)}`);
+      const data = await res.json();
+      if (data && data.content !== undefined) {
+        set((state) => ({
+          tabs: state.tabs.map((t) => {
+            if (t.id === id) {
+              return {
+                ...t,
+                content: data.content,
+                originalContent: data.content,
+                encoding: data.encoding || t.encoding,
+                eol: data.eol || t.eol,
+                mtime: data.mtime || Date.now(),
+                isDirty: false,
+                hasDiskConflict: false,
+              };
+            }
+            return t;
+          }),
+        }));
+        return true;
+      }
+    } catch (err) {
+      console.warn('[EditorTabs] Reload from disk failed:', tab.filePath, err);
+    }
+    return false;
+  },
+
+  dismissConflict: (id: string) => {
+    set((state) => ({
+      tabs: state.tabs.map((t) => (t.id === id ? { ...t, hasDiskConflict: false } : t)),
+    }));
+  },
+
+  syncActiveTabWithDisk: async () => {
+    const { tabs, activeTabId } = get();
+    if (!activeTabId) return;
+    const tab = tabs.find((t) => t.id === activeTabId);
+    if (!tab || tab.isBinary) return;
+
+    try {
+      const res = await fetch(`/api/fs/stat?filePath=${encodeURIComponent(tab.filePath)}`);
+      const stat = await res.json();
+      if (!stat || !stat.exists) return;
+
+      const tabMtime = tab.mtime || 0;
+      if (tabMtime > 0 && stat.mtime > tabMtime + 50) {
+        if (!tab.isDirty) {
+          await get().reloadTabFromDisk(tab.id);
+        } else {
+          set((state) => ({
+            tabs: state.tabs.map((t) =>
+              t.id === tab.id ? { ...t, hasDiskConflict: true, diskMtime: stat.mtime } : t
+            ),
+          }));
+        }
+      }
+    } catch {}
   },
 }));

@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useAppStore } from '../../store/useAppStore';
 import { useTranslation } from '../../locales';
 import Editor, { DiffEditor } from '@monaco-editor/react';
+import { ImageViewer } from '../code-editor/ImageViewer';
+import { isImageFile } from '../code-editor/imageUtils';
 import {
   toggleEditorComment,
   registerAllLanguageComments,
@@ -149,6 +151,29 @@ export function DiffEditorPanel() {
   const singleEditorRef = useRef<any>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
+  // Container ref & Responsive width (MUST BE AT TOP LEVEL BEFORE ANY EARLY RETURNS)
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [panelWidth, setPanelWidth] = useState<number>(600);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.contentRect.width > 0) {
+          setPanelWidth(entry.contentRect.width);
+        }
+      }
+    });
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  // Responsive width breakpoints based purely on container width (ResizeObserver)
+  const isUltraCompact = panelWidth < 500;
+  const isCompact = panelWidth < 700;
+  const isWide = panelWidth >= 880;
+  const isVeryWide = panelWidth >= 1080;
+
   // File Path Hover & Copy States (完整路径悬浮与复制)
   const [copiedType, setCopiedType] = useState<'relative' | 'full' | null>(null);
   const [isPathHovered, setIsPathHovered] = useState(false);
@@ -169,6 +194,11 @@ export function DiffEditorPanel() {
   const fullAbsolutePath = activeProject
     ? `${activeProject.path}\\${relativePath.replace(/\//g, '\\')}`
     : relativePath;
+
+  const normRelPath = relativePath.replace(/\\/g, '/');
+  const pathParts = normRelPath.split('/');
+  const fileName = pathParts.pop() || normRelPath;
+  const parentDir = pathParts.join('/');
 
   const originalContent = isHistorical ? (historicalDiff?.original || '') : (selectedFileDiff?.oldContent || '');
   const modifiedContent = isHistorical ? (historicalDiff?.modified || '') : (selectedFileDiff?.newContent || '');
@@ -292,7 +322,7 @@ export function DiffEditorPanel() {
 
   if (isRepoLoading && !selectedFile && !isHistorical) {
     return (
-      <div className="flex-1 bg-theme-panel flex flex-col items-center justify-center text-theme-dim text-xs select-none">
+      <div ref={containerRef} className="flex-1 bg-theme-panel flex flex-col items-center justify-center text-theme-dim text-xs select-none">
         <RefreshCw className="w-8 h-8 text-sky-400 mb-3 animate-spin stroke-[1.5]" />
         <p className="text-theme-muted font-medium text-sm">{t.statusPanel.loadingWorkspace}</p>
         <p className="text-theme-dim text-[11px] mt-1">
@@ -304,7 +334,7 @@ export function DiffEditorPanel() {
 
   if (!selectedFile && !isHistorical) {
     return (
-      <div className="flex-1 bg-theme-panel flex flex-col items-center justify-center text-theme-dim text-xs select-none">
+      <div ref={containerRef} className="flex-1 bg-theme-panel flex flex-col items-center justify-center text-theme-dim text-xs select-none">
         <FileText className="w-10 h-10 text-theme-dim mb-2 stroke-[1.5]" />
         <p className="text-theme-muted font-medium">{t.diff.noFileSelected}</p>
         <p className="text-theme-dim text-[11px] mt-1 text-center max-w-md">
@@ -558,12 +588,12 @@ export function DiffEditorPanel() {
   const fileLanguage = getLanguageFromPath(relativePath);
 
   return (
-    <div className="flex-1 min-w-0 bg-theme-panel flex flex-col h-full overflow-hidden">
+    <div ref={containerRef} className="flex-1 min-w-0 bg-theme-panel flex flex-col h-full overflow-hidden">
       {/* Workbench Header */}
-      <div className="h-9 px-2 border-b border-theme-border flex items-center justify-between bg-theme-header text-xs select-none gap-1 overflow-hidden min-w-0">
+      <div className="h-9 px-2 border-b border-theme-border flex items-center justify-between bg-theme-header text-xs select-none gap-2 overflow-hidden min-w-0">
         {/* Left: File Path & Status Badge with Hover Full Path Preview & Copy */}
         <div
-          className="relative flex items-center gap-1 min-w-0 shrink max-w-[22%] sm:max-w-[28%] md:max-w-[36%]"
+          className="relative flex items-center gap-1 min-w-0 shrink max-w-[28%] md:max-w-[34%] overflow-hidden"
           onMouseEnter={() => {
             if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
             hoverTimeoutRef.current = setTimeout(() => setIsPathHovered(true), 250);
@@ -573,44 +603,53 @@ export function DiffEditorPanel() {
             hoverTimeoutRef.current = setTimeout(() => setIsPathHovered(false), 200);
           }}
         >
-          {/* File Path text (supports mouse selection & quick click to copy) */}
+          {/* File Path text (prominent fileName + subtle parentDir) */}
           <div
-            className="flex items-center gap-1 min-w-0 max-w-full px-1 py-0.5 rounded hover:bg-theme-hover transition cursor-pointer"
+            className="flex items-center gap-1.5 min-w-0 overflow-hidden px-1.5 py-0.5 rounded hover:bg-theme-hover transition cursor-pointer"
             onClick={(e) => handleCopyPath(fullAbsolutePath, 'full', e)}
             title={t.diff.copyFullPathTooltip(fullAbsolutePath)}
           >
             <FileCode className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-            <span className="font-mono text-theme-main font-semibold truncate text-[11px] select-text">
-              {relativePath}
+            <span className="font-semibold text-theme-main text-xs truncate min-w-0 select-text" title={fileName}>
+              {fileName}
             </span>
+            {isVeryWide && parentDir && (
+              <span className="text-[10px] text-theme-muted font-mono truncate min-w-0 opacity-70 select-text" title={relativePath}>
+                {parentDir}
+              </span>
+            )}
           </div>
 
           {/* Quick Copy Full Path Button (Available on wider widths) */}
-          <button
-            type="button"
-            onClick={(e) => handleCopyPath(fullAbsolutePath, 'full', e)}
-            className="hidden 2xl:flex p-1 rounded text-theme-muted hover:text-sky-400 hover:bg-theme-card-hover transition cursor-pointer shrink-0"
-            title={t.diff.copyFullPath}
-          >
-            {copiedType ? (
-              <Check className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
-            ) : (
-              <Copy className="w-3.5 h-3.5" />
-            )}
-          </button>
+          {isWide && (
+            <button
+              type="button"
+              onClick={(e) => handleCopyPath(fullAbsolutePath, 'full', e)}
+              className="p-1 rounded text-theme-muted hover:text-sky-400 hover:bg-theme-card-hover transition cursor-pointer shrink-0"
+              title={t.diff.copyFullPath}
+            >
+              {copiedType ? (
+                <Check className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
+              ) : (
+                <Copy className="w-3.5 h-3.5" />
+              )}
+            </button>
+          )}
 
           {/* Quick Reveal in OS File Manager (Explorer / Finder) */}
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              revealFileInOS(relativePath);
-            }}
-            className="hidden 2xl:flex p-1 rounded text-theme-muted hover:text-amber-400 hover:bg-theme-card-hover transition cursor-pointer shrink-0"
-            title={t.diff.revealInExplorerTooltip}
-          >
-            <FolderOpen className="w-3.5 h-3.5" />
-          </button>
+          {isWide && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                revealFileInOS(relativePath);
+              }}
+              className="p-1 rounded text-theme-muted hover:text-amber-400 hover:bg-theme-card-hover transition cursor-pointer shrink-0"
+              title={t.diff.revealInExplorerTooltip}
+            >
+              <FolderOpen className="w-3.5 h-3.5" />
+            </button>
+          )}
 
           {/* Copied Feedback Badge */}
           {copiedType && (
@@ -619,10 +658,10 @@ export function DiffEditorPanel() {
             </span>
           )}
 
-          {/* Status Badge (Only shown on wide displays in non-historical mode to avoid clutter) */}
-          {!isHistorical && selectedFile?.status && (
+          {/* Status Badge */}
+          {isWide && !isHistorical && selectedFile?.status && (
             <span
-              className={`hidden 2xl:inline-block text-[9px] px-1.5 py-0.2 rounded font-mono font-bold uppercase shrink-0 ${
+              className={`text-[9px] px-1.5 py-0.2 rounded font-mono font-bold uppercase shrink-0 ${
                 selectedFile.status === 'modified'
                   ? 'bg-blue-500/20 text-sky-400 border border-blue-500/30'
                   : selectedFile.status === 'added' || selectedFile.status === 'untracked'
@@ -715,13 +754,13 @@ export function DiffEditorPanel() {
         </div>
 
         {/* Center: View Mode Toggle Tabs & Search Box (差异对比 vs 单文件源码编辑) */}
-        <div className="flex items-center gap-1 min-w-0 shrink justify-center">
+        <div className="flex items-center gap-1 shrink-0">
           {/* Mode Switcher Pills */}
           <div className="flex items-center bg-theme-input p-0.5 rounded-lg border border-theme-border text-xs shrink-0 shadow-2xs">
             <button
               type="button"
               onClick={() => setEditorViewMode('diff')}
-              className={`flex items-center gap-1 px-2 py-0.5 rounded-md font-medium transition cursor-pointer text-[11px] ${
+              className={`flex items-center gap-1 px-1.5 py-0.5 rounded-md font-medium transition cursor-pointer text-[11px] ${
                 editorViewMode === 'diff'
                   ? 'bg-sky-500 text-white shadow-xs font-semibold'
                   : 'text-theme-muted hover:text-theme-main hover:bg-theme-hover'
@@ -729,12 +768,12 @@ export function DiffEditorPanel() {
               title={t.diff.diffViewTooltip}
             >
               <GitCompare className="w-3.5 h-3.5 shrink-0" />
-              <span>{t.diff.modeDiff}</span>
+              {!isCompact && <span>{t.diff.modeDiff}</span>}
             </button>
             <button
               type="button"
               onClick={() => setEditorViewMode('editor')}
-              className={`flex items-center gap-1 px-2 py-0.5 rounded-md font-medium transition cursor-pointer text-[11px] ${
+              className={`flex items-center gap-1 px-1.5 py-0.5 rounded-md font-medium transition cursor-pointer text-[11px] ${
                 editorViewMode === 'editor'
                   ? 'bg-sky-500 text-white shadow-xs font-semibold'
                   : 'text-theme-muted hover:text-theme-main hover:bg-theme-hover'
@@ -742,17 +781,19 @@ export function DiffEditorPanel() {
               title={t.diff.editorViewTooltip}
             >
               <FileEdit className="w-3.5 h-3.5 shrink-0" />
-              <span>{t.diff.modeEditor}</span>
+              {!isCompact && <span>{t.diff.modeEditor}</span>}
             </button>
           </div>
 
           {/* Search Box - dynamic responsive elastic width */}
-          <div className="flex items-center gap-1 px-1.5 sm:px-2 py-0.5 bg-theme-input border border-theme-border rounded-lg focus-within:border-sky-500 transition w-16 sm:w-24 md:w-32 lg:w-36 focus-within:w-36 min-w-[50px] shrink shadow-2xs">
+          <div className={`flex items-center gap-1 px-1.5 py-0.5 bg-theme-input border border-theme-border rounded-lg focus-within:border-sky-500 transition shadow-2xs shrink ${
+            isUltraCompact ? 'w-20 focus-within:w-28' : isCompact ? 'w-24 focus-within:w-32' : 'w-28 focus-within:w-36'
+          }`}>
             <Search className="w-3.5 h-3.5 text-theme-dim shrink-0" />
             <input
               ref={searchInputRef}
               type="text"
-              placeholder={t.diff.searchPlaceholder}
+              placeholder={isCompact ? (t.common?.search || '搜索') : t.diff.searchPlaceholder}
               value={searchQuery}
               onChange={(e) => handleSearch(e.target.value)}
               onKeyDown={handleSearchKeyDown}
@@ -779,43 +820,45 @@ export function DiffEditorPanel() {
             )}
           </div>
 
-          {/* Up & Down Navigation Buttons (向上与向下定位) */}
-          <div className="hidden sm:flex items-center gap-0.5 bg-theme-card border border-theme-border rounded-lg p-0.5 shrink-0 shadow-2xs">
-            <button
-              type="button"
-              onClick={handleGoToPrevious}
-              className="p-1 hover:bg-theme-hover text-theme-dim hover:text-theme-main rounded transition cursor-pointer"
-              title={
-                searchQuery.trim()
-                  ? t.diff.prevMatchTooltip
-                  : editorViewMode === 'diff'
-                  ? t.diff.prevDiffTooltip
-                  : t.common.back
-              }
-            >
-              <ChevronUp className="w-3.5 h-3.5" />
-            </button>
+          {/* Up & Down Navigation Buttons (仅在有搜索内容或面板宽敞时显示) */}
+          {(!isCompact || Boolean(searchQuery.trim())) && (
+            <div className="flex items-center gap-0.5 bg-theme-card border border-theme-border rounded-lg p-0.5 shrink-0 shadow-2xs">
+              <button
+                type="button"
+                onClick={handleGoToPrevious}
+                className="p-1 hover:bg-theme-hover text-theme-dim hover:text-theme-main rounded transition cursor-pointer"
+                title={
+                  searchQuery.trim()
+                    ? t.diff.prevMatchTooltip
+                    : editorViewMode === 'diff'
+                    ? t.diff.prevDiffTooltip
+                    : t.common.back
+                }
+              >
+                <ChevronUp className="w-3.5 h-3.5" />
+              </button>
 
-            <button
-              type="button"
-              onClick={handleGoToNext}
-              className="p-1 hover:bg-theme-hover text-theme-dim hover:text-theme-main rounded transition cursor-pointer"
-              title={
-                searchQuery.trim()
-                  ? t.diff.nextMatchTooltip
-                  : editorViewMode === 'diff'
-                  ? t.diff.nextDiffTooltip
-                  : t.common.open
-              }
-            >
-              <ChevronDown className="w-3.5 h-3.5" />
-            </button>
-          </div>
+              <button
+                type="button"
+                onClick={handleGoToNext}
+                className="p-1 hover:bg-theme-hover text-theme-dim hover:text-theme-main rounded transition cursor-pointer"
+                title={
+                  searchQuery.trim()
+                    ? t.diff.nextMatchTooltip
+                    : editorViewMode === 'diff'
+                    ? t.diff.nextDiffTooltip
+                    : t.common.open
+                }
+              >
+                <ChevronDown className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
 
-          {/* Diff Changes Counter Badge (when in diff mode and not actively searching) */}
-          {editorViewMode === 'diff' && !searchQuery.trim() && lineChanges.length > 0 && (
+          {/* Diff Changes Counter Badge */}
+          {isWide && editorViewMode === 'diff' && !searchQuery.trim() && lineChanges.length > 0 && (
             <span
-              className="hidden 2xl:flex text-[10px] font-mono text-theme-dim px-1.5 py-0.5 rounded bg-theme-subbar border border-theme-border shrink-0 items-center gap-1"
+              className="flex text-[10px] font-mono text-theme-dim px-1.5 py-0.5 rounded bg-theme-subbar border border-theme-border shrink-0 items-center gap-1"
               title={t.diff.diffChangesCount}
             >
               <GitCompare className="w-3 h-3 text-sky-400" />
@@ -828,8 +871,8 @@ export function DiffEditorPanel() {
           )}
         </div>
 
-        {/* Right: Actions (Diff View controls / Editor controls / Unified Historical pill / Save / Close) */}
-        <div className="flex items-center gap-1 shrink-0 ml-auto">
+        {/* Right: Actions (Diff View controls / Editor controls / Exit Snapshot / Save / Close) */}
+        <div className="flex items-center gap-1.5 shrink-0 ml-auto">
           {/* Editor mode controls: Word Wrap toggle */}
           {editorViewMode === 'editor' && (
             <button
@@ -842,30 +885,25 @@ export function DiffEditorPanel() {
               title={t.diff.toggleWordWrapTooltip(wordWrap)}
             >
               <WrapText className="w-3.5 h-3.5" />
-              <span className="hidden 2xl:inline">{t.diff.wordWrap}</span>
+              {!isCompact && <span>{t.diff.wordWrap}</span>}
             </button>
           )}
 
-          {/* Unified Historical mode pill OR Normal Save button */}
+          {/* Historical Exit Snapshot Button OR Normal Save button */}
           {isHistorical ? (
-            <div className="flex items-center bg-purple-500/15 border border-purple-500/30 rounded-lg text-[11px] font-mono text-purple-300 px-1.5 sm:px-2 py-0.5 gap-1 shrink-0 shadow-2xs">
-              <History className="w-3 h-3 text-purple-400 shrink-0" />
-              <span className="font-semibold text-[10px] truncate max-w-[85px] hidden sm:inline">
-                {historicalDiff?.commitHash ? `Commit ${historicalDiff.commitHash.slice(0, 7)}` : t.diff.snapshot}
-              </span>
-              <button
-                type="button"
-                onClick={clearHistoricalDiff}
-                className="px-1.5 py-0.5 rounded bg-purple-500/25 hover:bg-purple-500/40 text-purple-200 hover:text-white transition cursor-pointer text-[10px] font-sans font-medium"
-                title={t.diff.exitHistoryTooltip}
-              >
-                {t.diff.exitHistory}
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={clearHistoricalDiff}
+              className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold transition cursor-pointer shrink-0 shadow-2xs border bg-purple-500/15 hover:bg-purple-500/25 text-purple-700 dark:text-purple-200 border-purple-500/30 hover:border-purple-500/50"
+              title={t.diff.exitHistoryTooltip}
+            >
+              <History className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0" />
+              <span className="font-medium whitespace-nowrap">{t.diff.exitHistory}</span>
+            </button>
           ) : (
             <button
               onClick={handleSave}
-              className="flex items-center gap-1 bg-theme-card hover:bg-theme-card-hover text-theme-main border border-theme-border-card px-2 sm:px-2.5 py-1 rounded-lg transition text-xs cursor-pointer shadow-2xs font-medium shrink-0"
+              className="flex items-center gap-1 bg-theme-card hover:bg-theme-card-hover text-theme-main border border-theme-border-card px-2 py-1 rounded-lg transition text-xs cursor-pointer shadow-2xs font-medium shrink-0"
               title={t.diff.saveDiskTooltip}
             >
               {saved ? (
@@ -873,7 +911,7 @@ export function DiffEditorPanel() {
               ) : (
                 <Save className="w-3.5 h-3.5 text-sky-400" />
               )}
-              <span>{saved ? t.diff.saved : t.diff.save}</span>
+              {!isUltraCompact && <span>{saved ? t.diff.saved : t.diff.save}</span>}
             </button>
           )}
 
@@ -964,74 +1002,78 @@ export function DiffEditorPanel() {
         /* 2. Dual Pane Identifiers for Diff Mode (Strictly Side-by-Side 左右并排比对) */
         <div className="h-7 border-b border-theme-border flex items-center bg-theme-subbar text-xs select-none shrink-0 overflow-hidden">
           {/* Left: 历史基准 */}
-          <div className="w-1/2 h-full px-2 border-r border-theme-border flex items-center justify-between bg-amber-500/[0.04] min-w-0">
-            <div className="flex items-center gap-1.5 min-w-0 flex-1 pr-1">
+          <div className="w-1/2 h-full px-2 border-r border-theme-border flex items-center justify-between bg-amber-500/[0.04] min-w-0 overflow-hidden">
+            <div className="flex items-center gap-1.5 min-w-0 flex-1 pr-1 overflow-hidden">
               <History className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-              <span className="font-bold text-[11px] text-theme-main truncate" title={isHistorical ? historicalDiff?.oldLabel : t.diff.leftBase}>
+              <span className="font-bold text-[11px] text-theme-main truncate min-w-0" title={isHistorical ? historicalDiff?.oldLabel : t.diff.leftBase}>
                 {isHistorical
                   ? t.diff.leftParentLabel(historicalDiff?.oldLabel)
                   : t.diff.leftBase}
               </span>
-              <span className="text-[9px] px-2 py-0.5 rounded-full font-mono font-medium bg-amber-500/15 text-amber-400 border border-amber-500/30 shrink-0 flex items-center gap-1 shadow-2xs">
+              <span className="text-[9px] px-1.5 py-0.5 rounded-full font-mono font-medium bg-amber-500/15 text-amber-400 border border-amber-500/30 shrink-0 flex items-center gap-1 shadow-2xs whitespace-nowrap" title={t.diff.readOnly}>
                 <Lock className="w-2.5 h-2.5" />
-                {t.diff.readOnly}
+                <span className="hidden sm:inline">{t.diff.readOnly}</span>
               </span>
             </div>
-            <span className="text-[10px] text-theme-dim hidden 2xl:inline font-mono shrink-0">
-              {isHistorical ? t.diff.parentRevision : t.diff.baseRevision}
-            </span>
+            {isWide && (
+              <span className="text-[10px] text-theme-dim font-mono shrink-0">
+                {isHistorical ? t.diff.parentRevision : t.diff.baseRevision}
+              </span>
+            )}
           </div>
 
           {/* Right: 调整后代码 */}
-          <div className="w-1/2 h-full px-2 flex items-center justify-between bg-emerald-500/[0.04] min-w-0">
-            <div className="flex items-center gap-1.5 min-w-0 flex-1 pr-1">
+          <div className="w-1/2 h-full px-2 flex items-center justify-between bg-emerald-500/[0.04] min-w-0 overflow-hidden">
+            <div className="flex items-center gap-1.5 min-w-0 flex-1 pr-1 overflow-hidden">
               {isHistorical ? (
                 <History className="w-3.5 h-3.5 text-sky-400 shrink-0" />
               ) : (
                 <FileEdit className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
               )}
-              <span className="font-bold text-[11px] text-theme-main truncate" title={isHistorical ? historicalDiff?.newLabel : t.diff.rightWorking}>
+              <span className="font-bold text-[11px] text-theme-main truncate min-w-0" title={isHistorical ? historicalDiff?.newLabel : t.diff.rightWorking}>
                 {isHistorical
                   ? t.diff.rightCommitLabel(historicalDiff?.newLabel)
                   : t.diff.rightWorking}
               </span>
               {isHistorical ? (
-                <span className="text-[9px] px-2 py-0.5 rounded-full font-mono font-medium bg-sky-500/15 text-sky-400 border border-sky-500/30 shrink-0 flex items-center gap-1 shadow-2xs">
+                <span className="text-[9px] px-1.5 py-0.5 rounded-full font-mono font-medium bg-sky-500/15 text-sky-400 border border-sky-500/30 shrink-0 flex items-center gap-1 shadow-2xs whitespace-nowrap" title={t.diff.snapshot}>
                   <Lock className="w-2.5 h-2.5" />
-                  {t.diff.snapshot}
+                  <span className="hidden sm:inline">{t.diff.snapshot}</span>
                 </span>
               ) : (
-                <span className="text-[9px] px-2 py-0.5 rounded-full font-mono font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0 flex items-center gap-1 shadow-2xs">
+                <span className="text-[9px] px-1.5 py-0.5 rounded-full font-mono font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0 flex items-center gap-1 shadow-2xs whitespace-nowrap" title={t.diff.editable}>
                   <Sparkles className="w-2.5 h-2.5" />
-                  {t.diff.editable}
+                  <span className="hidden sm:inline">{t.diff.editable}</span>
                 </span>
               )}
             </div>
-            <span className="text-[10px] text-theme-dim hidden 2xl:inline font-mono shrink-0">
-              {isHistorical ? t.diff.commitRevision : t.diff.workingCopy}
-            </span>
+            {isWide && (
+              <span className="text-[10px] text-theme-dim font-mono shrink-0">
+                {isHistorical ? t.diff.commitRevision : t.diff.workingCopy}
+              </span>
+            )}
           </div>
         </div>
       ) : (
         /* Subheader for Single File Editor Mode */
-        <div className="h-7 px-3 border-b border-theme-border flex items-center justify-between bg-theme-subbar text-xs select-none shrink-0">
-          <div className="flex items-center gap-2 min-w-0">
+        <div className="h-7 px-2 sm:px-3 border-b border-theme-border flex items-center justify-between bg-theme-subbar text-xs select-none shrink-0 overflow-hidden">
+          <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 overflow-hidden">
             <FileCode className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-            <span className="font-bold text-[11px] text-theme-main truncate">
-              {t.diff.singleFileViewing}: {relativePath}
+            <span className="font-bold text-[11px] text-theme-main truncate" title={relativePath}>
+              {fileName}
             </span>
-            <span className="text-[9px] px-1.5 py-0.2 rounded font-mono font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0 flex items-center gap-1">
+            <span className="text-[9px] px-1.5 py-0.2 rounded font-mono font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0 flex items-center gap-1 whitespace-nowrap">
               <Sparkles className="w-2.5 h-2.5" />
-              {t.diff.liveEditable}
+              <span className="hidden sm:inline">{t.diff.liveEditable}</span>
             </span>
             <span className="text-[9px] px-1.5 py-0.2 rounded font-mono font-medium bg-sky-500/15 text-sky-400 border border-sky-500/30 shrink-0">
               {fileLanguage.toUpperCase()}
             </span>
-            <span className="text-[9px] px-1.5 py-0.2 rounded font-mono text-theme-dim bg-theme-input border border-theme-border shrink-0">
+            <span className="text-[9px] px-1.5 py-0.2 rounded font-mono text-theme-dim bg-theme-input border border-theme-border shrink-0 hidden sm:inline">
               UTF-8
             </span>
           </div>
-          <div className="flex items-center gap-2 text-[10px] font-mono text-theme-dim">
+          <div className="flex items-center gap-2 text-[10px] font-mono text-theme-dim shrink-0 hidden md:flex">
             <span>{t.diff.saveShortcutHint}</span>
             <span>•</span>
             <span>{t.diff.autoSyncHint}</span>
@@ -1041,7 +1083,13 @@ export function DiffEditorPanel() {
 
       {/* Main Monaco Container */}
       <div className="flex-1 relative">
-        {Boolean(selectedFileDiff?.isBinary || originalContent.startsWith('(Binary') || originalContent.startsWith('(\u4e8c\u8fdb\u5236\u6587\u4ef6') || modifiedContent.startsWith('(\u4e8c\u8fdb\u5236\u6587\u4ef6')) ? (
+        {isImageFile(fullAbsolutePath) ? (
+          <ImageViewer
+            filePath={fullAbsolutePath}
+            theme={theme}
+            onOpenFolder={() => revealFileInOS(relativePath)}
+          />
+        ) : Boolean(selectedFileDiff?.isBinary || originalContent.startsWith('(Binary') || originalContent.startsWith('(\u4e8c\u8fdb\u5236\u6587\u4ef6') || modifiedContent.startsWith('(\u4e8c\u8fdb\u5236\u6587\u4ef6')) ? (
           <div className="w-full h-full flex flex-col items-center justify-center bg-theme-panel text-xs select-none p-6 text-center">
             <div className="w-12 h-12 rounded-xl bg-sky-500/15 border border-sky-500/30 flex items-center justify-center text-sky-400 mb-3 shadow-inner">
               <FileCode className="w-6 h-6" />

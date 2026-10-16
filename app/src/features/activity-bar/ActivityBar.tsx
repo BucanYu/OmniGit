@@ -3,11 +3,13 @@ import { useWorkbenchStore } from '../../store/useWorkbenchStore';
 import { useTerminalStore } from '../terminal/useTerminalStore';
 import { useAppStore } from '../../store/useAppStore';
 import { useTranslation } from '../../locales';
+import { useGlobalSearchStore } from '../global-search/useGlobalSearchStore';
 import {
   GitCommit,
   Files,
   Terminal,
   Settings,
+  Search,
 } from 'lucide-react';
 
 export function ActivityBar() {
@@ -50,6 +52,15 @@ export function ActivityBar() {
             <div className="absolute left-0 top-1.5 bottom-1.5 w-[3px] bg-sky-500 rounded-r" />
           )}
           <Files className="w-5 h-5 stroke-[1.8]" />
+        </button>
+
+        {/* 3. Global Code Search (Find in Files) */}
+        <button
+          onClick={() => useGlobalSearchStore.getState().openSearchModal()}
+          className="relative p-2 rounded-lg transition-colors cursor-pointer group text-theme-muted hover:text-theme-main hover:bg-theme-hover/60"
+          title={t.activityBar.search}
+        >
+          <Search className="w-5 h-5 stroke-[1.8]" />
         </button>
       </div>
 

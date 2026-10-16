@@ -397,6 +397,8 @@ export async function handleGitApiRequest(req: IncomingMessage, res: ServerRespo
         '.webp': 'image/webp',
         '.ico': 'image/x-icon',
         '.bmp': 'image/bmp',
+        '.avif': 'image/avif',
+        '.apng': 'image/apng',
         '.mp4': 'video/mp4',
         '.webm': 'video/webm',
         '.pdf': 'application/pdf',
@@ -404,7 +406,7 @@ export async function handleGitApiRequest(req: IncomingMessage, res: ServerRespo
       const contentType = mimeTypes[ext] || 'application/octet-stream';
       res.writeHead(200, {
         'Content-Type': contentType,
-        'Cache-Control': 'public, max-age=3600',
+        'Cache-Control': 'no-cache, must-revalidate',
       });
       fs.createReadStream(resolvedPath).pipe(res);
       return true;
@@ -423,7 +425,49 @@ export async function handleGitApiRequest(req: IncomingMessage, res: ServerRespo
         body.encoding || 'utf-8',
         body.eol
       );
-      res.end(JSON.stringify({ success }));
+      let mtime = 0;
+      if (success) {
+        mtime = fileEncodingService.getFileStat(filePath).mtime;
+      }
+      res.end(JSON.stringify({ success, mtime }));
+    } else if (pathname === '/api/fs/stat') {
+      const repoPath = query.repoPath || '';
+      const relativePath = query.relativePath || '';
+      const filePath = query.filePath || (repoPath && relativePath ? path.join(repoPath, relativePath) : repoPath);
+      if (!filePath) {
+        res.statusCode = 400;
+        res.end(JSON.stringify({ error: 'Missing filePath' }));
+        return true;
+      }
+      const stat = fileEncodingService.getFileStat(filePath);
+      res.end(JSON.stringify(stat));
+    } else if (pathname === '/api/fs/search-code') {
+      const repos = body.repos || [];
+      const searchQuery = body.query || '';
+      const options = body.options || {};
+
+      const allMatches: any[] = [];
+      for (const r of repos) {
+        const rPath = typeof r === 'string' ? r : r.path;
+        const rName = typeof r === 'string' ? path.basename(r) : (r.name || path.basename(rPath));
+        if (!rPath || !fs.existsSync(rPath)) continue;
+
+        const matches = await gitService.searchCode(rPath, searchQuery, options);
+        for (const m of matches) {
+          allMatches.push({
+            ...m,
+            file: m.relativePath,
+            line: m.lineNumber,
+            text: m.lineContent,
+            repoPath: rPath,
+            repoName: rName,
+          });
+          if (allMatches.length >= (options.maxResults || 300)) break;
+        }
+        if (allMatches.length >= (options.maxResults || 300)) break;
+      }
+
+      res.end(JSON.stringify({ matches: allMatches }));
     } else {
       res.statusCode = 404;
       res.end(JSON.stringify({ error: 'Endpoint not found' }));

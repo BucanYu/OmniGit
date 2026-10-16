@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useEditorTabsStore, type EditorTabItem } from './useEditorTabsStore';
+import { useAppStore } from '../../store/useAppStore';
 import { useTranslation } from '../../locales';
 import {
   X,
@@ -19,12 +20,17 @@ import {
   ChevronDown,
   Layers,
   Search,
+  FolderOpen,
+  Image as ImageIcon,
 } from 'lucide-react';
 
 function getTabIcon(name: string) {
   const lowerName = name.toLowerCase();
   if (lowerName.startsWith('.env')) {
     return <Settings className="w-3.5 h-3.5 text-amber-400 shrink-0" />;
+  }
+  if (lowerName.startsWith('.git') || lowerName.includes('license')) {
+    return <FileText className="w-3.5 h-3.5 text-theme-muted shrink-0" />;
   }
   const ext = name.split('.').pop()?.toLowerCase() || '';
   switch (ext) {
@@ -36,19 +42,66 @@ function getTabIcon(name: string) {
     case 'mjs':
     case 'cjs':
       return <Code2 className="w-3.5 h-3.5 text-yellow-400 shrink-0" />;
+    case 'java':
+    case 'kt':
+    case 'kts':
+    case 'scala':
+      return <Code2 className="w-3.5 h-3.5 text-red-400 shrink-0" />;
+    case 'py':
+    case 'pyw':
+      return <Code2 className="w-3.5 h-3.5 text-blue-300 shrink-0" />;
+    case 'go':
+      return <Code2 className="w-3.5 h-3.5 text-cyan-400 shrink-0" />;
+    case 'rs':
+      return <Code2 className="w-3.5 h-3.5 text-orange-500 shrink-0" />;
+    case 'c':
+    case 'h':
+    case 'cpp':
+    case 'hpp':
+    case 'cc':
+    case 'cs':
+      return <Code2 className="w-3.5 h-3.5 text-blue-500 shrink-0" />;
     case 'json':
+    case 'jsonc':
+    case 'json5':
       return <FileJson className="w-3.5 h-3.5 text-amber-300 shrink-0" />;
     case 'html':
+    case 'htm':
     case 'vue':
+    case 'svelte':
       return <FileCode className="w-3.5 h-3.5 text-orange-400 shrink-0" />;
+    case 'png':
+    case 'jpg':
+    case 'jpeg':
+    case 'gif':
+    case 'webp':
+    case 'svg':
+    case 'ico':
+    case 'bmp':
+    case 'avif':
+    case 'apng':
+      return <ImageIcon className="w-3.5 h-3.5 text-pink-400 shrink-0" />;
+    case 'xml':
+    case 'xsd':
+    case 'xaml':
+      return <FileCode className="w-3.5 h-3.5 text-amber-500 shrink-0" />;
     case 'css':
     case 'scss':
+    case 'sass':
     case 'less':
       return <FileCode className="w-3.5 h-3.5 text-sky-300 shrink-0" />;
     case 'md':
     case 'markdown':
     case 'txt':
+    case 'log':
       return <FileText className="w-3.5 h-3.5 text-emerald-400 shrink-0" />;
+    case 'yml':
+    case 'yaml':
+    case 'toml':
+    case 'ini':
+    case 'properties':
+    case 'conf':
+      return <Settings className="w-3.5 h-3.5 text-purple-300 shrink-0" />;
     case 'sh':
     case 'bash':
     case 'bat':
@@ -83,6 +136,7 @@ export function EditorTabStrip() {
   const activeTabRef = useRef<HTMLDivElement>(null);
   const dropdownTriggerRef = useRef<HTMLButtonElement>(null);
   const dropdownMenuRef = useRef<HTMLDivElement>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
 
   const [showAllTabsMenu, setShowAllTabsMenu] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -206,16 +260,19 @@ function getDisambiguationLabel(tab: EditorTabItem, allTabs: EditorTabItem[]): s
   // Close menus on outside click
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
+      const targetNode = e.target as Node;
       if (
         dropdownMenuRef.current &&
-        !dropdownMenuRef.current.contains(e.target as Node) &&
+        !dropdownMenuRef.current.contains(targetNode) &&
         dropdownTriggerRef.current &&
-        !dropdownTriggerRef.current.contains(e.target as Node)
+        !dropdownTriggerRef.current.contains(targetNode)
       ) {
         setShowAllTabsMenu(false);
         setSearchQuery('');
       }
-      setContextMenu(null);
+      if (contextMenuRef.current && !contextMenuRef.current.contains(targetNode)) {
+        setContextMenu(null);
+      }
     };
     window.addEventListener('mousedown', handleClickOutside);
     return () => window.removeEventListener('mousedown', handleClickOutside);
@@ -231,10 +288,25 @@ function getDisambiguationLabel(tab: EditorTabItem, allTabs: EditorTabItem[]): s
   };
 
   const handleCopy = (text: string) => {
-    navigator.clipboard.writeText(text);
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).catch(() => {});
+    }
     setCopiedPath(text);
-    setTimeout(() => setCopiedPath(null), 1500);
+    setTimeout(() => {
+      setCopiedPath(null);
+      setContextMenu(null);
+    }, 600);
+  };
+
+  const handleOpenContainingFolder = (filePath: string, repoPath?: string) => {
     setContextMenu(null);
+    if (!filePath) return;
+
+    const normPath = filePath.replace(/\\/g, '/');
+    const lastSlash = normPath.lastIndexOf('/');
+    const parentDir = lastSlash > 0 ? normPath.substring(0, lastSlash) : (repoPath || normPath);
+
+    useAppStore.getState().openProjectFolder(parentDir);
   };
 
   const filteredDropdownTabs = useMemo(() => {
@@ -417,7 +489,7 @@ function getDisambiguationLabel(tab: EditorTabItem, allTabs: EditorTabItem[]): s
               {/* Header */}
               <div className="px-3 py-1.5 border-b border-theme-border/60 flex items-center justify-between font-medium text-theme-muted text-[11px]">
                 <span>{t.editor.openTabsListTitle(uniqueTabs.length)}</span>
-                <span className="text-[10px] opacity-70">Esc 关闭</span>
+                <span className="text-[10px] opacity-70">{t.editor.openTabsListCloseHint}</span>
               </div>
 
               {/* Optional Search if more than 5 tabs */}
@@ -536,11 +608,17 @@ function getDisambiguationLabel(tab: EditorTabItem, allTabs: EditorTabItem[]): s
           )}
         </div>
 
-        {/* Quick Close All Button */}
+        {/* Quick Close Active Tab Button */}
         <button
-          onClick={() => closeAllTabs()}
-          className="p-1 rounded hover:bg-theme-hover text-theme-muted hover:text-red-400 transition cursor-pointer"
-          title={t.editor.closeAllTabs}
+          onClick={() => {
+            if (activeTabId) {
+              closeTab(activeTabId);
+            } else {
+              closeAllTabs();
+            }
+          }}
+          className="p-1 rounded hover:bg-theme-hover text-theme-muted hover:text-theme-main transition cursor-pointer"
+          title={t.editor.closeCurrentTab}
         >
           <X className="w-3.5 h-3.5" />
         </button>
@@ -549,20 +627,27 @@ function getDisambiguationLabel(tab: EditorTabItem, allTabs: EditorTabItem[]): s
       {/* 3. Right Click Context Menu */}
       {contextMenu && (
         <div
-          style={{ top: `${contextMenu.y}px`, left: `${contextMenu.x}px` }}
-          className="fixed bg-theme-app border border-theme-border rounded shadow-xl py-1 z-50 text-xs w-48 text-theme-main animate-in fade-in zoom-in-95 duration-100"
+          ref={contextMenuRef}
+          style={{
+            top: `${Math.min(contextMenu.y, (typeof window !== 'undefined' ? window.innerHeight : 800) - 250)}px`,
+            left: `${Math.min(contextMenu.x, (typeof window !== 'undefined' ? window.innerWidth : 1200) - 210)}px`,
+          }}
+          className="fixed bg-theme-app border border-theme-border rounded-md shadow-2xl py-1 z-50 text-xs w-48 text-theme-main animate-in fade-in zoom-in-95 duration-100 select-none backdrop-blur-md"
         >
           <div
-            onClick={() => {
+            onClick={(e) => {
+              e.stopPropagation();
               closeTab(contextMenu.tab.id);
               setContextMenu(null);
             }}
-            className="px-3 py-1.5 hover:bg-theme-hover cursor-pointer"
+            className="px-3 py-1.5 hover:bg-theme-hover cursor-pointer flex items-center justify-between"
           >
-            {t.editor.closeCurrentTab}
+            <span>{t.editor.closeCurrentTab}</span>
+            <span className="text-[10px] text-theme-muted font-mono opacity-60">Ctrl+W</span>
           </div>
           <div
-            onClick={() => {
+            onClick={(e) => {
+              e.stopPropagation();
               closeOtherTabs(contextMenu.tab.id);
               setContextMenu(null);
             }}
@@ -571,7 +656,8 @@ function getDisambiguationLabel(tab: EditorTabItem, allTabs: EditorTabItem[]): s
             {t.editor.closeOtherTabs}
           </div>
           <div
-            onClick={() => {
+            onClick={(e) => {
+              e.stopPropagation();
               closeSavedTabs();
               setContextMenu(null);
             }}
@@ -580,36 +666,54 @@ function getDisambiguationLabel(tab: EditorTabItem, allTabs: EditorTabItem[]): s
             {t.editor.closeSavedTabs}
           </div>
           <div
-            onClick={() => {
+            onClick={(e) => {
+              e.stopPropagation();
               closeAllTabs();
               setContextMenu(null);
             }}
-            className="px-3 py-1.5 hover:bg-theme-hover cursor-pointer text-red-400"
+            className="px-3 py-1.5 hover:bg-theme-hover cursor-pointer text-red-400/90 hover:text-red-400"
           >
             {t.editor.closeAllTabs}
           </div>
-          <div className="border-t border-theme-border my-1" />
+          <div className="border-t border-theme-border/60 my-1" />
           <div
-            onClick={() => handleCopy(contextMenu.tab.relativePath || contextMenu.tab.fileName)}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleCopy(contextMenu.tab.relativePath || contextMenu.tab.fileName);
+            }}
             className="px-3 py-1.5 hover:bg-theme-hover cursor-pointer flex items-center justify-between"
           >
             <span>{t.editor.copyRelativePath}</span>
             {copiedPath === (contextMenu.tab.relativePath || contextMenu.tab.fileName) ? (
-              <Check className="w-3 h-3 text-emerald-400" />
+              <Check className="w-3.5 h-3.5 text-emerald-400" />
             ) : (
-              <Copy className="w-3 h-3 text-theme-muted" />
+              <Copy className="w-3.5 h-3.5 text-theme-muted" />
             )}
           </div>
           <div
-            onClick={() => handleCopy(contextMenu.tab.filePath)}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleCopy(contextMenu.tab.filePath);
+            }}
             className="px-3 py-1.5 hover:bg-theme-hover cursor-pointer flex items-center justify-between"
           >
             <span>{t.editor.copyAbsolutePath}</span>
             {copiedPath === contextMenu.tab.filePath ? (
-              <Check className="w-3 h-3 text-emerald-400" />
+              <Check className="w-3.5 h-3.5 text-emerald-400" />
             ) : (
-              <Copy className="w-3 h-3 text-theme-muted" />
+              <Copy className="w-3.5 h-3.5 text-theme-muted" />
             )}
+          </div>
+          <div className="border-t border-theme-border/60 my-1" />
+          <div
+            onClick={(e) => {
+              e.stopPropagation();
+              handleOpenContainingFolder(contextMenu.tab.filePath, contextMenu.tab.repoPath);
+            }}
+            className="px-3 py-1.5 hover:bg-theme-hover cursor-pointer flex items-center justify-between group"
+          >
+            <span>{t.editor.openContainingFolder}</span>
+            <FolderOpen className="w-3.5 h-3.5 text-sky-400 opacity-80 group-hover:opacity-100" />
           </div>
         </div>
       )}

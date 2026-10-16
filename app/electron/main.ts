@@ -134,10 +134,11 @@ function serveStatic(distDir: string, req: http.IncomingMessage, res: http.Serve
 }
 
 // 2. Start Embedded Git API & Static Loopback Server
-function startEmbeddedServer(): Promise<number> {
+function startEmbeddedServer(preferredPort = 5345): Promise<number> {
   return new Promise((resolve) => {
     const distDir = getDistDir();
     const isDev = !app.isPackaged && Boolean(process.env.VITE_DEV_SERVER_URL);
+    currentApiPort = preferredPort;
 
     embeddedServer = http.createServer(async (req, res) => {
       const handled = await handleGitApiRequest(req, res);
@@ -167,6 +168,10 @@ function startEmbeddedServer(): Promise<number> {
     });
 
     embeddedServer.listen(currentApiPort, '127.0.0.1', () => {
+      const addr = embeddedServer!.address() as any;
+      if (currentApiPort === 0 && addr && addr.port) {
+        currentApiPort = addr.port;
+      }
       console.log(`[Electron] Embedded API server successfully bound to http://127.0.0.1:${currentApiPort}`);
       resolve(currentApiPort);
     });
@@ -194,14 +199,16 @@ function getAppIconPath(): string {
 }
 
 // 3. Create Desktop Native Window
-function createWindow(workspaceParam?: string): BrowserWindow {
+function createWindow(workspaceParam?: string, options?: { show?: boolean }): BrowserWindow {
   const isMac = process.platform === 'darwin';
   const iconPath = getAppIconPath();
+  const shouldShow = options?.show !== undefined ? options.show : !isSmokeTest;
   const win = new BrowserWindow({
     width: 1360,
     height: 860,
     minWidth: 1024,
     minHeight: 680,
+    show: shouldShow,
     frame: false, // Frameless on Windows & macOS (TopBar renders custom drag bar & controls)
     titleBarStyle: isMac ? 'hiddenInset' : undefined,
     trafficLightPosition: isMac ? { x: 14, y: 12 } : undefined,
@@ -335,68 +342,125 @@ function setupIpcHandlers() {
 // 5. Application Lifecycle
 const isSmokeTest = process.argv.includes('--smoke-test');
 
-const gotLock = app.requestSingleInstanceLock();
-if (!gotLock && !isSmokeTest) {
-  // If an instance is already running, exit this duplicate process immediately
-  app.quit();
-} else {
-  app.on('second-instance', () => {
-    // Robust window restoration on second launch
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.show();
-      mainWindow.focus();
-      // Bring to top temporarily to defeat Windows foreground lock timeout
-      mainWindow.setAlwaysOnTop(true);
-      mainWindow.setAlwaysOnTop(false);
-    } else {
-      mainWindow = createWindow();
-      mainWindow.show();
-      mainWindow.focus();
-    }
-  });
+if (isSmokeTest) {
+  // Completely isolate userData to prevent interfering with running desktop instances
+  const isolatedUserData = path.join(app.getPath('temp'), 'omnigit-smoke-test-profile');
+  try {
+    fs.mkdirSync(isolatedUserData, { recursive: true });
+  } catch {}
+  app.setPath('userData', isolatedUserData);
+}
 
-  app.whenReady().then(async () => {
-    if (process.platform !== 'darwin') {
-      Menu.setApplicationMenu(null);
-    }
-    await detectGitBinary();
-    const port = await startEmbeddedServer();
-    setupIpcHandlers();
+if (!isSmokeTest) {
+  const gotLock = app.requestSingleInstanceLock();
+  if (!gotLock) {
+    // If an instance is already running, exit this duplicate process immediately
+    app.quit();
+    process.exit(0);
+  } else {
+    app.on('second-instance', () => {
+      // Robust window restoration on second launch
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.show();
+        mainWindow.focus();
+        // Bring to top temporarily to defeat Windows foreground lock timeout
+        mainWindow.setAlwaysOnTop(true);
+        mainWindow.setAlwaysOnTop(false);
+      } else {
+        mainWindow = createWindow();
+        mainWindow.show();
+        mainWindow.focus();
+      }
+    });
+  }
+}
 
-    // Headless smoke test mode for packaging automated verification
-    if (isSmokeTest) {
-      console.log('[SmokeTest] OmniGit core runtime initialized successfully.');
-      console.log(`[SmokeTest] Git detected. Embedded server running on port: ${port}`);
-      const testWin = createWindow();
-      console.log('[SmokeTest] Main window created successfully.');
+app.whenReady().then(async () => {
+  if (process.platform !== 'darwin') {
+    Menu.setApplicationMenu(null);
+  }
+  await detectGitBinary();
+  const port = await startEmbeddedServer(isSmokeTest ? 0 : 5345);
+  setupIpcHandlers();
 
-      const markerPath = path.join(app.getPath('temp'), 'omnigit_smoke_test_success.txt');
-      try {
-        fs.writeFileSync(
-          markerPath,
-          JSON.stringify({
-            status: 'PASSED',
-            timestamp: new Date().toISOString(),
-            port,
-            version: app.getVersion(),
-          })
-        );
-      } catch {}
+  // Headless smoke test mode for packaging automated verification
+  if (isSmokeTest) {
+    console.log('[SmokeTest] OmniGit core runtime initialized successfully (Headless Mode).');
+    console.log(`[SmokeTest] Git detected. Embedded server running on isolated port: ${port}`);
+    const testWin = createWindow(undefined, { show: false });
+    console.log('[SmokeTest] Main window created off-screen (show: false).');
 
-      setTimeout(() => {
-        console.log('[SmokeTest] All startup checks PASSED! Exiting with code 0.');
+      let hasPageError = false;
+      let pageErrorMessage = '';
+
+      testWin.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+        if (level === 3 || message.includes('Minified React error') || message.includes('Uncaught Error')) {
+          console.error(`[SmokeTest Web Console Error] ${message} (${sourceId}:${line})`);
+          hasPageError = true;
+          pageErrorMessage = message;
+        }
+      });
+
+      testWin.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
+        console.error(`[SmokeTest Web Load Failure] ${errorCode}: ${errorDescription}`);
+        hasPageError = true;
+        pageErrorMessage = `Page failed to load: ${errorDescription}`;
+      });
+
+      testWin.webContents.on('did-finish-load', async () => {
+        console.log('[SmokeTest Web] DOM loaded. Verifying React mounting and workspace stability...');
         try {
-          testWin.destroy();
-          if (embeddedServer) {
-            if (typeof (embeddedServer as any).closeAllConnections === 'function') {
-              (embeddedServer as any).closeAllConnections();
-            }
-            embeddedServer.close();
+          await new Promise((r) => setTimeout(r, 1500));
+          const testResult = await testWin.webContents.executeJavaScript(`
+            (function() {
+              const root = document.getElementById('root');
+              if (!root || !root.children.length) {
+                return { ok: false, error: 'Root container empty or not mounted' };
+              }
+              const hasCrashModal = document.body.innerText.includes('Minified React error') || 
+                                    document.body.innerText.includes('Something went wrong') ||
+                                    document.body.innerText.includes('应用程序运行异常');
+              if (hasCrashModal) {
+                return { ok: false, error: 'React Error Boundary or crash modal displayed' };
+              }
+              return { ok: true };
+            })()
+          `);
+
+          if (!testResult.ok || hasPageError) {
+            console.error('[SmokeTest] Web verification FAILED:', testResult.error || pageErrorMessage);
+            app.exit(1);
+            return;
           }
-        } catch {}
-        app.exit(0);
-      }, 800);
+
+          console.log('[SmokeTest] Web React DOM mounted cleanly with 0 runtime errors.');
+          const markerPath = path.join(app.getPath('temp'), 'omnigit_smoke_test_success.txt');
+          fs.writeFileSync(
+            markerPath,
+            JSON.stringify({
+              status: 'PASSED',
+              timestamp: new Date().toISOString(),
+              port,
+              version: app.getVersion(),
+            })
+          );
+          console.log('[SmokeTest] All startup & Web runtime checks PASSED! Exiting with code 0.');
+          try {
+            testWin.destroy();
+            if (embeddedServer) {
+              if (typeof (embeddedServer as any).closeAllConnections === 'function') {
+                (embeddedServer as any).closeAllConnections();
+              }
+              embeddedServer.close();
+            }
+          } catch {}
+          app.exit(0);
+        } catch (e: any) {
+          console.error('[SmokeTest] Exception during web verification:', e);
+          app.exit(1);
+        }
+      });
       return;
     }
 
@@ -442,5 +506,4 @@ if (!gotLock && !isSmokeTest) {
       } catch {}
     }
   });
-}
 

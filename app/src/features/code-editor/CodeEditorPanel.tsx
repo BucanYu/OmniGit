@@ -4,6 +4,8 @@ import { useEditorTabsStore } from './useEditorTabsStore';
 import { EditorTabStrip } from './EditorTabStrip';
 import { useAppStore } from '../../store/useAppStore';
 import { MarkdownPreview } from './MarkdownPreview';
+import { ImageViewer } from './ImageViewer';
+import { isImageFile } from './imageUtils';
 import { useTranslation } from '../../locales';
 import {
   toggleEditorComment,
@@ -22,6 +24,9 @@ import {
   Eye,
   Code2,
   Loader2,
+  RotateCcw,
+  AlertTriangle,
+  FolderOpen,
 } from 'lucide-react';
 
 export function CodeEditorPanel() {
@@ -30,6 +35,9 @@ export function CodeEditorPanel() {
     activeTabId,
     updateTabContent,
     saveTab,
+    reloadTabFromDisk,
+    dismissConflict,
+    syncActiveTabWithDisk,
   } = useEditorTabsStore();
   const theme = useAppStore((state) => state.theme);
   const { t } = useTranslation();
@@ -37,18 +45,40 @@ export function CodeEditorPanel() {
   const [cursorPos, setCursorPos] = useState({ line: 1, col: 1 });
   const [wordWrap, setWordWrap] = useState(true);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [reloadSuccess, setReloadSuccess] = useState(false);
   const [mdViewMode, setMdViewMode] = useState<'editor' | 'split' | 'preview'>('split');
   const [splitPercent, setSplitPercent] = useState<number>(50);
   const [isSplitDragging, setIsSplitDragging] = useState(false);
   const splitContainerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
+  const panelContainerRef = useRef<HTMLDivElement>(null);
+  const [panelWidth, setPanelWidth] = useState<number>(600);
+
+  useEffect(() => {
+    if (!panelContainerRef.current) return;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.contentRect.width > 0) {
+          setPanelWidth(entry.contentRect.width);
+        }
+      }
+    });
+    observer.observe(panelContainerRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  const isNarrow = panelWidth < 540;
 
   const activeTab = tabs.find((t) => t.id === activeTabId);
+
+  // Check if current active tab is an image file
+  const isImage = Boolean(activeTab && isImageFile(activeTab.filePath));
 
   // Check if current active tab is Markdown file
   const isMarkdown = Boolean(
     activeTab &&
+      !isImage &&
       (activeTab.language === 'markdown' ||
         activeTab.filePath.toLowerCase().endsWith('.md') ||
         activeTab.filePath.toLowerCase().endsWith('.markdown'))
@@ -67,6 +97,7 @@ export function CodeEditorPanel() {
     }
   };
 
+  const handleSaveRef = useRef<() => void>(() => {});
   const handleSave = async () => {
     if (!activeTabId) return;
     const success = await saveTab(activeTabId);
@@ -75,6 +106,7 @@ export function CodeEditorPanel() {
       setTimeout(() => setSavedSuccess(false), 2000);
     }
   };
+  handleSaveRef.current = handleSave;
 
   const handleToggleComment = useCallback(() => {
     if (editorRef.current && activeTab) {
@@ -82,26 +114,75 @@ export function CodeEditorPanel() {
     }
   }, [activeTab]);
 
-  // Keyboard shortcut Ctrl+S to save, Ctrl+W to close tab, Ctrl+/ to toggle comment
+  // Keyboard shortcut Ctrl+S to save, Ctrl+W to close tab, Ctrl+/ to toggle comment (Capture phase)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const isCmdOrCtrl = e.ctrlKey || e.metaKey;
-      if (isCmdOrCtrl && (e.key === 's' || e.key === 'S')) {
+      if (isCmdOrCtrl && !e.shiftKey && (e.key === 's' || e.key === 'S')) {
         e.preventDefault();
+        e.stopPropagation();
         handleSave();
-      } else if (isCmdOrCtrl && (e.key === 'w' || e.key === 'W')) {
+      } else if (isCmdOrCtrl && !e.shiftKey && (e.key === 'w' || e.key === 'W')) {
         e.preventDefault();
+        e.stopPropagation();
         if (activeTabId) {
           useEditorTabsStore.getState().closeTab(activeTabId);
         }
-      } else if (isCmdOrCtrl && (e.key === '/' || e.code === 'Slash')) {
+      } else if (isCmdOrCtrl && !e.shiftKey && (e.key === '/' || e.code === 'Slash')) {
         e.preventDefault();
+        e.stopPropagation();
         handleToggleComment();
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, [activeTabId, activeTab?.content, handleToggleComment]);
+
+  // Real-time external file modification sync: focus, visibilitychange, and periodic 2.5s heartbeat
+  useEffect(() => {
+    if (!activeTabId) return;
+
+    // 1. Initial check when active tab changes
+    syncActiveTabWithDisk();
+
+    // 2. Focus & visibility change handler
+    const handleFocus = () => {
+      syncActiveTabWithDisk();
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        syncActiveTabWithDisk();
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    // 3. Heartbeat check every 2500ms
+    const timer = setInterval(() => {
+      syncActiveTabWithDisk();
+    }, 2500);
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      clearInterval(timer);
+    };
+  }, [activeTabId, syncActiveTabWithDisk]);
+
+  // Synchronize Monaco editor model value when activeTab.content changes externally without dirty conflict
+  useEffect(() => {
+    if (editorRef.current && activeTab && !activeTab.isDirty) {
+      const currentVal = editorRef.current.getValue();
+      if (currentVal !== activeTab.content) {
+        const pos = editorRef.current.getPosition();
+        editorRef.current.setValue(activeTab.content);
+        if (pos) {
+          editorRef.current.setPosition(pos);
+        }
+      }
+    }
+  }, [activeTab?.content, activeTab?.isDirty]);
 
   const handleSplitMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -159,12 +240,37 @@ export function CodeEditorPanel() {
     // Register all universal language comment definitions
     registerAllLanguageComments(monaco);
 
-    // Bind Ctrl+/ command within Monaco Editor
+    // 1. Bind Ctrl+S / Cmd+S save command within Monaco Editor
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+      handleSaveRef.current();
+    });
+
+    // 2. Add Save action to Monaco Editor context menu
+    editor.addAction({
+      id: 'omnigit-save-file',
+      label: t.editor.saveFileTooltip,
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS],
+      contextMenuGroupId: '1_modification',
+      contextMenuOrder: 1.0,
+      run: () => {
+        handleSaveRef.current();
+      },
+    });
+
+    // 3. Bind Ctrl+W / Cmd+W close tab command within Monaco Editor
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyW, () => {
+      const currentActiveId = useEditorTabsStore.getState().activeTabId;
+      if (currentActiveId) {
+        useEditorTabsStore.getState().closeTab(currentActiveId);
+      }
+    });
+
+    // 4. Bind Ctrl+/ comment command within Monaco Editor
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Slash, () => {
       handleToggleComment();
     });
 
-    // Add context menu action
+    // 5. Add comment action to context menu
     editor.addAction({
       id: 'omnigit-toggle-line-comment',
       label: t.editor.toggleCommentContextMenu,
@@ -174,6 +280,12 @@ export function CodeEditorPanel() {
       run: () => {
         handleToggleComment();
       },
+    });
+
+    // 6. Bind Ctrl+Shift+F find in files within Monaco Editor
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyF, () => {
+      const selection = editor.getModel()?.getValueInRange(editor.getSelection());
+      (window as any).__openGlobalSearch?.(selection || '');
     });
 
     editor.onDidChangeCursorPosition((e: any) => {
@@ -186,7 +298,7 @@ export function CodeEditorPanel() {
 
   if (!activeTab) {
     return (
-      <div className="flex-1 flex flex-col h-full bg-theme-app text-theme-main overflow-hidden">
+      <div ref={panelContainerRef} className="flex-1 flex flex-col h-full bg-theme-app text-theme-main overflow-hidden">
         <EditorTabStrip />
         <div className="flex-1 flex flex-col items-center justify-center p-8 select-none text-center">
           <div className="p-4 rounded-2xl bg-theme-hover border border-theme-border mb-4 text-theme-muted">
@@ -202,30 +314,66 @@ export function CodeEditorPanel() {
   }
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-theme-app text-theme-main overflow-hidden">
+    <div ref={panelContainerRef} className="flex-1 flex flex-col h-full bg-theme-app text-theme-main overflow-hidden">
       {/* 1. Multi-Tab Bar */}
       <EditorTabStrip />
 
-      {/* 2. Top Quick Action Bar */}
-      <div className="h-8 px-3 border-b border-theme-border flex items-center justify-between bg-theme-app/90 select-none text-xs">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="font-mono text-[11px] text-theme-muted truncate" title={activeTab.filePath}>
-            {activeTab.filePath}
+      {isImage ? (
+        <div className="flex-1 relative overflow-hidden">
+          <ImageViewer
+            filePath={activeTab.filePath}
+            fileSize={activeTab.size}
+            mtime={activeTab.mtime}
+            theme={theme}
+            onOpenFolder={() => {
+              const normPath = activeTab.filePath.replace(/\\/g, '/');
+              const lastSlash = normPath.lastIndexOf('/');
+              const parentDir = lastSlash > 0 ? normPath.substring(0, lastSlash) : (activeTab.repoPath || activeTab.filePath);
+              useAppStore.getState().openProjectFolder(parentDir);
+            }}
+          />
+        </div>
+      ) : (
+        <>
+          {/* 2. Top Quick Action Bar */}
+      <div className="h-8 px-2 sm:px-3 border-b border-theme-border flex items-center justify-between bg-theme-app/90 select-none text-xs gap-1.5 sm:gap-2 min-w-0 overflow-hidden">
+        <div className="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden">
+          <FileCode className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+          <span className="font-semibold text-[11px] text-theme-main shrink-0 truncate max-w-[140px] sm:max-w-[200px]" title={activeTab.fileName}>
+            {activeTab.fileName}
           </span>
+          {!isNarrow && (
+            <span className="font-mono text-[10px] text-theme-muted truncate opacity-70" title={activeTab.filePath}>
+              {activeTab.filePath}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              const normPath = activeTab.filePath.replace(/\\/g, '/');
+              const lastSlash = normPath.lastIndexOf('/');
+              const parentDir = lastSlash > 0 ? normPath.substring(0, lastSlash) : (activeTab.repoPath || activeTab.filePath);
+              useAppStore.getState().openProjectFolder(parentDir);
+            }}
+            className="p-1 rounded hover:bg-theme-hover text-theme-muted hover:text-sky-400 transition cursor-pointer shrink-0"
+            title={t.editor.openContainingFolder}
+          >
+            <FolderOpen className="w-3.5 h-3.5" />
+          </button>
           {activeTab.isDirty && (
-            <span className="text-[10px] text-amber-400 font-medium px-1 rounded bg-amber-400/10">
+            <span className="text-[10px] text-amber-400 font-medium px-1.5 py-0.2 rounded bg-amber-400/10 border border-amber-400/20 shrink-0 whitespace-nowrap">
               {t.editor.unsaved}
             </span>
           )}
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
           {/* Markdown View Mode Segmented Control */}
           {isMarkdown && (
-            <div className="flex items-center bg-theme-sidebar border border-theme-border rounded p-0.5 text-[11px] font-medium mr-1">
+            <div className="flex items-center bg-theme-sidebar border border-theme-border rounded p-0.5 text-[11px] font-medium mr-0.5 sm:mr-1">
               <button
                 onClick={() => setMdViewMode('editor')}
-                className={`flex items-center gap-1 px-2 py-0.5 rounded transition cursor-pointer ${
+                className={`flex items-center gap-1 px-1.5 sm:px-2 py-0.5 rounded transition cursor-pointer ${
                   mdViewMode === 'editor'
                     ? 'bg-sky-600 text-white shadow-xs'
                     : 'text-theme-muted hover:text-theme-main hover:bg-theme-hover'
@@ -233,11 +381,11 @@ export function CodeEditorPanel() {
                 title={t.editor.viewSourceTooltip}
               >
                 <Code2 className="w-3 h-3" />
-                <span>{t.editor.viewSource}</span>
+                {!isNarrow && <span>{t.editor.viewSource}</span>}
               </button>
               <button
                 onClick={() => setMdViewMode('split')}
-                className={`flex items-center gap-1 px-2 py-0.5 rounded transition cursor-pointer ${
+                className={`flex items-center gap-1 px-1.5 sm:px-2 py-0.5 rounded transition cursor-pointer ${
                   mdViewMode === 'split'
                     ? 'bg-sky-600 text-white shadow-xs'
                     : 'text-theme-muted hover:text-theme-main hover:bg-theme-hover'
@@ -245,11 +393,11 @@ export function CodeEditorPanel() {
                 title={t.editor.viewSplitTooltip}
               >
                 <Columns className="w-3 h-3" />
-                <span>{t.editor.viewSplit}</span>
+                {!isNarrow && <span>{t.editor.viewSplit}</span>}
               </button>
               <button
                 onClick={() => setMdViewMode('preview')}
-                className={`flex items-center gap-1 px-2 py-0.5 rounded transition cursor-pointer ${
+                className={`flex items-center gap-1 px-1.5 sm:px-2 py-0.5 rounded transition cursor-pointer ${
                   mdViewMode === 'preview'
                     ? 'bg-sky-600 text-white shadow-xs'
                     : 'text-theme-muted hover:text-theme-main hover:bg-theme-hover'
@@ -257,7 +405,7 @@ export function CodeEditorPanel() {
                 title={t.editor.viewPreviewTooltip}
               >
                 <Eye className="w-3 h-3" />
-                <span>{t.editor.viewPreview}</span>
+                {!isNarrow && <span>{t.editor.viewPreview}</span>}
               </button>
             </div>
           )}
@@ -286,6 +434,22 @@ export function CodeEditorPanel() {
             </button>
           )}
 
+          {/* Reload from Disk Button */}
+          <button
+            onClick={async () => {
+              if (!activeTab) return;
+              const ok = await reloadTabFromDisk(activeTab.id);
+              if (ok) {
+                setReloadSuccess(true);
+                setTimeout(() => setReloadSuccess(false), 1500);
+              }
+            }}
+            className="p-1 rounded hover:bg-theme-hover text-theme-muted hover:text-sky-400 transition cursor-pointer"
+            title={t.editor.reloadFromDiskTooltip}
+          >
+            <RotateCcw className={`w-3.5 h-3.5 transition-transform ${reloadSuccess ? 'text-emerald-400 rotate-180 duration-500' : ''}`} />
+          </button>
+
           {/* Save Button */}
           <button
             onClick={handleSave}
@@ -300,17 +464,42 @@ export function CodeEditorPanel() {
             {savedSuccess ? (
               <>
                 <Check className="w-3 h-3 text-emerald-300" />
-                <span>{t.editor.saved}</span>
+                {!isNarrow && <span>{t.editor.saved}</span>}
               </>
             ) : (
               <>
                 <Save className="w-3 h-3" />
-                <span>{t.editor.save}</span>
+                {!isNarrow && <span>{t.editor.save}</span>}
               </>
             )}
           </button>
         </div>
       </div>
+
+      {/* Disk Conflict Warning Banner */}
+      {activeTab.hasDiskConflict && (
+        <div className="bg-amber-500/15 border-b border-amber-500/30 px-3 py-1.5 flex items-center justify-between text-xs text-amber-300 animate-fadeIn shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+            <span className="font-medium truncate">{t.editor.diskConflictWarning}</span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => reloadTabFromDisk(activeTab.id)}
+              className="px-2.5 py-0.5 rounded bg-sky-600 hover:bg-sky-500 text-white font-medium flex items-center gap-1 cursor-pointer transition shadow-xs text-[11px]"
+            >
+              <RotateCcw className="w-3 h-3" />
+              <span>{t.editor.reloadDiskAction}</span>
+            </button>
+            <button
+              onClick={() => dismissConflict(activeTab.id)}
+              className="px-2.5 py-0.5 rounded bg-theme-hover hover:bg-theme-border text-theme-main transition cursor-pointer text-[11px]"
+            >
+              <span>{t.editor.keepLocalAction}</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 3. Main Monaco Editor Container or Markdown Preview */}
       <div className="flex-1 relative overflow-hidden">
@@ -436,6 +625,8 @@ export function CodeEditorPanel() {
           <span className="font-mono">{activeTab.eol}</span>
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 }

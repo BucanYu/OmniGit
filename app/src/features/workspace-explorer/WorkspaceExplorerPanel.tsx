@@ -1,7 +1,8 @@
 import React, { useEffect } from 'react';
 import { useAppStore } from '../../store/useAppStore';
-import { useWorkspaceExplorerStore } from './useWorkspaceExplorerStore';
+import { useWorkspaceExplorerStore, normalizePath, buildDirKey } from './useWorkspaceExplorerStore';
 import { FileTreeNode } from './FileTreeNode';
+import { useEditorTabsStore } from '../code-editor/useEditorTabsStore';
 import { useTranslation } from '../../locales';
 import {
   FolderGit2,
@@ -12,6 +13,7 @@ import {
   ChevronRight,
   Layers,
   Plus,
+  Crosshair,
 } from 'lucide-react';
 
 export function WorkspaceExplorerPanel() {
@@ -29,16 +31,61 @@ export function WorkspaceExplorerPanel() {
     dirChildren,
     toggleExpandDir,
     refreshDir,
+    locateFile,
   } = useWorkspaceExplorerStore();
 
+  const { tabs, activeTabId } = useEditorTabsStore();
   const { t } = useTranslation();
+
+  const activeTab = tabs.find((t) => t.id === activeTabId);
+  const hasActiveFile = Boolean(activeTab && activeTab.filePath);
+
+  const handleLocateCurrentFile = async () => {
+    if (!activeTab || !activeTab.filePath) return;
+
+    const normActiveFile = normalizePath(activeTab.filePath).toLowerCase();
+
+    // 1. Try to match project by activeTab.repoPath first
+    let matchedProject = activeTab.repoPath
+      ? projects.find((p) => normalizePath(p.path).toLowerCase() === normalizePath(activeTab.repoPath).toLowerCase())
+      : undefined;
+
+    // 2. If not matched, match projects by file path prefix (pick longest matching project path)
+    if (!matchedProject) {
+      const matchingProjects = projects.filter((p) => {
+        const normP = normalizePath(p.path).toLowerCase();
+        return normActiveFile === normP || normActiveFile.startsWith(normP + '/');
+      });
+      if (matchingProjects.length > 0) {
+        matchingProjects.sort((a, b) => b.path.length - a.path.length);
+        matchedProject = matchingProjects[0];
+      }
+    }
+
+    if (!matchedProject) return;
+
+    setActiveProject(matchedProject.id);
+
+    // 3. Compute relative path strictly against matchedProject.path
+    const normProjPath = normalizePath(matchedProject.path);
+    const normFilePath = normalizePath(activeTab.filePath);
+    let relPath = '';
+
+    if (normFilePath.toLowerCase().startsWith(normProjPath.toLowerCase())) {
+      relPath = normFilePath.slice(normProjPath.length).replace(/^\/+/, '');
+    } else if (activeTab.relativePath) {
+      relPath = activeTab.relativePath.replace(/\\/g, '/').replace(/^\/+/, '');
+    }
+
+    await locateFile(matchedProject.path, relPath, activeTab.filePath);
+  };
 
   // Auto-expand the active project or first project on mount if not expanded
   useEffect(() => {
     if (projects.length > 0) {
       const activeP = projects.find((p) => p.id === activeProjectId) || projects[0];
-      const normPath = activeP.path.replace(/\\/g, '/');
-      if (!expandedDirs.has(normPath)) {
+      const rootKey = buildDirKey(activeP.path, '');
+      if (!expandedDirs.has(rootKey)) {
         toggleExpandDir(activeP.path, '');
       }
     }
@@ -68,6 +115,19 @@ export function WorkspaceExplorerPanel() {
           </span>
         </div>
         <div className="flex items-center gap-0.5">
+          {/* Locate Opened File (Scroll from Source) */}
+          <button
+            onClick={handleLocateCurrentFile}
+            disabled={!hasActiveFile}
+            title={hasActiveFile ? t.workspaceExplorer.locateCurrentFile : t.workspaceExplorer.locateNoActiveFile}
+            className={`p-1 rounded transition cursor-pointer ${
+              hasActiveFile
+                ? 'hover:bg-theme-hover text-theme-muted hover:text-sky-400'
+                : 'text-theme-muted/30 cursor-not-allowed'
+            }`}
+          >
+            <Crosshair className="w-3.5 h-3.5" />
+          </button>
           <button
             onClick={handleRefreshAll}
             title={t.workspaceExplorer.refreshTree}
@@ -99,9 +159,9 @@ export function WorkspaceExplorerPanel() {
           </div>
         ) : (
           projects.map((project) => {
-            const normPath = project.path.replace(/\\/g, '/');
-            const isExpanded = expandedDirs.has(normPath);
-            const rootChildren = dirChildren[normPath] || [];
+            const rootKey = buildDirKey(project.path, '');
+            const isExpanded = expandedDirs.has(rootKey);
+            const rootChildren = dirChildren[rootKey] || [];
             const isActive = project.id === activeProjectId;
 
             return (

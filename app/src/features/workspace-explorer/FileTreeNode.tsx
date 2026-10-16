@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import {
   ChevronRight,
   ChevronDown,
@@ -14,8 +14,9 @@ import {
   Settings,
   Database,
   Loader2,
+  Image as ImageIcon,
 } from 'lucide-react';
-import { useWorkspaceExplorerStore, type FileTreeNodeItem } from './useWorkspaceExplorerStore';
+import { useWorkspaceExplorerStore, normalizePath, buildDirKey, type FileTreeNodeItem } from './useWorkspaceExplorerStore';
 import { useEditorTabsStore } from '../code-editor/useEditorTabsStore';
 
 interface FileTreeNodeProps {
@@ -44,19 +45,66 @@ function getFileIcon(name: string, ext?: string) {
     case 'mjs':
     case 'cjs':
       return <Code2 className="w-3.5 h-3.5 text-yellow-400 shrink-0" />;
+    case 'java':
+    case 'kt':
+    case 'kts':
+    case 'scala':
+      return <Code2 className="w-3.5 h-3.5 text-red-400 shrink-0" />;
+    case 'py':
+    case 'pyw':
+      return <Code2 className="w-3.5 h-3.5 text-blue-300 shrink-0" />;
+    case 'go':
+      return <Code2 className="w-3.5 h-3.5 text-cyan-400 shrink-0" />;
+    case 'rs':
+      return <Code2 className="w-3.5 h-3.5 text-orange-500 shrink-0" />;
+    case 'c':
+    case 'h':
+    case 'cpp':
+    case 'hpp':
+    case 'cc':
+    case 'cs':
+      return <Code2 className="w-3.5 h-3.5 text-blue-500 shrink-0" />;
     case 'json':
+    case 'jsonc':
+    case 'json5':
       return <FileJson className="w-3.5 h-3.5 text-amber-300 shrink-0" />;
     case 'html':
+    case 'htm':
     case 'vue':
+    case 'svelte':
       return <FileCode className="w-3.5 h-3.5 text-orange-400 shrink-0" />;
+    case 'png':
+    case 'jpg':
+    case 'jpeg':
+    case 'gif':
+    case 'webp':
+    case 'svg':
+    case 'ico':
+    case 'bmp':
+    case 'avif':
+    case 'apng':
+      return <ImageIcon className="w-3.5 h-3.5 text-pink-400 shrink-0" />;
+    case 'xml':
+    case 'xsd':
+    case 'xaml':
+      return <FileCode className="w-3.5 h-3.5 text-amber-500 shrink-0" />;
     case 'css':
     case 'scss':
+    case 'sass':
     case 'less':
       return <FileCode className="w-3.5 h-3.5 text-sky-300 shrink-0" />;
     case 'md':
     case 'markdown':
     case 'txt':
+    case 'log':
       return <FileText className="w-3.5 h-3.5 text-emerald-400 shrink-0" />;
+    case 'yml':
+    case 'yaml':
+    case 'toml':
+    case 'ini':
+    case 'properties':
+    case 'conf':
+      return <Settings className="w-3.5 h-3.5 text-purple-300 shrink-0" />;
     case 'sh':
     case 'bash':
     case 'bat':
@@ -81,16 +129,39 @@ export function FileTreeNode({ item, repoPath, repoName, depth }: FileTreeNodePr
     dirChildren,
     loadingDirs,
     selectedNodePath,
+    locateHighlightTimestamp,
     selectNode,
     toggleExpandDir,
   } = useWorkspaceExplorerStore();
   const openFileTab = useEditorTabsStore((state) => state.openFileTab);
 
-  const key = item.relativePath ? `${repoPath}/${item.relativePath}`.replace(/\\/g, '/') : repoPath.replace(/\\/g, '/');
+  const rowRef = useRef<HTMLDivElement>(null);
+  const [isLocatePulsing, setIsLocatePulsing] = useState(false);
+
+  const key = buildDirKey(repoPath, item.relativePath);
   const isExpanded = expandedDirs.has(key);
   const isLoading = loadingDirs.has(key);
-  const isSelected = selectedNodePath === item.path;
+  const isSelected = Boolean(
+    selectedNodePath &&
+    item.path &&
+    normalizePath(selectedNodePath).toLowerCase() === normalizePath(item.path).toLowerCase()
+  );
   const children = dirChildren[key] || [];
+
+  // Smooth scroll into view and pulse highlight when this node is located
+  useEffect(() => {
+    if (isSelected && locateHighlightTimestamp > 0 && rowRef.current) {
+      const scrollTimer = setTimeout(() => {
+        rowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 60);
+      setIsLocatePulsing(true);
+      const pulseTimer = setTimeout(() => setIsLocatePulsing(false), 2400);
+      return () => {
+        clearTimeout(scrollTimer);
+        clearTimeout(pulseTimer);
+      };
+    }
+  }, [isSelected, locateHighlightTimestamp]);
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -111,10 +182,15 @@ export function FileTreeNode({ item, repoPath, repoName, depth }: FileTreeNodePr
   return (
     <div>
       <div
+        ref={rowRef}
         onClick={handleClick}
         style={{ paddingLeft: `${depth * 14 + 10}px` }}
-        className={`flex items-center gap-1.5 py-1 pr-2 text-xs cursor-pointer select-none rounded hover:bg-theme-hover/60 transition-colors ${
-          isSelected ? 'bg-theme-hover text-theme-main font-medium' : 'text-theme-main/90'
+        className={`flex items-center gap-1.5 py-1 pr-2 text-xs cursor-pointer select-none rounded transition-all duration-300 ${
+          isLocatePulsing
+            ? 'bg-sky-100 dark:bg-sky-500/25 text-sky-800 dark:text-sky-300 font-semibold ring-1 ring-sky-500/60 dark:ring-sky-400 shadow-sm'
+            : isSelected
+            ? 'bg-theme-hover text-theme-main font-medium'
+            : 'text-theme-main/90 hover:bg-theme-hover/60'
         }`}
         title={`${item.name} (${item.relativePath})`}
       >

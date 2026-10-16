@@ -20,6 +20,8 @@ import { useTerminalStore } from './features/terminal/useTerminalStore';
 import { useWorkbenchStore } from './store/useWorkbenchStore';
 import { useWorkspaceExplorerStore } from './features/workspace-explorer/useWorkspaceExplorerStore';
 import { useEditorTabsStore } from './features/code-editor/useEditorTabsStore';
+import { GlobalSearchModal } from './features/global-search/GlobalSearchModal';
+import { useGlobalSearchStore } from './features/global-search/useGlobalSearchStore';
 
 export default function App() {
   const { t } = useTranslation();
@@ -67,6 +69,7 @@ export default function App() {
     (window as any).__workspaceExplorerStore = useWorkspaceExplorerStore;
     (window as any).__editorTabsStore = useEditorTabsStore;
     (window as any).__terminalStore = useTerminalStore;
+    (window as any).__globalSearchStore = useGlobalSearchStore;
     initApp();
   }, [initApp]);
 
@@ -135,7 +138,10 @@ export default function App() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const isCmdOrCtrl = e.ctrlKey || e.metaKey;
-      if (isCmdOrCtrl && e.shiftKey && (e.key === 'K' || e.key === 'k')) {
+      if (isCmdOrCtrl && e.shiftKey && (e.key === 'F' || e.key === 'f')) {
+        e.preventDefault();
+        useGlobalSearchStore.getState().openSearchModal();
+      } else if (isCmdOrCtrl && e.shiftKey && (e.key === 'K' || e.key === 'k')) {
         e.preventDefault();
         openPushModal();
       } else if (isCmdOrCtrl && (e.key === ',' || e.key === '，')) {
@@ -168,6 +174,7 @@ export default function App() {
         <PushCommitsModal />
         <ConflictsDialog />
         <ThreeWayMergeModal />
+        <GlobalSearchModal />
         {isSettingsModalOpen && (
           <SystemSettingsModal onClose={() => setIsSettingsModalOpen(false)} />
         )}
@@ -256,7 +263,10 @@ export default function App() {
       {/* 6. Global 3-Way Merge Tool Modal (IntelliJ IDEA 1:1) */}
       <ThreeWayMergeModal />
 
-      {/* 6. Global System Settings Modal (IntelliJ IDEA 1:1) */}
+      {/* 7. Global Code Search (Find in Files, IntelliJ IDEA 1:1) */}
+      <GlobalSearchModal />
+
+      {/* 8. Global System Settings Modal (IntelliJ IDEA 1:1) */}
       {isSettingsModalOpen && (
         <SystemSettingsModal onClose={() => setIsSettingsModalOpen(false)} />
       )}

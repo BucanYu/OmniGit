@@ -1261,12 +1261,12 @@ export function StatusPanel() {
         />
 
         {/* Action Buttons: [ Commit / Amend Commit / Commit Merge ] */}
-        <div className="flex items-center justify-between gap-2 pt-0.5 shrink-0">
-          <div className="flex items-center gap-2 flex-1">
+        <div className="flex items-center justify-between gap-1.5 sm:gap-2 pt-0.5 shrink-0 overflow-hidden">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-1 min-w-0">
             {conflictFiles.length > 0 ? (
               <button
                 disabled
-                className="px-3.5 py-1.5 bg-rose-600/20 text-rose-300 border border-rose-500/40 cursor-not-allowed rounded-xl text-xs font-semibold shrink-0 flex items-center gap-1.5"
+                className="px-3 py-1.5 bg-rose-600/20 text-rose-300 border border-rose-500/40 cursor-not-allowed rounded-xl text-xs font-semibold shrink-0 flex items-center gap-1.5"
                 title={t.statusPanel.cannotCommitConflicts(conflictFiles.length)}
               >
                 <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
@@ -1278,7 +1278,7 @@ export function StatusPanel() {
                 <button
                   disabled={!(commitMessage || '').trim() || (totalChecked.length === 0 && !isMerging)}
                   onClick={() => commit(false)}
-                  className="px-4 py-2 bg-gradient-to-b from-blue-500 to-blue-600 hover:from-blue-400 hover:to-blue-500 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-xs font-semibold transition-all shadow-sm shadow-blue-500/25 cursor-pointer shrink-0 whitespace-nowrap border border-blue-400/30"
+                  className="px-2.5 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-b from-blue-500 to-blue-600 hover:from-blue-400 hover:to-blue-500 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-xs font-semibold transition-all shadow-sm shadow-blue-500/25 cursor-pointer shrink-0 whitespace-nowrap border border-blue-400/30"
                   title={isAmend ? t.statusPanel.amendCommitTitle : t.statusPanel.commitBox.commitBtn}
                 >
                   {isAmend ? (t.statusPanel.commitBox.amendBtn || t.statusPanel.commitBox.amend) : t.statusPanel.commitBox.commitBtn}
@@ -1288,7 +1288,7 @@ export function StatusPanel() {
                 <button
                   disabled={!(commitMessage || '').trim() || (totalChecked.length === 0 && !isMerging)}
                   onClick={() => commit(true)}
-                  className="px-4 py-2 bg-theme-card hover:bg-theme-card-hover active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed text-theme-main border border-theme-border-card rounded-xl text-xs font-medium flex items-center justify-center gap-1 transition-all shadow-2xs cursor-pointer shrink-0 whitespace-nowrap"
+                  className="px-2.5 sm:px-4 py-1.5 sm:py-2 bg-theme-card hover:bg-theme-card-hover active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed text-theme-main border border-theme-border-card rounded-xl text-xs font-medium flex items-center justify-center gap-1 transition-all shadow-2xs cursor-pointer shrink-0 whitespace-nowrap"
                   title={t.statusPanel.commitBox.commitAndPushBtn}
                 >
                   <span className="whitespace-nowrap font-medium">
@@ -1299,7 +1299,7 @@ export function StatusPanel() {
             )}
           </div>
 
-          <button className="p-1.5 text-theme-dim hover:text-theme-main hover:bg-theme-hover rounded-lg transition cursor-pointer">
+          <button className="p-1.5 text-theme-dim hover:text-theme-main hover:bg-theme-hover rounded-lg transition cursor-pointer shrink-0">
             <Settings className="w-3.5 h-3.5" />
           </button>
         </div>

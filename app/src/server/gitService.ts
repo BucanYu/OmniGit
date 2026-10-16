@@ -175,6 +175,7 @@ function diagnoseCloneError(errorText: string): string {
 
 function parseGitLogBatchOutput(raw: string): { commits: OutgoingCommitItem[]; allFiles: OutgoingCommitFile[] } {
   const commits: OutgoingCommitItem[] = [];
+  const commitsMap = new Map<string, OutgoingCommitItem>();
   const allFilesMap = new Map<string, OutgoingCommitFile>();
   const chunks = raw.split('\x1e').map((c) => c.trim()).filter(Boolean);
 
@@ -239,17 +240,31 @@ function parseGitLogBatchOutput(raw: string): { commits: OutgoingCommitItem[]; a
       }
     }
 
-    commits.push({
-      hash,
-      shortHash,
-      subject,
-      body: body.trim(),
-      authorName,
-      authorEmail,
-      date,
-      files,
-      isMerge,
-    });
+    const existing = commitsMap.get(hash);
+    if (existing) {
+      // Merge files across diff parents if git log -m outputs separate entries per parent
+      const existingPaths = new Set(existing.files.map((f) => f.path));
+      for (const f of files) {
+        if (!existingPaths.has(f.path)) {
+          existing.files.push(f);
+          existingPaths.add(f.path);
+        }
+      }
+    } else {
+      const commitObj: OutgoingCommitItem = {
+        hash,
+        shortHash,
+        subject,
+        body: body.trim(),
+        authorName,
+        authorEmail,
+        date,
+        files,
+        isMerge,
+      };
+      commitsMap.set(hash, commitObj);
+      commits.push(commitObj);
+    }
   }
 
   return { commits, allFiles: Array.from(allFilesMap.values()) };
@@ -416,6 +431,7 @@ import type {
   SyncCommitsOptions,
 } from './gitTypes';
 import { gitSnapshotService, loadSettings } from './gitSnapshotService';
+import { fileSystemService, type SearchCodeMatch, type SearchCodeOptions } from './fileSystemService';
 
 
 export const gitService = {
@@ -1801,7 +1817,6 @@ export const gitService = {
           '--cherry-pick',
           '--right-only',
           '-m',
-          '--first-parent',
           range,
           '--pretty=format:%x1e%H%x00%h%x00%an%x00%ae%x00%ad%x00%s%x00%P%x00%b%x1f',
           '--name-status',
@@ -1892,7 +1907,6 @@ export const gitService = {
         'log',
         sourceBranch,
         '-m',
-        '--first-parent',
         '-n', '100',
         '--pretty=format:%x1e%H%x00%h%x00%an%x00%ae%x00%ad%x00%s%x00%P%x00%b%x1f',
         '--name-status',
@@ -3242,6 +3256,161 @@ export const gitService = {
         }
       );
     });
+  },
+
+  // Search code across files in repository using high-performance git grep with fallback
+  async searchCode(
+    repoPath: string,
+    query: string,
+    options: SearchCodeOptions = {}
+  ): Promise<SearchCodeMatch[]> {
+    if (!query || !query.trim()) return [];
+
+    const maxResults = options.maxResults || 300;
+    const gitDir = path.join(repoPath, '.git');
+
+    if (fs.existsSync(gitDir)) {
+      try {
+        const gitArgs = ['grep', '-n', '-I', '--untracked'];
+        if (!options.isCaseSensitive) {
+          gitArgs.push('-i');
+        }
+        if (options.isWholeWord) {
+          gitArgs.push('-w');
+        }
+        if (options.isRegex) {
+          gitArgs.push('-E');
+        } else {
+          gitArgs.push('-F');
+        }
+        gitArgs.push('-e', query);
+
+        if (options.filePattern && options.filePattern.trim()) {
+          gitArgs.push('--');
+          const patterns = options.filePattern.split(',').map((p) => p.trim()).filter(Boolean);
+          for (const pat of patterns) {
+            gitArgs.push(pat);
+          }
+        }
+
+        const matches: SearchCodeMatch[] = [];
+
+        // 1. Search file names matching query via git ls-files
+        try {
+          const lsRes = await runGit(['ls-files', '--cached', '--others', '--exclude-standard'], repoPath);
+          if (lsRes.code === 0 && lsRes.stdout) {
+            const files = lsRes.stdout.split('\n');
+            const lowerQuery = query.toLowerCase();
+            for (const f of files) {
+              if (matches.length >= maxResults) break;
+              const cleanF = f.trim();
+              if (!cleanF) continue;
+              const baseName = path.basename(cleanF);
+
+              if (options.filePattern && options.filePattern.trim()) {
+                const patterns = options.filePattern.split(',').map((p) => p.trim().toLowerCase()).filter(Boolean);
+                const lowerName = baseName.toLowerCase();
+                const matchedPat = patterns.some((p) => {
+                  if (p.startsWith('*.')) return lowerName.endsWith(p.substring(1));
+                  if (p.startsWith('.')) return lowerName.endsWith(p);
+                  return lowerName.includes(p);
+                });
+                if (!matchedPat) continue;
+              }
+
+              let isNameMatch = false;
+              if (options.isRegex) {
+                try {
+                  const r = new RegExp(query, options.isCaseSensitive ? '' : 'i');
+                  isNameMatch = r.test(baseName);
+                } catch {}
+              } else if (options.isWholeWord) {
+                const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const r = new RegExp(`\\b${escaped}\\b`, options.isCaseSensitive ? '' : 'i');
+                isNameMatch = r.test(baseName);
+              } else if (options.isCaseSensitive) {
+                isNameMatch = baseName.includes(query);
+              } else {
+                isNameMatch = baseName.toLowerCase().includes(lowerQuery);
+              }
+
+              if (isNameMatch) {
+                const fullPath = path.join(repoPath, cleanF);
+                let mStart = 0;
+                if (options.isCaseSensitive) {
+                  mStart = baseName.indexOf(query);
+                } else {
+                  mStart = baseName.toLowerCase().indexOf(lowerQuery);
+                }
+                if (mStart < 0) mStart = 0;
+
+                matches.push({
+                  filePath: fullPath,
+                  relativePath: cleanF.replace(/\\/g, '/'),
+                  fileName: baseName,
+                  lineNumber: 1,
+                  lineContent: baseName,
+                  matchStart: mStart,
+                  matchLength: query.length,
+                  isFileNameMatch: true,
+                });
+              }
+            }
+          }
+        } catch {}
+
+        // 2. Search code content via git grep
+        const res = await runGit(gitArgs, repoPath);
+        if (res.code === 0 && res.stdout) {
+          const lines = res.stdout.split('\n');
+
+          for (const rawLine of lines) {
+            if (matches.length >= maxResults) break;
+            if (!rawLine.trim()) continue;
+
+            const firstColon = rawLine.indexOf(':');
+            if (firstColon === -1) continue;
+            const secondColon = rawLine.indexOf(':', firstColon + 1);
+            if (secondColon === -1) continue;
+
+            const relPath = rawLine.slice(0, firstColon).replace(/\\/g, '/');
+            const lineNumStr = rawLine.slice(firstColon + 1, secondColon);
+            const lineContent = rawLine.slice(secondColon + 1);
+            const lineNum = parseInt(lineNumStr, 10);
+            if (isNaN(lineNum)) continue;
+
+            const fullPath = path.join(repoPath, relPath);
+            const fileName = path.basename(relPath);
+
+            let matchStart = -1;
+            const matchLength = query.length;
+            if (options.isCaseSensitive) {
+              matchStart = lineContent.indexOf(query);
+            } else {
+              matchStart = lineContent.toLowerCase().indexOf(query.toLowerCase());
+            }
+
+            matches.push({
+              filePath: fullPath,
+              relativePath: relPath,
+              fileName,
+              lineNumber: lineNum,
+              lineContent: lineContent.slice(0, 300),
+              matchStart: matchStart >= 0 ? matchStart : 0,
+              matchLength,
+            });
+          }
+        }
+
+        if (matches.length > 0) {
+          return matches;
+        }
+      } catch (err) {
+        console.warn('[GitService] git grep failed, falling back to fileSystemService.searchCode:', err);
+      }
+    }
+
+    return fileSystemService.searchCode(repoPath, query, options);
   },
 };
 
