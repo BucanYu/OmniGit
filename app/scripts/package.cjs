@@ -41,7 +41,7 @@ if (fs.existsSync(outputAppDir)) {
 fs.mkdirSync(outputAppDir, { recursive: true });
 
 // 4. Copy Electron runtime files
-console.log('[3/4] Copying Electron standalone binaries to release directory...');
+console.log('[3/4] Copying Electron standalone binaries to release directory (with locales pruned)...');
 function copyRecursive(src, dest, filter) {
   const stat = fs.statSync(src);
   if (stat.isDirectory()) {
@@ -55,7 +55,14 @@ function copyRecursive(src, dest, filter) {
   }
 }
 
-copyRecursive(electronSource, outputAppDir);
+// Prune unused 50+ language packs (keep zh-CN, zh-TW, en-US only to save ~36MB)
+const keptLocales = new Set(['zh-CN.pak', 'zh-TW.pak', 'en-US.pak']);
+copyRecursive(electronSource, outputAppDir, (name, fullPath) => {
+  if (fullPath.includes('locales') && name.endsWith('.pak') && !keptLocales.has(name)) {
+    return false;
+  }
+  return true;
+});
 
 // Rename electron.exe to OmniGit.exe
 const oldExe = path.join(outputAppDir, 'electron.exe');

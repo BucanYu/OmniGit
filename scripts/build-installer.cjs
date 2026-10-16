@@ -49,12 +49,12 @@ const timer = setInterval(() => {
     process.stdout.write(`\x1b]0;${titleText}\x07`);
   } catch (_) {}
 
-  // Periodic heartbeat every 10 seconds (clean, elegant, never wraps or spams logs)
+  // Periodic heartbeat every 15 seconds (clean, elegant, never wraps or spams logs)
   if (isCompressing) {
-    if (elapsedSec >= lastReportedSec + 10) {
+    if (elapsedSec >= lastReportedSec + 15) {
       lastReportedSec = elapsedSec;
       const compElapsed = Math.floor((Date.now() - compressionStartTime) / 1000);
-      console.log(`      ... 固实压缩进行中 (已耗时 ${compElapsed} 秒)`);
+      console.log(`      ... LZMA 高压缩进行中 (已耗时 ${compElapsed} 秒)`);
     }
   }
 }, 1000);
@@ -75,7 +75,7 @@ child.stdout.on('data', (d) => {
       isCompressing = true;
       compressionStartTime = Date.now();
       lastReportedSec = Math.floor((Date.now() - startTime) / 1000);
-      console.log(`[2/3] 正在执行固实压缩 (源数据: ${installDataSize}，耗时约 50 秒)...`);
+      console.log(`[2/3] 正在使用 LZMA 极限固实压缩 (源数据: ${installDataSize}，预计约 2 分钟左右)...`);
     }
   }
 
@@ -83,7 +83,7 @@ child.stdout.on('data', (d) => {
     isCompressing = true;
     compressionStartTime = Date.now();
     lastReportedSec = Math.floor((Date.now() - startTime) / 1000);
-    console.log(`[2/3] 正在执行固实压缩 (耗时约 50 秒)...`);
+    console.log(`[2/3] 正在使用 LZMA 极限固实压缩 (预计约 2 分钟左右)...`);
   }
 });
 

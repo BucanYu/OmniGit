@@ -17,8 +17,8 @@ Unicode true
 ; User-level install: No UAC prompt, seamlessly supports silent auto-update
 RequestExecutionLevel user
 
-; Test zlib compression
-SetCompressor /SOLID zlib
+; Maximum LZMA Solid compression (compresses ~270MB down to ~80MB)
+SetCompressor /SOLID lzma
 
 ; Includes
 !include "MUI2.nsh"
