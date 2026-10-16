@@ -5,6 +5,10 @@ title OmniGit - Build Desktop Package
 echo =======================================================
 echo      OmniGit - Cross-Platform Desktop Packager
 echo =======================================================
+echo  提示: 打包过程中请勿点击控制台黑框内部，避免进入
+echo        Windows「快速编辑模式」导致打包进程被挂起。
+echo        若误点且标题出现【选择】，请按一下【回车键】恢复。
+echo =======================================================
 echo.
 
 set "TARGET=%~1"
@@ -52,7 +56,7 @@ if errorlevel 1 goto :BUILD_FAIL
 echo.
 echo Compiling Windows NSIS Setup Installer...
 cd /d "%~dp0"
-call "%~dp0tools\nsis\makensis.exe" /DPRODUCT_VERSION="%PRODUCT_VERSION%" "%~dp0installer.nsi"
+call node "%~dp0build-installer.cjs" "%PRODUCT_VERSION%"
 if errorlevel 1 (
     del /f /q "%~dp0..\app\release\OmniGit-Setup-%PRODUCT_VERSION%.exe" 2>nul
     goto :BUILD_FAIL

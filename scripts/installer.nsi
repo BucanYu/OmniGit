@@ -17,8 +17,8 @@ Unicode true
 ; User-level install: No UAC prompt, seamlessly supports silent auto-update
 RequestExecutionLevel user
 
-; Maximum LZMA Solid compression
-SetCompressor /SOLID lzma
+; Test zlib compression
+SetCompressor /SOLID zlib
 
 ; Includes
 !include "MUI2.nsh"
