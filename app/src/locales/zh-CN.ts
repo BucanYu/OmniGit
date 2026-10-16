@@ -407,7 +407,7 @@ export const zhCN: LocaleDictionary = {
       rename: '重命名分支...',
       delete: '删除本地分支',
       deleteRemote: '删除远程分支',
-      checkoutBranchTooltip: (name: string) => `切换到分支 '${name}'`,
+      checkoutBranchTooltip: (name: string) => `切换到分支 '${name}' 并自动拉取远端最新代码`,
       checkoutAndRebaseTooltip: (name: string) => `切换并变基到 '${name}'`,
       compareWithTooltip: (name: string) => `与 '${name}' 对比差异`,
       rebaseOntoTooltip: (source: string, target: string) => `将 '${source}' 变基到 '${target}'`,

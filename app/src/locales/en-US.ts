@@ -407,7 +407,7 @@ export const enUS: LocaleDictionary = {
       rename: 'Rename...',
       delete: 'Delete Local Branch',
       deleteRemote: 'Delete Remote Branch',
-      checkoutBranchTooltip: (name: string) => `Checkout branch '${name}'`,
+      checkoutBranchTooltip: (name: string) => `Checkout branch '${name}' and pull latest remote updates`,
       checkoutAndRebaseTooltip: (name: string) => `Checkout and rebase onto '${name}'`,
       compareWithTooltip: (name: string) => `Compare with '${name}'`,
       rebaseOntoTooltip: (source: string, target: string) => `Rebase '${source}' onto '${target}'`,

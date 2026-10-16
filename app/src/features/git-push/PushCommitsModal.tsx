@@ -84,6 +84,23 @@ function buildFileTree(files: OutgoingCommitFile[] = []): FileTreeNode {
   return root;
 }
 
+function formatCommitTime(dateStr?: string): string {
+  if (!dateStr) return '';
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    const year = d.getFullYear();
+    const month = pad(d.getMonth() + 1);
+    const day = pad(d.getDate());
+    const hours = pad(d.getHours());
+    const minutes = pad(d.getMinutes());
+    return `${year}-${month}-${day} ${hours}:${minutes}`;
+  } catch {
+    return dateStr || '';
+  }
+}
+
 export const PushCommitsModal: React.FC = () => {
   const { t } = useTranslation();
   const {
@@ -803,8 +820,18 @@ export const PushCommitsModal: React.FC = () => {
                           <p className="font-medium text-theme-main leading-tight line-clamp-2" title={commit.subject}>
                             {commit.subject}
                           </p>
-                          <div className="mt-1 flex items-center justify-between text-[10px] text-theme-dim font-mono">
-                            <span className="truncate max-w-[120px]" title={commit.authorName}>{commit.authorName}</span>
+                          <div className="mt-1 flex items-center justify-between text-[10px] text-theme-dim font-mono gap-1.5">
+                            <div className="flex items-center gap-1.5 min-w-0 truncate">
+                              <span className="truncate max-w-[100px]" title={commit.authorName}>{commit.authorName}</span>
+                              {commit.date && (
+                                <>
+                                  <span className="text-theme-dim/60 shrink-0">•</span>
+                                  <span className="text-theme-dim shrink-0" title={commit.date}>
+                                    {formatCommitTime(commit.date)}
+                                  </span>
+                                </>
+                              )}
+                            </div>
                             <div className="flex items-center gap-1.5 shrink-0">
                               <span className="text-theme-dim hover:text-theme-main" title={commit.hash}>
                                 {commit.shortHash}

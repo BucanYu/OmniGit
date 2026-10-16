@@ -877,19 +877,83 @@ export const gitService = {
     }
   },
 
-  // 7. Checkout branch
-  async checkoutBranch(repoPath: string, branchName: string): Promise<{ success: boolean; message: string }> {
-    const res = await runGit(['checkout', branchName], repoPath, 60000);
+  // 7. Checkout branch (with automatic remote pull)
+  async checkoutBranch(
+    repoPath: string,
+    branchName: string,
+    autoPull = true
+  ): Promise<{
+    success: boolean;
+    message: string;
+    pulled?: boolean;
+    pullStatus?: 'updated' | 'already-up-to-date' | 'no-upstream' | 'conflict' | 'failed';
+    pullMessage?: string;
+  }> {
+    const cleanBranch = branchName.replace(/^origin\//, '');
+    const res = await runGit(['checkout', cleanBranch], repoPath, 60000);
     const output = (res.stderr || res.stdout || '').trim();
-    if (res.code === 0) {
-      return {
-        success: true,
-        message: output || `Switched to branch '${branchName}'`,
-      };
-    } else {
+    if (res.code !== 0) {
       return {
         success: false,
-        message: output || `切换到分支 '${branchName}' 失败: 未知错误，请检查是否有未提交的代码冲突或文件被占用`,
+        message: output || `切换到分支 '${cleanBranch}' 失败: 未知错误，请检查是否有未提交的代码冲突或文件被占用`,
+      };
+    }
+
+    if (!autoPull) {
+      return {
+        success: true,
+        message: output || `Switched to branch '${cleanBranch}'`,
+      };
+    }
+
+    // Auto-pull remote updates immediately after successful checkout
+    try {
+      const upstreamRes = await runGit(['rev-parse', '--abbrev-ref', '@{upstream}'], repoPath);
+      const hasUpstream = upstreamRes.code === 0 && Boolean(upstreamRes.stdout?.trim());
+
+      if (!hasUpstream) {
+        return {
+          success: true,
+          message: `已成功切换到分支 '${cleanBranch}'（本地分支，未关联远端追踪）`,
+          pulled: false,
+          pullStatus: 'no-upstream',
+          pullMessage: 'No upstream tracking branch configured',
+        };
+      }
+
+      const pullRes = await runGit(['pull'], repoPath, 60000);
+      const pullOutput = (pullRes.stdout || pullRes.stderr || '').trim();
+
+      if (pullRes.code === 0) {
+        const isUpToDate = pullOutput.includes('Already up to date');
+        return {
+          success: true,
+          message: isUpToDate
+            ? `已成功切换到分支 '${cleanBranch}'（远端代码已是最新）`
+            : `已成功切换到分支 '${cleanBranch}' 并拉取最新远端代码`,
+          pulled: true,
+          pullStatus: isUpToDate ? 'already-up-to-date' : 'updated',
+          pullMessage: pullOutput,
+        };
+      } else {
+        const isConflict = pullOutput.includes('CONFLICT') || pullOutput.includes('Automatic merge failed');
+        return {
+          success: true,
+          message: isConflict
+            ? `已切换到分支 '${cleanBranch}'，但拉取时产生代码冲突，请尽快解决冲突`
+            : `已切换到分支 '${cleanBranch}'，但拉取远端更新失败: ${pullOutput}`,
+          pulled: false,
+          pullStatus: isConflict ? 'conflict' : 'failed',
+          pullMessage: pullOutput,
+        };
+      }
+    } catch (pullErr: any) {
+      return {
+        success: true,
+        message: `已成功切换到分支 '${cleanBranch}'，拉取远端异常: ${pullErr?.message || String(pullErr)}`,
+        pulled: false,
+        pullStatus: 'failed',
+        pullMessage: pullErr?.message,
       };
     }
   },
@@ -1651,16 +1715,14 @@ export const gitService = {
   async checkoutAndUpdate(
     repoPath: string,
     branchToCheckout: string
-  ): Promise<{ success: boolean; message: string }> {
-    const coRes = await runGit(['checkout', branchToCheckout], repoPath);
-    if (coRes.code !== 0) {
-      return { success: false, message: coRes.stderr || coRes.stdout || `Failed to checkout '${branchToCheckout}'` };
-    }
-    const pullRes = await runGit(['pull'], repoPath);
-    return {
-      success: pullRes.code === 0,
-      message: pullRes.stdout || pullRes.stderr || `Checked out and updated '${branchToCheckout}'`,
-    };
+  ): Promise<{
+    success: boolean;
+    message: string;
+    pulled?: boolean;
+    pullStatus?: 'updated' | 'already-up-to-date' | 'no-upstream' | 'conflict' | 'failed';
+    pullMessage?: string;
+  }> {
+    return this.checkoutBranch(repoPath, branchToCheckout, true);
   },
 
   // 28. Push specific branch (Upgraded with robust error diagnostics and options)
@@ -1817,6 +1879,7 @@ export const gitService = {
           '--cherry-pick',
           '--right-only',
           '-m',
+          '--date=iso',
           range,
           '--pretty=format:%x1e%H%x00%h%x00%an%x00%ae%x00%ad%x00%s%x00%P%x00%b%x1f',
           '--name-status',
@@ -1838,67 +1901,49 @@ export const gitService = {
       }
 
       try {
-        const remoteCherryPickedSources = new Set<string>();
-        const remoteSubjectAuthors = new Set<string>();
+        const isSameBranchPush = sourceBranch === targetBranch;
+        if (!isSameBranchPush) {
+          const remoteCherryPickedSources = new Set<string>();
 
-        if (remoteLogRes.code === 0 && remoteLogRes.stdout) {
-          const records = remoteLogRes.stdout.split('\x1f').filter(Boolean);
-          for (const rec of records) {
-            const cleanRec = rec.replace(/^\x1e/, '');
-            const parts = cleanRec.split('\x00');
-            if (parts.length >= 2) {
-              const rSub = (parts[1] || '').trim();
-              const rBody = parts[2] || '';
-              const rEmail = (parts[3] || '').trim();
-              const rName = (parts[4] || '').trim();
-
-              if (rSub) {
-                if (rEmail) remoteSubjectAuthors.add(`${rSub}:::${rEmail}`);
-                if (rName) remoteSubjectAuthors.add(`${rSub}:::${rName}`);
-              }
-
-              // Extract "(cherry picked from commit <hash>)"
-              const cpMatches = rBody.match(/cherry picked from commit ([a-f0-9]+)/gi);
-              if (cpMatches) {
-                for (const m of cpMatches) {
-                  const h = m.replace(/cherry picked from commit /i, '').trim();
-                  if (h) remoteCherryPickedSources.add(h);
+          if (remoteLogRes.code === 0 && remoteLogRes.stdout) {
+            const records = remoteLogRes.stdout.split('\x1f').filter(Boolean);
+            for (const rec of records) {
+              const cleanRec = rec.replace(/^\x1e/, '');
+              const parts = cleanRec.split('\x00');
+              if (parts.length >= 3) {
+                const rBody = parts[2] || '';
+                // Extract "(cherry picked from commit <hash>)"
+                const cpMatches = rBody.match(/cherry picked from commit ([a-f0-9]+)/gi);
+                if (cpMatches) {
+                  for (const m of cpMatches) {
+                    const h = m.replace(/cherry picked from commit /i, '').trim();
+                    if (h) remoteCherryPickedSources.add(h);
+                  }
                 }
               }
             }
           }
-        }
 
-        const filteredCommits = commits.filter((c) => {
-          if (
-            remoteCherryPickedSources.has(c.hash) ||
-            remoteCherryPickedSources.has(c.shortHash)
-          ) {
-            return false; // Explicit cherry-pick source match!
-          }
-          // Merge commits MUST NEVER be filtered out by subject + author matching!
-          // Merge commits always have standard auto-generated subjects (e.g. "Merge branch 'dev' of ... into dev")
-          // which match earlier merges on the remote, but represent fresh merge graph nodes that must be pushed.
-          if (!c.isMerge && !c.subject.toLowerCase().startsWith('merge ')) {
+          const filteredCommits = commits.filter((c) => {
             if (
-              (c.authorEmail && remoteSubjectAuthors.has(`${c.subject}:::${c.authorEmail}`)) ||
-              (c.authorName && remoteSubjectAuthors.has(`${c.subject}:::${c.authorName}`))
+              remoteCherryPickedSources.has(c.hash) ||
+              remoteCherryPickedSources.has(c.shortHash)
             ) {
-              return false; // Subject and author match!
+              return false; // Explicit cherry-pick source match!
             }
-          }
-          return true;
-        });
-
-        if (filteredCommits.length !== commits.length) {
-          commits = filteredCommits;
-          const fileMap = new Map<string, OutgoingCommitFile>();
-          commits.forEach((c) => {
-            (c.files || []).forEach((f) => {
-              if (!fileMap.has(f.path)) fileMap.set(f.path, f);
-            });
+            return true;
           });
-          allFiles = Array.from(fileMap.values());
+
+          if (filteredCommits.length !== commits.length) {
+            commits = filteredCommits;
+            const fileMap = new Map<string, OutgoingCommitFile>();
+            commits.forEach((c) => {
+              (c.files || []).forEach((f) => {
+                if (!fileMap.has(f.path)) fileMap.set(f.path, f);
+              });
+            });
+            allFiles = Array.from(fileMap.values());
+          }
         }
       } catch {}
     } else {
@@ -1907,6 +1952,7 @@ export const gitService = {
         'log',
         sourceBranch,
         '-m',
+        '--date=iso',
         '-n', '100',
         '--pretty=format:%x1e%H%x00%h%x00%an%x00%ae%x00%ad%x00%s%x00%P%x00%b%x1f',
         '--name-status',

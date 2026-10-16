@@ -89,7 +89,7 @@ export async function handleGitApiRequest(req: IncomingMessage, res: ServerRespo
       const success = await gitService.saveFileContent(body.path, body.file, body.content);
       res.end(JSON.stringify({ success }));
     } else if (pathname === '/api/git/checkout') {
-      const result = await gitService.checkoutBranch(body.path, body.branch);
+      const result = await gitService.checkoutBranch(body.path, body.branch, body.autoPull !== false);
       res.end(JSON.stringify(result));
     } else if (pathname === '/api/git/pull') {
       const result = await gitService.pull(body.path);

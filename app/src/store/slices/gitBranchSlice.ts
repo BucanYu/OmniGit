@@ -43,7 +43,7 @@ export const createGitBranchSlice = (set: any, get: any) => ({
 
   checkoutBranch: async (branchName: string) => {
     const currentProject = get().projects.find((p) => p.id === get().activeProjectId);
-    if (!currentProject) return;
+    if (!currentProject) return { success: false, message: 'No active project' };
 
     const isZh = get().language === 'zh-CN';
     set({
@@ -52,7 +52,9 @@ export const createGitBranchSlice = (set: any, get: any) => ({
         operating: true,
         type: 'checkout',
         branchName,
-        message: isZh ? `正在切换分支至 '${branchName}'...` : `Checking out branch '${branchName}'...`,
+        message: isZh
+          ? `正在切换分支至 '${branchName}' 并自动拉取代码...`
+          : `Checking out branch '${branchName}' and pulling remote code...`,
       },
     });
 
@@ -63,25 +65,60 @@ export const createGitBranchSlice = (set: any, get: any) => ({
         body: JSON.stringify({
           path: currentProject.path,
           branch: branchName,
+          autoPull: true,
         }),
       });
       const result = await res.json();
       if (result.success) {
         // 1. Optimistically update currentBranch & isCurrent at 0ms
         const normPath = currentProject.path.toLowerCase();
+
+        let notifType: 'info' | 'success' | 'warning' = 'info';
+        let notifTitle = isZh ? `已切换到分支 '${branchName}'` : `Switched to branch '${branchName}'`;
+
+        if (result.pullStatus === 'updated') {
+          notifType = 'success';
+          notifTitle = isZh
+            ? `已切换至 '${branchName}' 并已拉取最新代码`
+            : `Switched to '${branchName}' and pulled updates`;
+        } else if (result.pullStatus === 'already-up-to-date') {
+          notifType = 'success';
+          notifTitle = isZh
+            ? `已切换至 '${branchName}'（远端代码已是最新）`
+            : `Switched to '${branchName}' (Already up to date)`;
+        } else if (result.pullStatus === 'no-upstream') {
+          notifType = 'info';
+          notifTitle = isZh
+            ? `已切换至 '${branchName}'（本地分支，未关联远端）`
+            : `Switched to '${branchName}' (Local branch, no upstream)`;
+        } else if (result.pullStatus === 'conflict') {
+          notifType = 'warning';
+          notifTitle = isZh
+            ? `已切换至 '${branchName}'，自动拉取产生代码冲突`
+            : `Switched to '${branchName}' (Pull conflict detected)`;
+        } else if (result.pullStatus === 'failed') {
+          notifType = 'warning';
+          notifTitle = isZh
+            ? `已切换至 '${branchName}'，但拉取远端代码失败`
+            : `Switched to '${branchName}' (Failed to pull remote updates)`;
+        }
+
         set((curr) => ({
           projects: (curr.projects || []).map((p) =>
-            p && p.id === currentProject.id ? { ...p, currentBranch: branchName } : p
+            p && p.id === currentProject.id
+              ? { ...p, currentBranch: branchName, incoming: result.pulled ? 0 : p.incoming }
+              : p
           ),
           branches: (curr.branches || []).map((b) => ({
             ...b,
             isCurrent: Boolean(b && b.name === branchName),
+            incoming: b && b.name === branchName && result.pulled ? 0 : b.incoming,
           })),
           notification: {
             id: Date.now(),
-            title: isZh ? `已成功切换到分支 '${branchName}'` : `Switched to branch '${branchName}'`,
+            title: notifTitle,
             detail: result.message,
-            type: 'info',
+            type: notifType,
           },
         }));
 
@@ -90,9 +127,11 @@ export const createGitBranchSlice = (set: any, get: any) => ({
           const cached = repoSnapshotCache.get(normPath);
           if (cached) {
             cached.currentBranch = branchName;
+            if (result.pulled) cached.incoming = 0;
             cached.branches = (cached.branches || []).map((b) => ({
               ...b,
               isCurrent: Boolean(b && b.name === branchName),
+              incoming: b && b.name === branchName && result.pulled ? 0 : b.incoming,
             }));
             cached.lastUpdated = Date.now();
             saveLocalSnapshot(normPath, cached);
@@ -103,8 +142,13 @@ export const createGitBranchSlice = (set: any, get: any) => ({
         await get().loadRepoData(currentProject.path, true);
         await get().fetchCommitLogs(true);
         get().pollWorkspaceSyncStatus();
+        return result;
       } else {
-        const errorDetail = result.message || (isZh ? '切换分支失败，请检查是否有未提交的代码冲突或文件被占用' : 'Checkout failed. Please ensure there are no uncommitted conflicts');
+        const errorDetail =
+          result.message ||
+          (isZh
+            ? '切换分支失败，请检查是否有未提交的代码冲突或文件被占用'
+            : 'Checkout failed. Please ensure there are no uncommitted conflicts');
         set({
           notification: {
             id: Date.now(),
@@ -113,16 +157,20 @@ export const createGitBranchSlice = (set: any, get: any) => ({
             type: 'warning',
           },
         });
+        return result;
       }
     } catch (e: any) {
+      const errorMsg =
+        e.message || (isZh ? '网络请求或服务通信失败' : 'Network request or service communication failed');
       set({
         notification: {
           id: Date.now(),
           title: isZh ? '切换分支异常' : 'Checkout Exception',
-          detail: e.message || (isZh ? '网络请求或服务通信失败' : 'Network request or service communication failed'),
+          detail: errorMsg,
           type: 'warning',
         },
       });
+      return { success: false, message: errorMsg };
     } finally {
       set({ branchOperationLoading: null });
     }

@@ -711,7 +711,7 @@ export function BranchMenu({ onClose }: BranchMenuProps) {
                     onClose();
                   }}
                   className="w-full text-left px-3 py-1 bg-sky-500/15 text-sky-400 font-semibold hover:bg-sky-500/25 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-between cursor-pointer transition-colors whitespace-nowrap truncate"
-                  title={t.branchMenu.actions.checkout}
+                  title={t.branchMenu.actions.checkoutBranchTooltip(activeFlyoutBranch)}
                 >
                   <div className="flex items-center gap-2 min-w-0 truncate">
                     {branchOperationLoading?.type === 'checkout' && branchOperationLoading?.branchName === activeFlyoutBranch ? (
