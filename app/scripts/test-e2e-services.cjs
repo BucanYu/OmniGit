@@ -240,6 +240,49 @@ async function run() {
   fs.writeFileSync(SCREENSHOT_PATH, image.toPNG());
   console.log(`[E2E Services] Screenshot saved to ${SCREENSHOT_PATH} (${fs.statSync(SCREENSHOT_PATH).size} bytes)`);
 
+  console.log('\n[E2E Services] Step 8: Testing Drag-to-Reorder services & localStorage persistence...');
+  const reorderResult = await win.webContents.executeJavaScript(`
+    (() => {
+      try {
+        const store = window.__servicesStore;
+        const appStore = window.__appStore;
+        const projectId = appStore.getState().activeProjectId || '1';
+        const initialServices = store.getState().getServices(projectId);
+
+        if (initialServices.length >= 2) {
+          const firstId = initialServices[0].id;
+          const secondId = initialServices[1].id;
+
+          // Reorder: move 0 to 1
+          store.getState().reorderServices(projectId, 0, 1);
+
+          const afterReorder = store.getState().getServices(projectId);
+          const hasSwapped = afterReorder[0].id === secondId && afterReorder[1].id === firstId;
+
+          // Check localStorage persistence
+          const raw = localStorage.getItem('omnigit_services_' + projectId);
+          const fromStorage = JSON.parse(raw || '[]');
+          const storagePersisted = fromStorage[0]?.id === secondId && fromStorage[1]?.id === firstId;
+
+          return {
+            ok: hasSwapped && storagePersisted,
+            hasSwapped,
+            storagePersisted,
+            firstBefore: firstId,
+            firstAfter: afterReorder[0].id,
+          };
+        }
+        return { ok: true, skipped: true };
+      } catch (err) {
+        return { ok: false, error: err.message };
+      }
+    })()
+  `);
+  console.log('[E2E Services] Reorder result:', reorderResult);
+  if (!reorderResult.ok) {
+    throw new Error('Reorder or persistence check failed: ' + JSON.stringify(reorderResult));
+  }
+
   win.destroy();
 
   if (capturedErrors.length > 0) {

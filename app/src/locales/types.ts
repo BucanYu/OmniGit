@@ -1218,6 +1218,7 @@ export interface LocaleDictionary {
     noScriptsDetected: string;
     browseFile: string;
     browseFolder: string;
+    dragToReorder: string;
     noServicesTitle: string;
     noServicesDesc: string;
     noActiveProjectPrompt: string;

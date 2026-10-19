@@ -35,11 +35,14 @@ export const ServicesDashboard: React.FC = () => {
     getRunningCount,
     scanProjectScripts,
     importDiscoveredScripts,
+    reorderServices,
   } = useServicesStore();
 
   const currentProject = projects.find((p) => p.id === activeProjectId);
   const projectId = activeProjectId || '';
   const [isScanning, setIsScanning] = useState(false);
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   const [leftWidth, setLeftWidth] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -201,13 +204,45 @@ export const ServicesDashboard: React.FC = () => {
               </div>
             </div>
           ) : (
-            services.map((item) => (
+            services.map((item, index) => (
               <ServiceCard
                 key={item.id}
                 service={item}
+                index={index}
                 projectId={projectId}
                 isActive={activeService?.id === item.id}
                 onSelect={() => setActiveServiceId(item.id)}
+                isDragging={draggedIndex === index}
+                isDragOver={dragOverIndex === index}
+                onDragStart={(e) => {
+                  setDraggedIndex(index);
+                  e.dataTransfer.effectAllowed = 'move';
+                  e.dataTransfer.setData('text/plain', item.id);
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'move';
+                  if (dragOverIndex !== index) {
+                    setDragOverIndex(index);
+                  }
+                }}
+                onDragLeave={() => {
+                  if (dragOverIndex === index) {
+                    setDragOverIndex(null);
+                  }
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (draggedIndex !== null && draggedIndex !== index) {
+                    reorderServices(projectId, draggedIndex, index);
+                  }
+                  setDraggedIndex(null);
+                  setDragOverIndex(null);
+                }}
+                onDragEnd={() => {
+                  setDraggedIndex(null);
+                  setDragOverIndex(null);
+                }}
               />
             ))
           )}

@@ -1218,6 +1218,7 @@ export const zhCN: LocaleDictionary = {
     noScriptsDetected: '未在当前项目中检测到常见启动脚本 (.bat / .ps1 / .sh)',
     browseFile: '浏览脚本',
     browseFolder: '浏览目录',
+    dragToReorder: '按住拖动调整服务执行顺序',
     noServicesTitle: '当前项目暂未配置启动服务',
     noServicesDesc: '您可以为该项目配置 scripts 目录下的前端后端启动脚本，实现一键启停、进程守护与实时日志观察。',
     noActiveProjectPrompt: '请在顶部或左侧先选择一个激活的项目仓库',

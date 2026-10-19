@@ -32,6 +32,7 @@ interface ServicesState {
     updates: Partial<Omit<ServiceConfig, 'id' | 'createdAt'>>
   ) => void;
   renameService: (projectId: string, serviceId: string, newName: string) => void;
+  reorderServices: (projectId: string, fromIndex: number, toIndex: number) => void;
   deleteService: (projectId: string, serviceId: string) => Promise<void>;
 
   startService: (projectId: string, serviceId: string) => Promise<boolean>;
@@ -310,6 +311,38 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
     const trimmed = newName.trim();
     if (!trimmed) return;
     get().updateService(projectId, serviceId, { name: trimmed });
+  },
+
+  reorderServices: (projectId, fromIndex, toIndex) => {
+    const currentList = get().getServices(projectId);
+    if (
+      fromIndex < 0 ||
+      fromIndex >= currentList.length ||
+      toIndex < 0 ||
+      toIndex >= currentList.length ||
+      fromIndex === toIndex
+    ) {
+      return;
+    }
+
+    const reordered = [...currentList];
+    const [moved] = reordered.splice(fromIndex, 1);
+    reordered.splice(toIndex, 0, moved);
+
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(getStorageKey(projectId), JSON.stringify(reordered));
+      } catch (e) {
+        console.warn('[useServicesStore] Failed to save reordered services to localStorage', e);
+      }
+    }
+
+    set((state) => ({
+      configsByProject: {
+        ...state.configsByProject,
+        [projectId]: reordered,
+      },
+    }));
   },
 
   deleteService: async (projectId, serviceId) => {

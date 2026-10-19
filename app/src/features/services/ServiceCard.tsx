@@ -13,13 +13,22 @@ import {
   X,
   Clock,
   Terminal,
+  GripVertical,
 } from 'lucide-react';
 
 interface ServiceCardProps {
   service: ServiceConfig;
+  index: number;
   projectId: string;
   isActive: boolean;
   onSelect: () => void;
+  isDragging?: boolean;
+  isDragOver?: boolean;
+  onDragStart?: (e: React.DragEvent) => void;
+  onDragOver?: (e: React.DragEvent) => void;
+  onDragLeave?: () => void;
+  onDrop?: (e: React.DragEvent) => void;
+  onDragEnd?: () => void;
 }
 
 function formatUptime(ms: number): string {
@@ -35,9 +44,17 @@ function formatUptime(ms: number): string {
 
 export const ServiceCard: React.FC<ServiceCardProps> = ({
   service,
+  index,
   projectId,
   isActive,
   onSelect,
+  isDragging,
+  isDragOver,
+  onDragStart,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+  onDragEnd,
 }) => {
   const { t } = useTranslation();
   const {
@@ -116,16 +133,34 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
 
   return (
     <div
+      draggable={!isRenaming && !isConfirmingDelete}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+      onDragEnd={onDragEnd}
       onClick={onSelect}
       className={`group relative p-3 rounded-xl border transition-all cursor-pointer select-none mb-2.5 ${
-        isActive
+        isDragging
+          ? 'opacity-40 scale-[0.98] border-dashed border-sky-400/80 bg-sky-500/5'
+          : isDragOver
+          ? 'border-sky-400 bg-sky-500/15 shadow-md shadow-sky-500/20 scale-[1.01]'
+          : isActive
           ? 'bg-theme-hover/90 border-sky-500/70 shadow-sm shadow-sky-500/10'
           : 'bg-theme-sidebar/80 border-theme-border/60 hover:bg-theme-hover/50 hover:border-theme-border'
       }`}
     >
-      {/* Top Row: Status Indicator, Name, Quick Actions */}
+      {/* Top Row: Drag Handle, Status Indicator, Name, Quick Actions */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0 flex-1">
+          {/* Drag Grip Handle */}
+          <div
+            className="opacity-0 group-hover:opacity-60 hover:!opacity-100 text-theme-muted transition-opacity cursor-grab active:cursor-grabbing shrink-0 -ml-1 mr-0.5"
+            title={t.services.dragToReorder}
+          >
+            <GripVertical className="w-3.5 h-3.5" />
+          </div>
+
           {/* Status Dot */}
           <span className="relative flex h-2.5 w-2.5 shrink-0">
             {isRunning && (

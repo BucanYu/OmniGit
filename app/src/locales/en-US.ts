@@ -1218,6 +1218,7 @@ export const enUS: LocaleDictionary = {
     noScriptsDetected: 'No common startup scripts (.bat / .ps1 / .sh) detected in this project',
     browseFile: 'Browse Script',
     browseFolder: 'Browse Directory',
+    dragToReorder: 'Drag to reorder service execution sequence',
     noServicesTitle: 'No launch services configured for this project',
     noServicesDesc: 'Configure startup scripts from your project scripts directory to easily start, stop, and monitor real-time logs.',
     noActiveProjectPrompt: 'Please select an active project repository in the top bar or sidebar first',
