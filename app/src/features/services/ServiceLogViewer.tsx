@@ -24,13 +24,19 @@ interface ServiceLogViewerProps {
 // Convert standard ANSI color escape sequences to safe styled HTML spans
 function parseAnsiToHtml(text: string): string {
   if (!text) return '';
-  // Replace HTML entities first
-  let html = text
+  // 1. Strip OSC sequences e.g. \x1b]0;Title\x07 or \x1b]0;Title\x1b\
+  let cleanText = text
+    .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)?/g, '')
+    .replace(/\x07/g, '')
+    .replace(/\x1b\[\??[0-9;]*[A-LN-Za-ln-z]/g, '');
+
+  // 2. Replace HTML entities first
+  let html = cleanText
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
 
-  // Remove bare carriage returns
+  // 3. Remove bare carriage returns
   html = html.replace(/\r(?!\n)/g, '');
 
   const ansiColors: Record<number, string> = {
@@ -97,10 +103,13 @@ export const ServiceLogViewer: React.FC<ServiceLogViewerProps> = ({
     restartService,
     clearLogs,
     autoScrollByService,
+    setAutoScroll,
     toggleAutoScroll,
   } = useServicesStore();
 
   const logContainerRef = useRef<HTMLDivElement>(null);
+  const isProgrammaticScrollRef = useRef(false);
+  const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [copied, setCopied] = useState(false);
 
   const runtime = service ? getRuntime(service.id) : null;
@@ -125,26 +134,68 @@ export const ServiceLogViewer: React.FC<ServiceLogViewerProps> = ({
     return () => clearInterval(interval);
   }, [isRunning, runtime?.startedAt]);
 
-  // Auto-scroll effect
+  const scrollToBottom = (smooth = false) => {
+    const container = logContainerRef.current;
+    if (!container) return;
+    isProgrammaticScrollRef.current = true;
+    if (scrollTimeoutRef.current) {
+      clearTimeout(scrollTimeoutRef.current);
+    }
+    if (smooth) {
+      container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+    } else {
+      container.scrollTop = container.scrollHeight;
+    }
+    scrollTimeoutRef.current = setTimeout(() => {
+      isProgrammaticScrollRef.current = false;
+    }, 120);
+  };
+
+  // Auto-scroll effect whenever logs update or isAutoScroll is toggled on
   useEffect(() => {
     if (isAutoScroll && logContainerRef.current) {
-      logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
+      scrollToBottom();
     }
   }, [runtime?.logs, isAutoScroll]);
 
-  // Detect user manual scroll to toggle auto-scroll
+  // Clean up timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Detect user manual scroll to pause/resume auto-scroll
   const handleScroll = () => {
-    if (!logContainerRef.current || !service) return;
-    const { scrollTop, scrollHeight, clientHeight } = logContainerRef.current;
-    const isAtBottom = scrollHeight - scrollTop - clientHeight < 40;
-    if (isAutoScroll !== isAtBottom) {
-      toggleAutoScroll(service.id);
+    if (isProgrammaticScrollRef.current) return;
+    const container = logContainerRef.current;
+    if (!container || !service) return;
+
+    const { scrollTop, scrollHeight, clientHeight } = container;
+    const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+
+    if (distanceFromBottom > 80) {
+      // User explicitly scrolled up away from bottom -> pause auto-scroll
+      if (isAutoScroll) {
+        setAutoScroll(service.id, false);
+      }
+    } else if (distanceFromBottom <= 30) {
+      // User scrolled back down to the very bottom -> re-enable auto-scroll
+      if (!isAutoScroll) {
+        setAutoScroll(service.id, true);
+      }
     }
   };
 
   const handleCopyLogs = () => {
     if (!runtime || runtime.logs.length === 0) return;
-    const plainText = runtime.logs.join('\n').replace(/\x1b\[[0-9;]*m/g, '');
+    const plainText = runtime.logs
+      .join('\n')
+      .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)?/g, '')
+      .replace(/\x07/g, '')
+      .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
     navigator.clipboard.writeText(plainText).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
@@ -296,13 +347,19 @@ export const ServiceLogViewer: React.FC<ServiceLogViewerProps> = ({
 
           {/* Auto Scroll Toggle */}
           <button
-            onClick={() => toggleAutoScroll(service.id)}
+            onClick={() => {
+              const nextState = !isAutoScroll;
+              setAutoScroll(service.id, nextState);
+              if (nextState) {
+                scrollToBottom(true);
+              }
+            }}
             className={`p-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
               isAutoScroll
                 ? 'text-sky-400 bg-sky-500/15 border border-sky-500/30'
                 : 'text-theme-muted hover:text-theme-main hover:bg-theme-hover'
             }`}
-            title={t.services.autoScroll}
+            title={isAutoScroll ? t.services.autoScroll : t.services.autoScrollPaused}
           >
             <ArrowDown className="w-3.5 h-3.5" />
           </button>
@@ -346,35 +403,54 @@ export const ServiceLogViewer: React.FC<ServiceLogViewerProps> = ({
       </div>
 
       {/* Main Console Output Area */}
-      <div
-        ref={logContainerRef}
-        onScroll={handleScroll}
-        className="flex-1 overflow-y-auto p-4 font-mono text-xs text-zinc-200 bg-[#141416] select-text leading-relaxed tracking-wide space-y-0.5"
-      >
-        {runtime.logs.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center text-zinc-500 select-none py-12">
-            <div className="p-3 rounded-xl bg-zinc-800/40 border border-zinc-700/40 mb-3 text-zinc-400">
-              <Terminal className="w-6 h-6" />
+      <div className="relative flex-1 min-h-0 overflow-hidden">
+        <div
+          ref={logContainerRef}
+          onScroll={handleScroll}
+          className="h-full overflow-y-auto p-4 font-mono text-xs text-zinc-200 bg-[#141416] select-text leading-relaxed tracking-wide space-y-0.5"
+        >
+          {runtime.logs.length === 0 ? (
+            <div className="h-full flex flex-col items-center justify-center text-zinc-500 select-none py-12">
+              <div className="p-3 rounded-xl bg-zinc-800/40 border border-zinc-700/40 mb-3 text-zinc-400">
+                <Terminal className="w-6 h-6" />
+              </div>
+              <p className="text-xs mb-3">{t.services.noServicesTitle}</p>
+              {!isBusy && (
+                <button
+                  onClick={() => startService(projectId, service.id)}
+                  className="px-4 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-400 text-xs font-sans font-medium flex items-center gap-1.5 cursor-pointer transition-colors"
+                >
+                  <Play className="w-3.5 h-3.5 fill-current" />
+                  <span>{t.services.start}</span>
+                </button>
+              )}
             </div>
-            <p className="text-xs mb-3">{t.services.noServicesTitle}</p>
-            {!isBusy && (
-              <button
-                onClick={() => startService(projectId, service.id)}
-                className="px-4 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-400 text-xs font-sans font-medium flex items-center gap-1.5 cursor-pointer transition-colors"
-              >
-                <Play className="w-3.5 h-3.5 fill-current" />
-                <span>{t.services.start}</span>
-              </button>
-            )}
+          ) : (
+            runtime.logs.map((line, index) => (
+              <div
+                key={index}
+                className="whitespace-pre-wrap break-all min-h-[1.25em]"
+                dangerouslySetInnerHTML={{ __html: parseAnsiToHtml(line) || '&nbsp;' }}
+              />
+            ))
+          )}
+        </div>
+
+        {/* Floating Scroll to Bottom Pill when Auto-scroll is paused */}
+        {!isAutoScroll && runtime.logs.length > 0 && (
+          <div className="absolute bottom-4 right-6 z-10 pointer-events-auto">
+            <button
+              onClick={() => {
+                setAutoScroll(service.id, true);
+                scrollToBottom(true);
+              }}
+              className="px-3 py-1.5 rounded-full bg-sky-600/95 hover:bg-sky-500 text-white text-xs font-medium shadow-lg backdrop-blur-xs flex items-center gap-1.5 cursor-pointer transition-all hover:scale-105 active:scale-95 border border-sky-400/40"
+              title={t.services.scrollToBottom}
+            >
+              <ArrowDown className="w-3.5 h-3.5" />
+              <span>{t.services.scrollToBottom}</span>
+            </button>
           </div>
-        ) : (
-          runtime.logs.map((line, index) => (
-            <div
-              key={index}
-              className="whitespace-pre-wrap break-all min-h-[1.25em]"
-              dangerouslySetInnerHTML={{ __html: parseAnsiToHtml(line) || '&nbsp;' }}
-            />
-          ))
         )}
       </div>
     </div>

@@ -1210,6 +1210,8 @@ export const enUS: LocaleDictionary = {
     copyLogs: 'Copy All Logs',
     copiedLogsToast: 'Console logs copied to clipboard',
     autoScroll: 'Auto-scroll to bottom',
+    scrollToBottom: 'Scroll to bottom',
+    autoScrollPaused: 'Auto-scroll paused',
     scanScripts: 'Scan Project Scripts',
     scanScriptsTooltip: 'Automatically scan .bat, .ps1, .sh scripts in current project and import quickly',
     importScripts: 'Import Detected Scripts',

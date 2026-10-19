@@ -42,6 +42,7 @@ interface ServicesState {
   stopAllServices: (projectId: string) => Promise<void>;
 
   clearLogs: (serviceId: string) => void;
+  setAutoScroll: (serviceId: string, enabled: boolean) => void;
   toggleAutoScroll: (serviceId: string) => void;
   hasRunningServices: (projectId?: string) => boolean;
   getRunningCount: (projectId?: string) => number;
@@ -61,11 +62,20 @@ export class StreamLogBuffer {
   public append(incoming: string): string[] {
     if (!incoming) return this.getDisplayLines();
 
+    // 1. Strip OSC (Operating System Command) sequences e.g. \x1b]0;Title\x07 or \x1b]...\x1b\
+    let sanitized = incoming.replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '');
+    // 2. Strip standalone BEL characters
+    sanitized = sanitized.replace(/\x07/g, '');
+    // 3. Handle ANSI erase line sequences (\x1b[2K, \x1b[K, \x1b[0K) by resetting current line
+    sanitized = sanitized.replace(/\x1b\[[0-2]?K/g, '\r');
+    // 4. Strip non-color ANSI CSI sequences (preserve \x1b[...m for colors)
+    sanitized = sanitized.replace(/\x1b\[\??[0-9;]*[A-LN-Za-ln-z]/g, '');
+
     let i = 0;
-    while (i < incoming.length) {
-      const ch = incoming[i];
+    while (i < sanitized.length) {
+      const ch = sanitized[i];
       if (ch === '\r') {
-        if (incoming[i + 1] === '\n') {
+        if (sanitized[i + 1] === '\n') {
           // Windows CRLF (\r\n) -> finish current line
           this.lines.push(this.currentLine);
           this.currentLine = '';
@@ -100,7 +110,7 @@ export class StreamLogBuffer {
     if (this.currentLine.length > 0) {
       return [...this.lines, this.currentLine];
     }
-    return this.lines;
+    return [...this.lines];
   }
 
   public clear(): void {
@@ -442,6 +452,9 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
       }
     }
 
+    // Ensure auto-scroll is enabled by default when starting
+    get().setAutoScroll(serviceId, true);
+
     // Set status to starting
     set((state) => ({
       runtimeStates: {
@@ -631,6 +644,7 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
   },
 
   restartService: async (projectId: string, serviceId: string) => {
+    get().setAutoScroll(serviceId, true);
     await get().stopService(serviceId);
     await new Promise((r) => setTimeout(r, 200));
     return await get().startService(projectId, serviceId);
@@ -639,6 +653,7 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
   startAllServices: async (projectId: string) => {
     const list = get().getServices(projectId);
     for (const item of list) {
+      get().setAutoScroll(item.id, true);
       const runtime = get().getRuntime(item.id);
       if (runtime.status !== 'running' && runtime.status !== 'starting') {
         await get().startService(projectId, item.id);
@@ -683,14 +698,18 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
     }));
   },
 
-  toggleAutoScroll: (serviceId: string) => {
-    const current = get().autoScrollByService[serviceId] !== false;
+  setAutoScroll: (serviceId: string, enabled: boolean) => {
     set((state) => ({
       autoScrollByService: {
         ...state.autoScrollByService,
-        [serviceId]: !current,
+        [serviceId]: enabled,
       },
     }));
+  },
+
+  toggleAutoScroll: (serviceId: string) => {
+    const current = get().autoScrollByService[serviceId] !== false;
+    get().setAutoScroll(serviceId, !current);
   },
 
   hasRunningServices: (projectId?: string) => {

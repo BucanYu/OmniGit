@@ -1210,6 +1210,8 @@ export interface LocaleDictionary {
     copyLogs: string;
     copiedLogsToast: string;
     autoScroll: string;
+    scrollToBottom: string;
+    autoScrollPaused: string;
     scanScripts: string;
     scanScriptsTooltip: string;
     importScripts: string;

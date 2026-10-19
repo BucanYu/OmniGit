@@ -46,7 +46,9 @@ const timer = setInterval(() => {
       ? `OmniGit 打包中: 固实压缩进行中 (${elapsedSec}s)...`
       : `OmniGit 打包中: 预处理组件清单 (${elapsedSec}s)...`;
     process.title = titleText;
-    process.stdout.write(`\x1b]0;${titleText}\x07`);
+    if (process.stdout.isTTY) {
+      process.stdout.write(`\x1b]0;${titleText}\x07`);
+    }
   } catch (_) {}
 
   // Periodic heartbeat every 15 seconds (clean, elegant, never wraps or spams logs)

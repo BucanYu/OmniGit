@@ -1210,6 +1210,8 @@ export const zhCN: LocaleDictionary = {
     copyLogs: '复制全部日志',
     copiedLogsToast: '已成功复制当前服务控制台日志到剪贴板',
     autoScroll: '自动滚动到最新日志',
+    scrollToBottom: '滚动至最新日志',
+    autoScrollPaused: '已暂停自动滚动',
     scanScripts: '扫描项目脚本',
     scanScriptsTooltip: '自动扫描当前项目目录下的 .bat、.ps1、.sh 脚本并快速导入',
     importScripts: '导入检测到的脚本',
