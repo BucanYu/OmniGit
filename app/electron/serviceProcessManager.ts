@@ -50,4 +50,8 @@ export function setupServiceIpcHandlers() {
   ipcMain.handle('services:check-orphans', () => {
     return nodeServiceProcessManager.checkAndCleanOrphanProcesses();
   });
+
+  ipcMain.handle('services:scan-scripts', (_event, projectPath: string) => {
+    return nodeServiceProcessManager.scanProjectScripts(projectPath);
+  });
 }

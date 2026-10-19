@@ -337,6 +337,35 @@ function setupIpcHandlers() {
     return result.filePaths[0];
   });
 
+  ipcMain.handle(
+    'dialog:select-file',
+    async (
+      _event,
+      options?: {
+        title?: string;
+        defaultPath?: string;
+        filters?: Array<{ name: string; extensions: string[] }>;
+      }
+    ) => {
+      const result = await dialog.showOpenDialog(mainWindow || (undefined as any), {
+        title: options?.title || '选择脚本文件',
+        properties: ['openFile'],
+        defaultPath:
+          options?.defaultPath && fs.existsSync(options.defaultPath)
+            ? options.defaultPath
+            : undefined,
+        filters: options?.filters || [
+          { name: 'Scripts / Executables', extensions: ['bat', 'cmd', 'ps1', 'sh', 'bash', 'exe'] },
+          { name: 'All Files', extensions: ['*'] },
+        ],
+      });
+      if (result.canceled || !result.filePaths || result.filePaths.length === 0) {
+        return null;
+      }
+      return result.filePaths[0];
+    }
+  );
+
   setupPtyIpcHandlers();
   setupServiceIpcHandlers();
 }

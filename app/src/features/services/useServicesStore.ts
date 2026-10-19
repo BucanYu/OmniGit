@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { ServiceConfig, ServiceRuntimeState } from './types';
+import type { ServiceConfig, ServiceRuntimeState, DiscoveredScriptGroup } from './types';
 import { useAppStore } from '../../store/useAppStore';
 
 interface ServicesState {
@@ -18,6 +18,9 @@ interface ServicesState {
   openAddModal: () => void;
   openEditModal: (service: ServiceConfig) => void;
   closeConfigModal: () => void;
+
+  scanProjectScripts: (projectId: string) => Promise<DiscoveredScriptGroup[]>;
+  importDiscoveredScripts: (projectId: string, groups: DiscoveredScriptGroup[]) => ServiceConfig[];
 
   addService: (
     projectId: string,
@@ -113,6 +116,82 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
 
   closeConfigModal: () => {
     set({ isConfigModalOpen: false, editingService: null });
+  },
+
+  scanProjectScripts: async (projectId: string) => {
+    const appProjects = useAppStore.getState().projects;
+    const currentProj = appProjects.find((p) => p.id === projectId);
+    const projectRoot = currentProj?.path || '';
+    if (!projectRoot) return [];
+
+    if ((window as any).electronAPI?.services?.scanScripts) {
+      try {
+        return await (window as any).electronAPI.services.scanScripts(projectRoot);
+      } catch (e) {
+        console.warn('Scan scripts failed via Electron IPC:', e);
+      }
+    }
+
+    try {
+      const res = await fetch(`/api/services/scan-scripts?projectPath=${encodeURIComponent(projectRoot)}`);
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    } catch (e) {
+      console.warn('Scan scripts failed via HTTP:', e);
+    }
+    return [];
+  },
+
+  importDiscoveredScripts: (projectId: string, groups: DiscoveredScriptGroup[]) => {
+    if (!projectId || !groups || groups.length === 0) return [];
+    const currentList = get().getServices(projectId);
+    const existingCommands = new Set(
+      currentList.map((s) => (s.winCommand || s.unixCommand || '').toLowerCase().trim())
+    );
+
+    const createdList: ServiceConfig[] = [];
+    const now = Date.now();
+
+    for (const g of groups) {
+      const winCmd = (g.winStartScript || g.unixStartScript || '').trim();
+      const unixCmd = (g.unixStartScript || g.winStartScript || '').trim();
+      if (!winCmd && !unixCmd) continue;
+
+      if (existingCommands.has(winCmd.toLowerCase()) || existingCommands.has(unixCmd.toLowerCase())) {
+        continue;
+      }
+
+      const id = `srv_${now}_${Math.random().toString(36).substring(2, 7)}`;
+      const newService: ServiceConfig = {
+        id,
+        name: g.name,
+        cwd: g.cwd || '',
+        winCommand: winCmd,
+        winStopScript: g.winStopScript || '',
+        unixCommand: unixCmd,
+        unixStopScript: g.unixStopScript || '',
+        createdAt: now,
+        updatedAt: now,
+      };
+      createdList.push(newService);
+      existingCommands.add(winCmd.toLowerCase());
+    }
+
+    if (createdList.length > 0) {
+      const updatedList = [...currentList, ...createdList];
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(getStorageKey(projectId), JSON.stringify(updatedList));
+      }
+      set((state) => ({
+        configsByProject: {
+          ...state.configsByProject,
+          [projectId]: updatedList,
+        },
+        activeServiceId: state.activeServiceId || updatedList[0].id,
+      }));
+    }
+
+    return createdList;
   },
 
   addService: (projectId, data) => {
@@ -270,11 +349,16 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
       },
     }));
 
+    const rawStopCommand = isWindows ? service.winStopScript : service.unixStopScript;
+    const stopCommand = (rawStopCommand || '').trim();
+
     get().appendLog(
       serviceId,
       `\x1b[36m>>> [OmniGit] 正在启动服务: ${service.name}\x1b[0m\n` +
         `\x1b[90m> 工作目录: ${resolvedCwd}\x1b[0m\n` +
-        `\x1b[90m> 执行指令: ${command}\x1b[0m\n\n`
+        `\x1b[90m> 启动命令: ${command}\x1b[0m\n` +
+        (stopCommand ? `\x1b[90m> 停止脚本: ${stopCommand}\x1b[0m\n` : '') +
+        '\n'
     );
 
     if ((window as any).electronAPI?.services?.start) {
@@ -284,6 +368,7 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
           serviceName: service.name,
           projectId,
           command,
+          stopCommand: stopCommand || undefined,
           cwd: resolvedCwd,
           env: service.env,
         });
@@ -341,6 +426,7 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
             serviceName: service.name,
             projectId,
             command,
+            stopCommand: stopCommand || undefined,
             cwd: resolvedCwd,
             env: service.env,
           }),

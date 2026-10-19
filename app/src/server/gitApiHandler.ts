@@ -517,6 +517,7 @@ export async function handleGitApiRequest(req: IncomingMessage, res: ServerRespo
         serviceName: body.serviceName,
         projectId: body.projectId,
         command: body.command,
+        stopCommand: body.stopCommand,
         cwd: body.cwd,
         env: body.env,
       });
@@ -533,6 +534,10 @@ export async function handleGitApiRequest(req: IncomingMessage, res: ServerRespo
     } else if (pathname === '/api/services/check-orphans') {
       const result = nodeServiceProcessManager.checkAndCleanOrphanProcesses();
       res.end(JSON.stringify(result));
+    } else if (pathname === '/api/services/scan-scripts') {
+      const projectPath = query.projectPath || body.projectPath || '';
+      const scripts = nodeServiceProcessManager.scanProjectScripts(projectPath);
+      res.end(JSON.stringify(scripts));
     } else {
       res.statusCode = 404;
       res.end(JSON.stringify({ error: 'Endpoint not found' }));

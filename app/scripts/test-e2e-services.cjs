@@ -62,7 +62,7 @@ async function run() {
   console.log('[E2E Services] Switch result:', switchResult);
   if (!switchResult.ok) throw new Error(switchResult.error);
 
-  console.log('\n[E2E Services] Step 2: Testing Service creation in Web store...');
+  console.log('\n[E2E Services] Step 2: Testing Project Scripts Auto-Discovery & Script Service creation...');
   const createResult = await win.webContents.executeJavaScript(`
     (async () => {
       try {
@@ -70,19 +70,40 @@ async function run() {
         const appStore = window.__appStore;
         if (!store || !appStore) return { ok: false, error: 'Stores missing' };
 
-        const currentProjectId = appStore.getState().activeProjectId || 'web-e2e-project';
+        const currentProjectId = appStore.getState().activeProjectId || '1';
+        
+        // 1. Test auto-scan project scripts
+        const discovered = await store.getState().scanProjectScripts(currentProjectId);
+        const hasDiscovered = Array.isArray(discovered) && discovered.length > 0;
+        console.log('[E2E in browser] Discovered scripts count:', discovered ? discovered.length : 0);
+
+        // 2. Create service with script paths
         const created = store.getState().addService(currentProjectId, {
-          name: 'Web-E2E-Node-Service',
-          group: 'Backend',
-          description: 'E2E Testing service running under Web browser mode',
-          winCommand: 'node -e "console.log(\\'WEB_SERVICE_ONLINE\\'); setInterval(()=>{}, 1000);"',
-          unixCommand: 'node -e "console.log(\\'WEB_SERVICE_ONLINE\\'); setInterval(()=>{}, 1000);"',
+          name: 'Backend-API-Service',
+          winCommand: 'scripts\\\\start-backend.bat',
+          winStopScript: 'scripts\\\\stop-backend.bat',
+          unixCommand: 'scripts/start-backend.sh',
+          unixStopScript: 'scripts/stop-backend.sh',
           cwd: '',
-          autoStart: false,
+        });
+
+        // Also create a test executable service to verify live start/stop
+        const testRunner = store.getState().addService(currentProjectId, {
+          name: 'Live-Script-Runner',
+          winCommand: 'node -e "console.log(\\'SCRIPT_EXEC_ONLINE\\'); setInterval(()=>{}, 1000);"',
+          unixCommand: 'node -e "console.log(\\'SCRIPT_EXEC_ONLINE\\'); setInterval(()=>{}, 1000);"',
+          cwd: '',
         });
 
         await new Promise(r => setTimeout(r, 500));
-        return { ok: true, serviceId: created.id, projectId: currentProjectId };
+        return {
+          ok: true,
+          hasDiscovered,
+          discoveredCount: discovered ? discovered.length : 0,
+          serviceId: testRunner.id,
+          backendServiceId: created.id,
+          projectId: currentProjectId,
+        };
       } catch (err) {
         return { ok: false, error: err.message };
       }
@@ -188,8 +209,30 @@ async function run() {
     throw new Error('Language isolation check failed');
   }
 
-  console.log('\n[E2E Services] Step 6: Capturing visual proof screenshot...');
-  // Ensure directory exists
+  console.log('\n[E2E Services] Step 6: Testing ServiceConfigModal open & capturing modal screenshot...');
+  await win.webContents.executeJavaScript(`
+    (() => {
+      const store = window.__servicesStore;
+      store.getState().openAddModal();
+    })()
+  `);
+  await new Promise((r) => setTimeout(r, 1200));
+
+  const MODAL_SCREENSHOT_PATH = path.join(ARTIFACT_DIR, 'services_modal_screenshot.png');
+  const modalImage = await win.webContents.capturePage();
+  fs.writeFileSync(MODAL_SCREENSHOT_PATH, modalImage.toPNG());
+  console.log(`[E2E Services] Modal screenshot saved to ${MODAL_SCREENSHOT_PATH} (${fs.statSync(MODAL_SCREENSHOT_PATH).size} bytes)`);
+
+  // Close modal and capture dashboard screenshot
+  await win.webContents.executeJavaScript(`
+    (() => {
+      const store = window.__servicesStore;
+      store.getState().closeConfigModal();
+    })()
+  `);
+  await new Promise((r) => setTimeout(r, 500));
+
+  console.log('\n[E2E Services] Step 7: Capturing visual proof screenshot of dashboard...');
   if (!fs.existsSync(ARTIFACT_DIR)) {
     fs.mkdirSync(ARTIFACT_DIR, { recursive: true });
   }

@@ -13,6 +13,7 @@ import {
   Square,
   Server,
   FolderGit2,
+  FileSearch,
 } from 'lucide-react';
 
 export const ServicesDashboard: React.FC = () => {
@@ -32,10 +33,13 @@ export const ServicesDashboard: React.FC = () => {
     stopAllServices,
     hasRunningServices,
     getRunningCount,
+    scanProjectScripts,
+    importDiscoveredScripts,
   } = useServicesStore();
 
   const currentProject = projects.find((p) => p.id === activeProjectId);
   const projectId = activeProjectId || '';
+  const [isScanning, setIsScanning] = useState(false);
 
   const [leftWidth, setLeftWidth] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -63,6 +67,21 @@ export const ServicesDashboard: React.FC = () => {
   const activeService = services.find((s) => s.id === activeServiceId) || (services.length > 0 ? services[0] : null);
   const runningCount = getRunningCount(projectId);
   const hasRunning = hasRunningServices(projectId);
+
+  const handleScanAndImport = async () => {
+    if (!projectId) return;
+    setIsScanning(true);
+    try {
+      const discovered = await scanProjectScripts(projectId);
+      if (discovered && discovered.length > 0) {
+        importDiscoveredScripts(projectId, discovered);
+      } else {
+        openAddModal();
+      }
+    } finally {
+      setIsScanning(false);
+    }
+  };
 
   if (!currentProject) {
     return (
@@ -109,6 +128,16 @@ export const ServicesDashboard: React.FC = () => {
 
           {/* Header Action Buttons */}
           <div className="flex items-center gap-1 shrink-0">
+            {/* Scan Project Scripts */}
+            <button
+              onClick={handleScanAndImport}
+              disabled={isScanning}
+              className="p-1.5 rounded-lg text-theme-muted hover:text-sky-400 hover:bg-sky-500/10 transition-colors cursor-pointer disabled:opacity-40"
+              title={t.services.scanScriptsTooltip}
+            >
+              <FileSearch className={`w-3.5 h-3.5 ${isScanning ? 'animate-spin' : ''}`} />
+            </button>
+
             {/* Start All */}
             <button
               onClick={() => startAllServices(projectId)}
@@ -153,13 +182,23 @@ export const ServicesDashboard: React.FC = () => {
               <p className="text-[11px] text-theme-muted/80 leading-relaxed mb-4">
                 {t.services.noServicesDesc}
               </p>
-              <button
-                onClick={openAddModal}
-                className="px-3 py-1.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-white font-medium text-xs flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>{t.services.newService}</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleScanAndImport}
+                  disabled={isScanning}
+                  className="px-3 py-1.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-white font-medium text-xs flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+                >
+                  <FileSearch className={`w-3.5 h-3.5 ${isScanning ? 'animate-spin' : ''}`} />
+                  <span>{t.services.scanScripts}</span>
+                </button>
+                <button
+                  onClick={openAddModal}
+                  className="px-3 py-1.5 rounded-lg bg-theme-hover hover:bg-theme-border/60 text-theme-main font-medium text-xs flex items-center gap-1.5 border border-theme-border transition-colors cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>{t.services.newService}</span>
+                </button>
+              </div>
             </div>
           ) : (
             services.map((item) => (

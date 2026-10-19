@@ -39,8 +39,14 @@ const electronAPI = {
   detectGitPath: () => ipcRenderer.invoke('git:detect-path') as Promise<{ found: boolean; path: string; version?: string }>,
   setCustomGitPath: (customPath: string) => ipcRenderer.invoke('git:set-custom-path', customPath) as Promise<boolean>,
 
-  // Native folder picker dialog
+  // Native folder & file picker dialogs
   selectFolder: (defaultPath?: string) => ipcRenderer.invoke('dialog:select-folder', defaultPath) as Promise<string | null>,
+  selectFile: (options?: {
+    title?: string;
+    defaultPath?: string;
+    filters?: Array<{ name: string; extensions: string[] }>;
+  }) =>
+    ipcRenderer.invoke('dialog:select-file', options) as Promise<string | null>,
 
   // Cross-window workspace synchronization
   notifyWorkspaceChanged: () => ipcRenderer.invoke('workspace:notify-changed') as Promise<void>,
@@ -89,6 +95,7 @@ const electronAPI = {
       serviceName: string;
       projectId: string;
       command: string;
+      stopCommand?: string;
       cwd: string;
       env?: Record<string, string>;
     }) =>
@@ -106,6 +113,18 @@ const electronAPI = {
         cleanedCount: number;
         records: Array<{ serviceId: string; serviceName: string; pid: number }>;
       }>,
+    scanScripts: (projectPath: string) =>
+      ipcRenderer.invoke('services:scan-scripts', projectPath) as Promise<
+        Array<{
+          id: string;
+          name: string;
+          winStartScript?: string;
+          winStopScript?: string;
+          unixStartScript?: string;
+          unixStopScript?: string;
+          cwd?: string;
+        }>
+      >,
     onLog: (callback: (payload: { serviceId: string; data: string; stream: 'stdout' | 'stderr' }) => void) => {
       const handler = (_event: any, payload: { serviceId: string; data: string; stream: 'stdout' | 'stderr' }) =>
         callback(payload);

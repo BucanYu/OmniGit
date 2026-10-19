@@ -9,6 +9,7 @@ export interface ServiceRunConfig {
   serviceName: string;
   projectId: string;
   command: string;
+  stopCommand?: string;
   cwd: string;
   env?: Record<string, string>;
 }
@@ -28,8 +29,20 @@ interface RunningServiceEntry {
   projectId: string;
   pid: number;
   command: string;
+  stopCommand?: string;
+  cwd: string;
   startedAt: number;
   child: ChildProcess;
+}
+
+export interface DiscoveredScriptGroup {
+  id: string;
+  name: string;
+  winStartScript?: string;
+  winStopScript?: string;
+  unixStartScript?: string;
+  unixStopScript?: string;
+  cwd?: string;
 }
 
 export class NodeServiceProcessManager extends EventEmitter {
@@ -133,6 +146,115 @@ export class NodeServiceProcessManager extends EventEmitter {
     return { cleanedCount: cleaned.length, records: cleaned };
   }
 
+  public scanProjectScripts(projectPath: string): DiscoveredScriptGroup[] {
+    if (!projectPath || !fs.existsSync(projectPath)) return [];
+
+    const searchRoots = [projectPath];
+    const parentDir = path.dirname(projectPath);
+    if (parentDir && parentDir !== projectPath && fs.existsSync(path.join(parentDir, 'scripts'))) {
+      searchRoots.push(parentDir);
+    }
+
+    const subdirs = ['.', 'scripts', 'bin', 'tools'];
+    const exts = ['.bat', '.cmd', '.ps1', '.sh', '.bash'];
+    const discovered: Array<{ relPath: string; absPath: string; name: string; ext: string }> = [];
+
+    for (const root of searchRoots) {
+      for (const d of subdirs) {
+        const fullDir = path.resolve(root, d);
+        if (fs.existsSync(fullDir)) {
+          try {
+            const stat = fs.statSync(fullDir);
+            if (stat.isDirectory()) {
+              const files = fs.readdirSync(fullDir);
+              for (const f of files) {
+                const ext = path.extname(f).toLowerCase();
+                if (exts.includes(ext)) {
+                  const relPath = d === '.' ? f : path.join(d, f);
+                  const absPath = path.join(fullDir, f);
+                  discovered.push({
+                    relPath,
+                    absPath,
+                    name: path.basename(f, ext),
+                    ext,
+                  });
+                }
+              }
+            }
+          } catch {}
+        }
+      }
+    }
+
+    const groupMap = new Map<string, DiscoveredScriptGroup>();
+
+    const startItems = discovered.filter((item) => {
+      const lower = item.name.toLowerCase();
+      return (
+        lower.includes('start') ||
+        lower.includes('run') ||
+        lower.includes('dev') ||
+        lower.includes('launch') ||
+        lower.includes('serve') ||
+        lower.includes('up') ||
+        (!lower.includes('stop') && !lower.includes('kill') && !lower.includes('down'))
+      );
+    });
+
+    const stopItems = discovered.filter((item) => {
+      const lower = item.name.toLowerCase();
+      return lower.includes('stop') || lower.includes('kill') || lower.includes('down');
+    });
+
+    for (const item of startItems) {
+      const coreId = item.name.toLowerCase().replace(/^(start|run|launch|dev)[-_]?/i, '') || item.name;
+      const isWin = item.ext === '.bat' || item.ext === '.cmd' || item.ext === '.ps1';
+      const isBat = item.ext === '.bat' || item.ext === '.cmd';
+      const isUnix = item.ext === '.sh' || item.ext === '.bash';
+
+      let g = groupMap.get(coreId);
+      if (!g) {
+        const cleanCore = coreId.replace(/[-_]/g, ' ');
+        const friendlyName =
+          cleanCore
+            .split(' ')
+            .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+            .join(' ') || item.name;
+
+        g = {
+          id: `discovered_${coreId}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          name: friendlyName,
+          cwd: '',
+        };
+        groupMap.set(coreId, g);
+      }
+
+      const matchingStop = stopItems.find((s) => {
+        const stopCore = s.name.toLowerCase().replace(/^(stop|kill|down)[-_]?/i, '') || s.name;
+        return stopCore === coreId;
+      });
+
+      if (isWin) {
+        if (!g.winStartScript || isBat) {
+          g.winStartScript = item.relPath;
+        }
+        if (matchingStop && (!g.winStopScript || matchingStop.ext === '.bat')) {
+          g.winStopScript = matchingStop.relPath;
+        }
+      }
+      if (isUnix) {
+        if (!g.unixStartScript) {
+          g.unixStartScript = item.relPath;
+        }
+        if (matchingStop && !g.unixStopScript) {
+          g.unixStopScript = matchingStop.relPath;
+        }
+      }
+    }
+
+    return Array.from(groupMap.values());
+  }
+
   public start(
     config: ServiceRunConfig,
     onLog?: (serviceId: string, data: string, stream: 'stdout' | 'stderr') => void,
@@ -152,9 +274,22 @@ export class NodeServiceProcessManager extends EventEmitter {
 
     try {
       let child: ChildProcess;
+      let execCommand = (config.command || '').trim();
 
       if (isWin) {
-        child = spawn(config.command, [], {
+        if (execCommand.toLowerCase().endsWith('.ps1')) {
+          execCommand = `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${execCommand}"`;
+        } else if (execCommand.toLowerCase().endsWith('.bat') || execCommand.toLowerCase().endsWith('.cmd')) {
+          execCommand = `cmd.exe /d /s /c "${execCommand}"`;
+        }
+      } else {
+        if (execCommand.toLowerCase().endsWith('.sh') || execCommand.toLowerCase().endsWith('.bash')) {
+          execCommand = `sh "${execCommand}"`;
+        }
+      }
+
+      if (isWin) {
+        child = spawn(execCommand, [], {
           cwd,
           env: mergedEnv,
           shell: true,
@@ -162,7 +297,7 @@ export class NodeServiceProcessManager extends EventEmitter {
           stdio: ['pipe', 'pipe', 'pipe'],
         });
       } else {
-        child = spawn(config.command, [], {
+        child = spawn(execCommand, [], {
           cwd,
           env: mergedEnv,
           shell: true,
@@ -187,6 +322,8 @@ export class NodeServiceProcessManager extends EventEmitter {
 
       const entry: RunningServiceEntry = {
         ...record,
+        stopCommand: config.stopCommand,
+        cwd,
         child,
       };
 
@@ -235,6 +372,27 @@ export class NodeServiceProcessManager extends EventEmitter {
     if (!entry) return false;
 
     try {
+      if (entry.stopCommand && entry.stopCommand.trim()) {
+        try {
+          const isWin = process.platform === 'win32';
+          let stopCmd = entry.stopCommand.trim();
+          if (isWin) {
+            if (stopCmd.toLowerCase().endsWith('.ps1')) {
+              stopCmd = `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${stopCmd}"`;
+            } else if (stopCmd.toLowerCase().endsWith('.bat') || stopCmd.toLowerCase().endsWith('.cmd')) {
+              stopCmd = `cmd.exe /d /s /c "${stopCmd}"`;
+            }
+          } else {
+            if (stopCmd.toLowerCase().endsWith('.sh') || stopCmd.toLowerCase().endsWith('.bash')) {
+              stopCmd = `sh "${stopCmd}"`;
+            }
+          }
+          execSync(stopCmd, { cwd: entry.cwd, timeout: 5000, stdio: 'ignore' });
+        } catch (e) {
+          console.warn(`[NodeServiceProcessManager] Custom stop command error:`, e);
+        }
+      }
+
       this.killProcessTree(entry.pid);
       try {
         entry.child.kill('SIGKILL');
