@@ -14,6 +14,7 @@ import {
   Clock,
   Terminal,
   GripVertical,
+  Loader2,
 } from 'lucide-react';
 
 interface ServiceCardProps {
@@ -70,7 +71,8 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
   const runtime = getRuntime(service.id);
   const isRunning = runtime.status === 'running';
   const isStarting = runtime.status === 'starting';
-  const isBusy = isRunning || isStarting;
+  const isStopping = runtime.status === 'stopping';
+  const isBusy = isRunning || isStarting || isStopping;
 
   // Inline rename state
   const [isRenaming, setIsRenaming] = useState(false);
@@ -103,6 +105,7 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
 
   const handleStartStop = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (isStopping) return;
     if (isBusy) {
       stopService(service.id);
     } else {
@@ -169,12 +172,17 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
             {isStarting && (
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75" />
             )}
+            {isStopping && (
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+            )}
             <span
               className={`relative inline-flex rounded-full h-2.5 w-2.5 ${
                 isRunning
                   ? 'bg-emerald-500'
                   : isStarting
                   ? 'bg-sky-500'
+                  : isStopping
+                  ? 'bg-amber-500'
                   : runtime.status === 'failed'
                   ? 'bg-rose-500'
                   : 'bg-zinc-400 dark:bg-zinc-600'
@@ -240,14 +248,23 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
           {/* Start/Stop Button */}
           <button
             onClick={handleStartStop}
-            className={`p-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer flex items-center justify-center ${
-              isBusy
-                ? 'bg-rose-500/15 text-rose-400 hover:bg-rose-500/25 border border-rose-500/30'
-                : 'bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 border border-emerald-500/30'
+            disabled={isStopping}
+            className={`p-1.5 rounded-lg text-xs font-medium transition-all flex items-center justify-center ${
+              isStopping
+                ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30 cursor-wait'
+                : isBusy
+                ? 'bg-rose-500/15 text-rose-400 hover:bg-rose-500/25 border border-rose-500/30 cursor-pointer'
+                : 'bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 border border-emerald-500/30 cursor-pointer'
             }`}
-            title={isBusy ? t.services.stop : t.services.start}
+            title={isStopping ? t.services.status.stopping : isBusy ? t.services.stop : t.services.start}
           >
-            {isBusy ? <Square className="w-3.5 h-3.5 fill-current" /> : <Play className="w-3.5 h-3.5 fill-current" />}
+            {isStopping ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : isBusy ? (
+              <Square className="w-3.5 h-3.5 fill-current" />
+            ) : (
+              <Play className="w-3.5 h-3.5 fill-current" />
+            )}
           </button>
 
           {/* Restart Button (Active only when running) */}
@@ -332,6 +349,8 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
                 ? 'text-emerald-400'
                 : isStarting
                 ? 'text-sky-400'
+                : isStopping
+                ? 'text-amber-400'
                 : runtime.status === 'failed'
                 ? 'text-rose-400'
                 : 'text-theme-muted'
@@ -341,6 +360,8 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
               ? t.services.status.running
               : runtime.status === 'starting'
               ? t.services.status.starting
+              : runtime.status === 'stopping'
+              ? t.services.status.stopping
               : runtime.status === 'failed'
               ? `${t.services.status.failed} (${runtime.exitCode !== undefined ? runtime.exitCode : 1})`
               : t.services.status.stopped}

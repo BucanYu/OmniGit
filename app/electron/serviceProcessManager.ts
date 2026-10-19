@@ -17,9 +17,9 @@ try {
 export const serviceProcessManager = nodeServiceProcessManager;
 
 export function setupServiceIpcHandlers() {
-  ipcMain.handle('services:start', (event, config: ServiceRunConfig) => {
+  ipcMain.handle('services:start', async (event, config: ServiceRunConfig) => {
     const sender = event.sender;
-    return nodeServiceProcessManager.start(
+    return await nodeServiceProcessManager.start(
       config,
       (serviceId, data, stream) => {
         if (!sender.isDestroyed()) {
@@ -34,12 +34,12 @@ export function setupServiceIpcHandlers() {
     );
   });
 
-  ipcMain.handle('services:stop', (_event, serviceId: string) => {
-    return { success: nodeServiceProcessManager.stop(serviceId) };
+  ipcMain.handle('services:stop', async (_event, serviceId: string) => {
+    return { success: await nodeServiceProcessManager.stop(serviceId) };
   });
 
-  ipcMain.handle('services:stop-all', (_event, projectId?: string) => {
-    const stoppedCount = nodeServiceProcessManager.stopAll(projectId);
+  ipcMain.handle('services:stop-all', async (_event, projectId?: string) => {
+    const stoppedCount = await nodeServiceProcessManager.stopAll(projectId);
     return { success: true, count: stoppedCount };
   });
 

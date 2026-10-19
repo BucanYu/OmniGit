@@ -13,6 +13,7 @@ import {
   Clock,
   Terminal,
   Folder,
+  Loader2,
 } from 'lucide-react';
 
 interface ServiceLogViewerProps {
@@ -105,7 +106,8 @@ export const ServiceLogViewer: React.FC<ServiceLogViewerProps> = ({
   const runtime = service ? getRuntime(service.id) : null;
   const isRunning = runtime?.status === 'running';
   const isStarting = runtime?.status === 'starting';
-  const isBusy = isRunning || isStarting;
+  const isStopping = runtime?.status === 'stopping';
+  const isBusy = isRunning || isStarting || isStopping;
   const isAutoScroll = service ? autoScrollByService[service.id] !== false : true;
 
   // Uptime ticker
@@ -202,6 +204,8 @@ export const ServiceLogViewer: React.FC<ServiceLogViewerProps> = ({
                     ? 'bg-emerald-400 animate-pulse'
                     : isStarting
                     ? 'bg-sky-400 animate-pulse'
+                    : isStopping
+                    ? 'bg-amber-400 animate-pulse'
                     : runtime.status === 'failed'
                     ? 'bg-rose-400'
                     : 'bg-zinc-400'
@@ -211,6 +215,8 @@ export const ServiceLogViewer: React.FC<ServiceLogViewerProps> = ({
                 ? t.services.status.running
                 : isStarting
                 ? t.services.status.starting
+                : isStopping
+                ? t.services.status.stopping
                 : runtime.status === 'failed'
                 ? `${t.services.status.failed} (${runtime.exitCode !== undefined ? runtime.exitCode : 1})`
                 : t.services.status.stopped}
@@ -238,19 +244,28 @@ export const ServiceLogViewer: React.FC<ServiceLogViewerProps> = ({
           {/* Start / Stop Toggle */}
           <button
             onClick={() => {
+              if (isStopping) return;
               if (isBusy) {
                 stopService(service.id);
               } else {
                 startService(projectId, service.id);
               }
             }}
-            className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 cursor-pointer shadow-xs ${
-              isBusy
-                ? 'bg-rose-500/20 text-rose-400 hover:bg-rose-500/30 border border-rose-500/40'
-                : 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 border border-emerald-500/40'
+            disabled={isStopping}
+            className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 shadow-xs ${
+              isStopping
+                ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40 cursor-wait'
+                : isBusy
+                ? 'bg-rose-500/20 text-rose-400 hover:bg-rose-500/30 border border-rose-500/40 cursor-pointer'
+                : 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 border border-emerald-500/40 cursor-pointer'
             }`}
           >
-            {isBusy ? (
+            {isStopping ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <span>{t.services.status.stopping}</span>
+              </>
+            ) : isBusy ? (
               <>
                 <Square className="w-3.5 h-3.5 fill-current" />
                 <span>{t.services.stop}</span>

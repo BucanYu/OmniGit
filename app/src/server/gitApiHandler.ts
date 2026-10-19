@@ -512,7 +512,7 @@ export async function handleGitApiRequest(req: IncomingMessage, res: ServerRespo
 
       res.end(JSON.stringify({ matches: allMatches }));
     } else if (pathname === '/api/services/start') {
-      const result = nodeServiceProcessManager.start({
+      const result = await nodeServiceProcessManager.start({
         serviceId: body.serviceId,
         serviceName: body.serviceName,
         projectId: body.projectId,
@@ -523,10 +523,10 @@ export async function handleGitApiRequest(req: IncomingMessage, res: ServerRespo
       });
       res.end(JSON.stringify(result));
     } else if (pathname === '/api/services/stop') {
-      const success = nodeServiceProcessManager.stop(body.serviceId);
+      const success = await nodeServiceProcessManager.stop(body.serviceId);
       res.end(JSON.stringify({ success }));
     } else if (pathname === '/api/services/stop-all') {
-      const count = nodeServiceProcessManager.stopAll(body.projectId);
+      const count = await nodeServiceProcessManager.stopAll(body.projectId);
       res.end(JSON.stringify({ success: true, count }));
     } else if (pathname === '/api/services/running') {
       const running = nodeServiceProcessManager.getRunningServices(query.projectId);

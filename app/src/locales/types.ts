@@ -1233,6 +1233,7 @@ export interface LocaleDictionary {
     status: {
       stopped: string;
       starting: string;
+      stopping: string;
       running: string;
       failed: string;
     };

@@ -538,7 +538,7 @@ app.whenReady().then(async () => {
   app.on('will-quit', () => {
     isQuitting = true;
     ptyManager.killAll();
-    serviceProcessManager.stopAll();
+    serviceProcessManager.stopAllSync();
     if (embeddedServer) {
       try {
         if (typeof (embeddedServer as any).closeAllConnections === 'function') {

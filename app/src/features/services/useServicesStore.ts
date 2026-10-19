@@ -584,6 +584,17 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
   },
 
   stopService: async (serviceId: string) => {
+    // 1. Immediately set status to 'stopping' to give instant user feedback (< 16ms)
+    set((state) => ({
+      runtimeStates: {
+        ...state.runtimeStates,
+        [serviceId]: {
+          ...state.getRuntime(serviceId),
+          status: 'stopping',
+        },
+      },
+    }));
+
     if ((window as any).electronAPI?.services?.stop) {
       try {
         await (window as any).electronAPI.services.stop(serviceId);
@@ -637,25 +648,26 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
 
   stopAllServices: async (projectId: string) => {
     const list = get().getServices(projectId);
-    for (const item of list) {
-      const runtime = get().getRuntime(item.id);
-      if (runtime.status === 'running' || runtime.status === 'starting') {
-        await get().stopService(item.id);
+    const runningItems = list.filter((item) => {
+      const r = get().getRuntime(item.id);
+      return r.status === 'running' || r.status === 'starting';
+    });
+
+    if (runningItems.length === 0) return;
+
+    // Immediately mark all as stopping for instant UI feedback
+    set((state) => {
+      const nextRuntimes = { ...state.runtimeStates };
+      for (const item of runningItems) {
+        nextRuntimes[item.id] = {
+          ...state.getRuntime(item.id),
+          status: 'stopping',
+        };
       }
-    }
-    if ((window as any).electronAPI?.services?.stopAll) {
-      try {
-        await (window as any).electronAPI.services.stopAll(projectId);
-      } catch {}
-    } else {
-      try {
-        await fetch('/api/services/stop-all', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ projectId }),
-        });
-      } catch {}
-    }
+      return { runtimeStates: nextRuntimes };
+    });
+
+    await Promise.all(runningItems.map((item) => get().stopService(item.id)));
   },
 
   clearLogs: (serviceId: string) => {

@@ -1233,6 +1233,7 @@ export const zhCN: LocaleDictionary = {
     status: {
       stopped: '已停止',
       starting: '正在启动...',
+      stopping: '正在停止...',
       running: '运行中',
       failed: '异常退出',
     },

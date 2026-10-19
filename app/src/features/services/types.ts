@@ -11,7 +11,7 @@ export interface ServiceConfig {
   updatedAt: number;
 }
 
-export type ServiceStatus = 'stopped' | 'starting' | 'running' | 'failed';
+export type ServiceStatus = 'stopped' | 'starting' | 'running' | 'stopping' | 'failed';
 
 export interface ServiceRuntimeState {
   status: ServiceStatus;

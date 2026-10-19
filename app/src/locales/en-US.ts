@@ -1233,6 +1233,7 @@ export const enUS: LocaleDictionary = {
     status: {
       stopped: 'Stopped',
       starting: 'Starting...',
+      stopping: 'Stopping...',
       running: 'Running',
       failed: 'Failed',
     },
