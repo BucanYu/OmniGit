@@ -5,6 +5,8 @@ import { BranchMenu } from './BranchMenu';
 import { ThemeSwitcher } from './ThemeSwitcher';
 import { UserAccountFilter } from './UserAccountFilter';
 import { OmniGitLogo } from '../../components/ui/OmniGitLogo';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
+import { useServicesStore } from '../services/useServicesStore';
 import {
   GitBranch,
   FolderGit2,
@@ -78,7 +80,14 @@ export function TopBar() {
     setIsMaximized(!!max);
   };
 
+  const [isExitConfirmOpen, setIsExitConfirmOpen] = useState(false);
+
   const handleClose = () => {
+    const runningCount = useServicesStore.getState().getRunningCount();
+    if (runningCount > 0) {
+      setIsExitConfirmOpen(true);
+      return;
+    }
     window.electronAPI?.close();
   };
 
@@ -394,6 +403,23 @@ export function TopBar() {
           </>
         )}
       </div>
+
+      {/* Safety Confirmation Dialog when closing window with running services */}
+      <ConfirmDialog
+        isOpen={isExitConfirmOpen}
+        title={t.services.confirmations.exitWithRunningTitle}
+        description={t.services.confirmations.exitWithRunningDesc(useServicesStore.getState().getRunningCount())}
+        confirmText={t.services.confirmations.stopAndExit}
+        cancelText={t.services.confirmations.cancel}
+        variant="warning"
+        icon="alert"
+        onConfirm={async () => {
+          setIsExitConfirmOpen(false);
+          await useServicesStore.getState().stopAllServices('');
+          window.electronAPI?.close();
+        }}
+        onCancel={() => setIsExitConfirmOpen(false)}
+      />
     </header>
   );
 }

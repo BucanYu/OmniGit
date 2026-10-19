@@ -81,6 +81,48 @@ const electronAPI = {
       };
     },
   },
+
+  // Launch Scripts & Background Services Management
+  services: {
+    start: (config: {
+      serviceId: string;
+      serviceName: string;
+      projectId: string;
+      command: string;
+      cwd: string;
+      env?: Record<string, string>;
+    }) =>
+      ipcRenderer.invoke('services:start', config) as Promise<{ success: boolean; pid?: number; error?: string }>,
+    stop: (serviceId: string) =>
+      ipcRenderer.invoke('services:stop', serviceId) as Promise<{ success: boolean }>,
+    stopAll: (projectId?: string) =>
+      ipcRenderer.invoke('services:stop-all', projectId) as Promise<{ success: boolean; count: number }>,
+    getRunning: (projectId?: string) =>
+      ipcRenderer.invoke('services:get-running', projectId) as Promise<
+        Array<{ serviceId: string; pid: number; startedAt: number }>
+      >,
+    checkOrphans: () =>
+      ipcRenderer.invoke('services:check-orphans') as Promise<{
+        cleanedCount: number;
+        records: Array<{ serviceId: string; serviceName: string; pid: number }>;
+      }>,
+    onLog: (callback: (payload: { serviceId: string; data: string; stream: 'stdout' | 'stderr' }) => void) => {
+      const handler = (_event: any, payload: { serviceId: string; data: string; stream: 'stdout' | 'stderr' }) =>
+        callback(payload);
+      ipcRenderer.on('services:log', handler);
+      return () => {
+        ipcRenderer.removeListener('services:log', handler);
+      };
+    },
+    onExit: (callback: (payload: { serviceId: string; exitCode: number; signal?: string }) => void) => {
+      const handler = (_event: any, payload: { serviceId: string; exitCode: number; signal?: string }) =>
+        callback(payload);
+      ipcRenderer.on('services:exit', handler);
+      return () => {
+        ipcRenderer.removeListener('services:exit', handler);
+      };
+    },
+  },
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);

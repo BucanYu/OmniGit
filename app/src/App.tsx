@@ -22,6 +22,8 @@ import { useWorkspaceExplorerStore } from './features/workspace-explorer/useWork
 import { useEditorTabsStore } from './features/code-editor/useEditorTabsStore';
 import { GlobalSearchModal } from './features/global-search/GlobalSearchModal';
 import { useGlobalSearchStore } from './features/global-search/useGlobalSearchStore';
+import { ServicesDashboard } from './features/services/ServicesDashboard';
+import { useServicesStore } from './features/services/useServicesStore';
 
 export default function App() {
   const { t } = useTranslation();
@@ -70,6 +72,7 @@ export default function App() {
     (window as any).__editorTabsStore = useEditorTabsStore;
     (window as any).__terminalStore = useTerminalStore;
     (window as any).__globalSearchStore = useGlobalSearchStore;
+    (window as any).__servicesStore = useServicesStore;
     initApp();
   }, [initApp]);
 
@@ -227,6 +230,8 @@ export default function App() {
               </>
             )}
           </>
+        ) : workbenchMode === 'services' ? (
+          <ServicesDashboard />
         ) : (
           <>
             {/* Multi-Root Workspace Explorer */}

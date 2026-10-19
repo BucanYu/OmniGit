@@ -6,6 +6,7 @@ import { execFile } from 'child_process';
 import { handleGitApiRequest } from '../src/server/gitApiHandler';
 import { setupAutoUpdater } from './updater';
 import { setupPtyIpcHandlers, ptyManager } from './ptyManager';
+import { setupServiceIpcHandlers, serviceProcessManager } from './serviceProcessManager';
 
 // Top-level unhandled exception and rejection handlers
 process.on('uncaughtException', (err) => {
@@ -337,6 +338,7 @@ function setupIpcHandlers() {
   });
 
   setupPtyIpcHandlers();
+  setupServiceIpcHandlers();
 }
 
 // 5. Application Lifecycle
@@ -383,6 +385,16 @@ app.whenReady().then(async () => {
   await detectGitBinary();
   const port = await startEmbeddedServer(isSmokeTest ? 0 : 5345);
   setupIpcHandlers();
+
+  // Startup self-check: Clean up orphaned service processes left behind by abnormal crashes/power-off
+  try {
+    const orphanCleanResult = serviceProcessManager.checkAndCleanOrphanProcesses();
+    if (orphanCleanResult.cleanedCount > 0) {
+      console.log(`[Startup] Cleaned up ${orphanCleanResult.cleanedCount} orphaned background service processes.`);
+    }
+  } catch (err) {
+    console.warn('[Startup] Orphan process cleanup check failed:', err);
+  }
 
   // Headless smoke test mode for packaging automated verification
   if (isSmokeTest) {
@@ -497,6 +509,7 @@ app.whenReady().then(async () => {
   app.on('will-quit', () => {
     isQuitting = true;
     ptyManager.killAll();
+    serviceProcessManager.stopAll();
     if (embeddedServer) {
       try {
         if (typeof (embeddedServer as any).closeAllConnections === 'function') {

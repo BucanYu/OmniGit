@@ -1,0 +1,496 @@
+import { create } from 'zustand';
+import type { ServiceConfig, ServiceRuntimeState } from './types';
+import { useAppStore } from '../../store/useAppStore';
+
+interface ServicesState {
+  configsByProject: Record<string, ServiceConfig[]>;
+  runtimeStates: Record<string, ServiceRuntimeState>;
+  activeServiceId: string | null;
+  autoScrollByService: Record<string, boolean>;
+  isConfigModalOpen: boolean;
+  editingService: ServiceConfig | null;
+
+  // Actions
+  loadProjectServices: (projectId: string) => ServiceConfig[];
+  getServices: (projectId: string) => ServiceConfig[];
+  getRuntime: (serviceId: string) => ServiceRuntimeState;
+  setActiveServiceId: (serviceId: string | null) => void;
+  openAddModal: () => void;
+  openEditModal: (service: ServiceConfig) => void;
+  closeConfigModal: () => void;
+
+  addService: (
+    projectId: string,
+    data: Omit<ServiceConfig, 'id' | 'createdAt' | 'updatedAt'>
+  ) => ServiceConfig;
+  updateService: (
+    projectId: string,
+    serviceId: string,
+    updates: Partial<Omit<ServiceConfig, 'id' | 'createdAt'>>
+  ) => void;
+  renameService: (projectId: string, serviceId: string, newName: string) => void;
+  deleteService: (projectId: string, serviceId: string) => Promise<void>;
+
+  startService: (projectId: string, serviceId: string) => Promise<boolean>;
+  stopService: (serviceId: string) => Promise<boolean>;
+  restartService: (projectId: string, serviceId: string) => Promise<boolean>;
+  startAllServices: (projectId: string) => Promise<void>;
+  stopAllServices: (projectId: string) => Promise<void>;
+
+  clearLogs: (serviceId: string) => void;
+  toggleAutoScroll: (serviceId: string) => void;
+  hasRunningServices: (projectId?: string) => boolean;
+  getRunningCount: (projectId?: string) => number;
+  appendLog: (serviceId: string, text: string) => void;
+  handleProcessExit: (serviceId: string, exitCode: number, signal?: string) => void;
+}
+
+const DEFAULT_RUNTIME_STATE: ServiceRuntimeState = {
+  status: 'stopped',
+  logs: [],
+};
+
+function getStorageKey(projectId: string): string {
+  return `omnigit_services_${projectId}`;
+}
+
+export const useServicesStore = create<ServicesState>((set, get) => ({
+  configsByProject: {},
+  runtimeStates: {},
+  activeServiceId: null,
+  autoScrollByService: {},
+  isConfigModalOpen: false,
+  editingService: null,
+
+  loadProjectServices: (projectId: string) => {
+    if (!projectId) return [];
+    const cached = get().configsByProject[projectId];
+    if (cached) return cached;
+
+    let loaded: ServiceConfig[] = [];
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem(getStorageKey(projectId));
+        if (raw) {
+          loaded = JSON.parse(raw);
+        }
+      } catch (err) {
+        console.warn('[useServicesStore] Failed to load services from localStorage:', err);
+      }
+    }
+
+    set((state) => ({
+      configsByProject: {
+        ...state.configsByProject,
+        [projectId]: loaded,
+      },
+      activeServiceId: state.activeServiceId || (loaded.length > 0 ? loaded[0].id : null),
+    }));
+
+    return loaded;
+  },
+
+  getServices: (projectId: string) => {
+    if (!projectId) return [];
+    const list = get().configsByProject[projectId];
+    return list ? list : get().loadProjectServices(projectId);
+  },
+
+  getRuntime: (serviceId: string) => {
+    return get().runtimeStates[serviceId] || DEFAULT_RUNTIME_STATE;
+  },
+
+  setActiveServiceId: (serviceId: string | null) => {
+    set({ activeServiceId: serviceId });
+  },
+
+  openAddModal: () => {
+    set({ isConfigModalOpen: true, editingService: null });
+  },
+
+  openEditModal: (service: ServiceConfig) => {
+    set({ isConfigModalOpen: true, editingService: service });
+  },
+
+  closeConfigModal: () => {
+    set({ isConfigModalOpen: false, editingService: null });
+  },
+
+  addService: (projectId, data) => {
+    const id = `srv_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const now = Date.now();
+    const newService: ServiceConfig = {
+      ...data,
+      id,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    const currentList = get().getServices(projectId);
+    const updatedList = [...currentList, newService];
+
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(getStorageKey(projectId), JSON.stringify(updatedList));
+    }
+
+    set((state) => ({
+      configsByProject: {
+        ...state.configsByProject,
+        [projectId]: updatedList,
+      },
+      activeServiceId: id,
+      isConfigModalOpen: false,
+      editingService: null,
+    }));
+
+    return newService;
+  },
+
+  updateService: (projectId, serviceId, updates) => {
+    const currentList = get().getServices(projectId);
+    const updatedList = currentList.map((item) =>
+      item.id === serviceId ? { ...item, ...updates, updatedAt: Date.now() } : item
+    );
+
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(getStorageKey(projectId), JSON.stringify(updatedList));
+    }
+
+    set((state) => ({
+      configsByProject: {
+        ...state.configsByProject,
+        [projectId]: updatedList,
+      },
+      isConfigModalOpen: false,
+      editingService: null,
+    }));
+  },
+
+  renameService: (projectId, serviceId, newName) => {
+    const trimmed = newName.trim();
+    if (!trimmed) return;
+    get().updateService(projectId, serviceId, { name: trimmed });
+  },
+
+  deleteService: async (projectId, serviceId) => {
+    // If currently running, stop it first
+    const runtime = get().getRuntime(serviceId);
+    if (runtime.status === 'running' || runtime.status === 'starting') {
+      await get().stopService(serviceId);
+    }
+
+    const currentList = get().getServices(projectId);
+    const updatedList = currentList.filter((item) => item.id !== serviceId);
+
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(getStorageKey(projectId), JSON.stringify(updatedList));
+    }
+
+    set((state) => {
+      const nextActiveId =
+        state.activeServiceId === serviceId
+          ? updatedList.length > 0
+            ? updatedList[0].id
+            : null
+          : state.activeServiceId;
+
+      const nextRuntime = { ...state.runtimeStates };
+      delete nextRuntime[serviceId];
+
+      return {
+        configsByProject: {
+          ...state.configsByProject,
+          [projectId]: updatedList,
+        },
+        activeServiceId: nextActiveId,
+        runtimeStates: nextRuntime,
+      };
+    });
+  },
+
+  startService: async (projectId, serviceId) => {
+    const services = get().getServices(projectId);
+    const service = services.find((s) => s.id === serviceId);
+    if (!service) return false;
+
+    const isWindows =
+      (window as any).electronAPI?.platform === 'win32' ||
+      (typeof navigator !== 'undefined' && navigator.platform?.toLowerCase().includes('win'));
+
+    const rawCommand = isWindows ? service.winCommand : service.unixCommand;
+    const command = (rawCommand || '').trim();
+    if (!command) {
+      get().appendLog(
+        serviceId,
+        `\n[OmniGit Error] 未为当前操作系统 (${isWindows ? 'Windows' : 'macOS/Linux'}) 配置启动命令。\n`
+      );
+      set((state) => ({
+        runtimeStates: {
+          ...state.runtimeStates,
+          [serviceId]: {
+            ...state.getRuntime(serviceId),
+            status: 'failed',
+            exitCode: 1,
+          },
+        },
+      }));
+      return false;
+    }
+
+    // Determine working directory
+    const appProjects = useAppStore.getState().projects;
+    const currentProj = appProjects.find((p) => p.id === projectId);
+    const projectRoot = currentProj?.path || '';
+
+    let resolvedCwd = projectRoot;
+    if (service.cwd && service.cwd.trim()) {
+      const customCwd = service.cwd.trim();
+      if (
+        customCwd.startsWith('/') ||
+        customCwd.startsWith('\\') ||
+        customCwd.includes(':\\') ||
+        customCwd.includes(':/')
+      ) {
+        resolvedCwd = customCwd;
+      } else {
+        // Relative path
+        const sep = isWindows ? '\\' : '/';
+        resolvedCwd = `${projectRoot}${sep}${customCwd.replace(/^[/\\]+/, '')}`;
+      }
+    }
+
+    // Set status to starting
+    set((state) => ({
+      runtimeStates: {
+        ...state.runtimeStates,
+        [serviceId]: {
+          ...state.getRuntime(serviceId),
+          status: 'starting',
+          exitCode: null,
+        },
+      },
+    }));
+
+    get().appendLog(
+      serviceId,
+      `\x1b[36m>>> [OmniGit] 正在启动服务: ${service.name}\x1b[0m\n` +
+        `\x1b[90m> 工作目录: ${resolvedCwd}\x1b[0m\n` +
+        `\x1b[90m> 执行指令: ${command}\x1b[0m\n\n`
+    );
+
+    if ((window as any).electronAPI?.services?.start) {
+      try {
+        const res = await (window as any).electronAPI.services.start({
+          serviceId,
+          serviceName: service.name,
+          projectId,
+          command,
+          cwd: resolvedCwd,
+          env: service.env,
+        });
+
+        if (res.success && res.pid) {
+          set((state) => ({
+            runtimeStates: {
+              ...state.runtimeStates,
+              [serviceId]: {
+                ...state.getRuntime(serviceId),
+                status: 'running',
+                pid: res.pid,
+                startedAt: Date.now(),
+                exitCode: null,
+              },
+            },
+          }));
+          return true;
+        } else {
+          get().appendLog(serviceId, `\x1b[31m[OmniGit Error] 启动失败: ${res.error || '未知错误'}\x1b[0m\n`);
+          set((state) => ({
+            runtimeStates: {
+              ...state.runtimeStates,
+              [serviceId]: {
+                ...state.getRuntime(serviceId),
+                status: 'failed',
+                exitCode: 1,
+              },
+            },
+          }));
+          return false;
+        }
+      } catch (err: any) {
+        get().appendLog(serviceId, `\x1b[31m[OmniGit Error] 启动异常: ${err.message || String(err)}\x1b[0m\n`);
+        set((state) => ({
+          runtimeStates: {
+            ...state.runtimeStates,
+            [serviceId]: {
+              ...state.getRuntime(serviceId),
+              status: 'failed',
+              exitCode: 1,
+            },
+          },
+        }));
+        return false;
+      }
+    }
+
+    return false;
+  },
+
+  stopService: async (serviceId: string) => {
+    if ((window as any).electronAPI?.services?.stop) {
+      try {
+        await (window as any).electronAPI.services.stop(serviceId);
+      } catch (err) {
+        console.warn('[useServicesStore] Stop service error:', err);
+      }
+    }
+
+    get().appendLog(serviceId, `\n\x1b[33m>>> [OmniGit] 服务已终止停止\x1b[0m\n`);
+
+    set((state) => ({
+      runtimeStates: {
+        ...state.runtimeStates,
+        [serviceId]: {
+          ...state.getRuntime(serviceId),
+          status: 'stopped',
+          pid: undefined,
+          startedAt: undefined,
+        },
+      },
+    }));
+
+    return true;
+  },
+
+  restartService: async (projectId: string, serviceId: string) => {
+    await get().stopService(serviceId);
+    await new Promise((r) => setTimeout(r, 200));
+    return await get().startService(projectId, serviceId);
+  },
+
+  startAllServices: async (projectId: string) => {
+    const list = get().getServices(projectId);
+    for (const item of list) {
+      const runtime = get().getRuntime(item.id);
+      if (runtime.status !== 'running' && runtime.status !== 'starting') {
+        await get().startService(projectId, item.id);
+      }
+    }
+  },
+
+  stopAllServices: async (projectId: string) => {
+    const list = get().getServices(projectId);
+    for (const item of list) {
+      const runtime = get().getRuntime(item.id);
+      if (runtime.status === 'running' || runtime.status === 'starting') {
+        await get().stopService(item.id);
+      }
+    }
+  },
+
+  clearLogs: (serviceId: string) => {
+    set((state) => ({
+      runtimeStates: {
+        ...state.runtimeStates,
+        [serviceId]: {
+          ...state.getRuntime(serviceId),
+          logs: [],
+        },
+      },
+    }));
+  },
+
+  toggleAutoScroll: (serviceId: string) => {
+    const current = get().autoScrollByService[serviceId] !== false;
+    set((state) => ({
+      autoScrollByService: {
+        ...state.autoScrollByService,
+        [serviceId]: !current,
+      },
+    }));
+  },
+
+  hasRunningServices: (projectId?: string) => {
+    const state = get();
+    for (const [id, runtime] of Object.entries(state.runtimeStates)) {
+      if (runtime.status === 'running' || runtime.status === 'starting') {
+        if (!projectId) return true;
+        const services = state.configsByProject[projectId] || [];
+        if (services.some((s) => s.id === id)) return true;
+      }
+    }
+    return false;
+  },
+
+  getRunningCount: (projectId?: string) => {
+    const state = get();
+    let count = 0;
+    for (const [id, runtime] of Object.entries(state.runtimeStates)) {
+      if (runtime.status === 'running' || runtime.status === 'starting') {
+        if (!projectId) {
+          count++;
+        } else {
+          const services = state.configsByProject[projectId] || [];
+          if (services.some((s) => s.id === id)) count++;
+        }
+      }
+    }
+    return count;
+  },
+
+  appendLog: (serviceId: string, text: string) => {
+    set((state) => {
+      const prevRuntime = state.getRuntime(serviceId);
+      const prevLogs = prevRuntime.logs;
+      const combined = [...prevLogs, text];
+      // Limit to 2000 entries
+      const clamped = combined.length > 2000 ? combined.slice(combined.length - 2000) : combined;
+
+      return {
+        runtimeStates: {
+          ...state.runtimeStates,
+          [serviceId]: {
+            ...prevRuntime,
+            logs: clamped,
+          },
+        },
+      };
+    });
+  },
+
+  handleProcessExit: (serviceId: string, exitCode: number, signal?: string) => {
+    const isSuccess = exitCode === 0;
+    const exitMsg = signal
+      ? `\n\x1b[33m>>> [OmniGit] 进程收到信号退出: ${signal} (代码: ${exitCode})\x1b[0m\n`
+      : isSuccess
+      ? `\n\x1b[32m>>> [OmniGit] 进程正常退出 (代码: 0)\x1b[0m\n`
+      : `\n\x1b[31m>>> [OmniGit] 进程异常退出 (退出代码: ${exitCode})\x1b[0m\n`;
+
+    get().appendLog(serviceId, exitMsg);
+
+    set((state) => ({
+      runtimeStates: {
+        ...state.runtimeStates,
+        [serviceId]: {
+          ...state.getRuntime(serviceId),
+          status: isSuccess ? 'stopped' : 'failed',
+          pid: undefined,
+          exitCode,
+        },
+      },
+    }));
+  },
+}));
+
+// Setup global IPC event listeners for services
+if (typeof window !== 'undefined' && (window as any).electronAPI?.services) {
+  const electronAPI = (window as any).electronAPI;
+
+  electronAPI.services.onLog((payload: { serviceId: string; data: string; stream: 'stdout' | 'stderr' }) => {
+    useServicesStore.getState().appendLog(payload.serviceId, payload.data);
+  });
+
+  electronAPI.services.onExit((payload: { serviceId: string; exitCode: number; signal?: string }) => {
+    useServicesStore.getState().handleProcessExit(payload.serviceId, payload.exitCode, payload.signal);
+  });
+}

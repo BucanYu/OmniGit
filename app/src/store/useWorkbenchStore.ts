@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type WorkbenchMode = 'git' | 'explorer';
+export type WorkbenchMode = 'git' | 'explorer' | 'services';
 
 interface WorkbenchState {
   workbenchMode: WorkbenchMode;

@@ -1061,6 +1061,7 @@ export interface LocaleDictionary {
     gitWorkbench: string;
     search: string;
     workspaceExplorer: string;
+    services: string;
     terminal: string;
     settings: string;
   };
@@ -1193,6 +1194,74 @@ export interface LocaleDictionary {
     fileSize: string;
     loadError: string;
     reload: string;
+  };
+  services: {
+    modeTitle: string;
+    newService: string;
+    editService: string;
+    renameService: string;
+    deleteService: string;
+    startAll: string;
+    stopAll: string;
+    start: string;
+    stop: string;
+    restart: string;
+    clearLogs: string;
+    copyLogs: string;
+    copiedLogsToast: string;
+    autoScroll: string;
+    noServicesTitle: string;
+    noServicesDesc: string;
+    noActiveProjectPrompt: string;
+    noServiceSelected: string;
+    selectServicePrompt: string;
+    uptimeLabel: string;
+    pidLabel: string;
+    cwdLabel: string;
+    commandLabel: string;
+    currentPlatformBadge: string;
+    runningCountBadge: (count: number) => string;
+    status: {
+      stopped: string;
+      starting: string;
+      running: string;
+      failed: string;
+    };
+    fields: {
+      name: string;
+      namePlaceholder: string;
+      cwd: string;
+      cwdPlaceholder: string;
+      selectFolderTooltip: string;
+      winCommand: string;
+      winPlaceholder: string;
+      unixCommand: string;
+      unixPlaceholder: string;
+      env: string;
+      envKeyPlaceholder: string;
+      envValPlaceholder: string;
+      addEnv: string;
+      template: string;
+      selectTemplateHint: string;
+    };
+    templates: {
+      custom: string;
+      nodeDev: string;
+      springMaven: string;
+      springGradle: string;
+      pythonWeb: string;
+      goRun: string;
+      dockerCompose: string;
+    };
+    confirmations: {
+      deleteTitle: string;
+      deleteDesc: (name: string) => string;
+      exitWithRunningTitle: string;
+      exitWithRunningDesc: (count: number) => string;
+      stopAndExit: string;
+      cancel: string;
+      orphanCleanedNotification: (count: number) => string;
+    };
   };
 }
 
