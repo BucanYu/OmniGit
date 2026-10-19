@@ -426,9 +426,19 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
       ) {
         resolvedCwd = customCwd;
       } else {
-        // Relative path
         const sep = isWindows ? '\\' : '/';
-        resolvedCwd = `${projectRoot}${sep}${customCwd.replace(/^[/\\]+/, '')}`;
+        const combined = `${projectRoot}${sep}${customCwd}`;
+        const parts = combined.split(/[/\\]+/);
+        const resolved: string[] = [];
+        for (const part of parts) {
+          if (part === '.' || part === '') continue;
+          if (part === '..') {
+            if (resolved.length > 0) resolved.pop();
+          } else {
+            resolved.push(part);
+          }
+        }
+        resolvedCwd = isWindows ? resolved.join('\\') : '/' + resolved.join('/');
       }
     }
 

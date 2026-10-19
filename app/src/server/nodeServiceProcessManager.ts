@@ -4,6 +4,27 @@ import * as os from 'os';
 import { spawn, execSync, ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
 
+let iconv: any = null;
+try {
+  iconv = require('iconv-lite');
+} catch {}
+
+function decodeStreamBuffer(buffer: Buffer): string {
+  const utf8Str = buffer.toString('utf8');
+  if (!utf8Str.includes('\uFFFD')) {
+    return utf8Str;
+  }
+  if (iconv) {
+    try {
+      const gbkStr = iconv.decode(buffer, 'gbk');
+      if (!gbkStr.includes('\uFFFD')) {
+        return gbkStr;
+      }
+    } catch {}
+  }
+  return utf8Str;
+}
+
 export interface ServiceRunConfig {
   serviceId: string;
   serviceName: string;
@@ -149,19 +170,27 @@ export class NodeServiceProcessManager extends EventEmitter {
   public scanProjectScripts(projectPath: string): DiscoveredScriptGroup[] {
     if (!projectPath || !fs.existsSync(projectPath)) return [];
 
-    const searchRoots = [projectPath];
+    const searchRoots: Array<{ rootDir: string; relCwd: string }> = [
+      { rootDir: projectPath, relCwd: '' },
+    ];
     const parentDir = path.dirname(projectPath);
     if (parentDir && parentDir !== projectPath && fs.existsSync(path.join(parentDir, 'scripts'))) {
-      searchRoots.push(parentDir);
+      searchRoots.push({ rootDir: parentDir, relCwd: '..' });
     }
 
     const subdirs = ['.', 'scripts', 'bin', 'tools'];
     const exts = ['.bat', '.cmd', '.ps1', '.sh', '.bash'];
-    const discovered: Array<{ relPath: string; absPath: string; name: string; ext: string }> = [];
+    const discovered: Array<{
+      relPath: string;
+      absPath: string;
+      name: string;
+      ext: string;
+      cwd: string;
+    }> = [];
 
-    for (const root of searchRoots) {
+    for (const { rootDir, relCwd } of searchRoots) {
       for (const d of subdirs) {
-        const fullDir = path.resolve(root, d);
+        const fullDir = path.resolve(rootDir, d);
         if (fs.existsSync(fullDir)) {
           try {
             const stat = fs.statSync(fullDir);
@@ -177,6 +206,7 @@ export class NodeServiceProcessManager extends EventEmitter {
                     absPath,
                     name: path.basename(f, ext),
                     ext,
+                    cwd: relCwd,
                   });
                 }
               }
@@ -224,7 +254,7 @@ export class NodeServiceProcessManager extends EventEmitter {
         g = {
           id: `discovered_${coreId}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
           name: friendlyName,
-          cwd: '',
+          cwd: item.cwd || '',
         };
         groupMap.set(coreId, g);
       }
@@ -255,6 +285,97 @@ export class NodeServiceProcessManager extends EventEmitter {
     return Array.from(groupMap.values());
   }
 
+  public resolveCommandAndCwd(
+    baseCwd: string,
+    rawCommand: string
+  ): { cwd: string; command: string } {
+    let cwd = baseCwd && fs.existsSync(baseCwd) ? path.resolve(baseCwd) : process.cwd();
+    const cmd = (rawCommand || '').trim();
+    if (!cmd) {
+      return { cwd, command: cmd };
+    }
+
+    // 1. Try to extract target file/executable if it points to a script or relative path
+    let targetFile = '';
+    const psMatch = cmd.match(/^(?:powershell(?:\.exe)?|pwsh(?:\.exe)?)\s+.*-File\s+["']?([^"']+)["']?/i);
+    const shMatch = cmd.match(/^(?:sh|bash)\s+["']?([^"']+)["']?/i);
+    const cmdMatch = cmd.match(/^cmd(?:\.exe)?\s+\/(?:c|k)\s+["']?([^"']+)["']?/i);
+    const nodeMatch = cmd.match(/^node(?:\.exe)?\s+["']?([^"']+)["']?/i);
+
+    if (psMatch) {
+      targetFile = psMatch[1].trim();
+    } else if (shMatch) {
+      targetFile = shMatch[1].trim();
+    } else if (cmdMatch) {
+      targetFile = cmdMatch[1].trim();
+    } else if (nodeMatch) {
+      targetFile = nodeMatch[1].trim();
+    } else {
+      const m = cmd.match(/^"([^"]+)"/) || cmd.match(/^'([^']+)'/) || cmd.match(/^(\S+)/);
+      if (m) {
+        targetFile = m[1].trim();
+      }
+    }
+
+    if (!targetFile) {
+      return { cwd, command: cmd };
+    }
+
+    // If targetFile is an absolute path that exists on disk
+    if (path.isAbsolute(targetFile)) {
+      if (fs.existsSync(targetFile)) {
+        const dir = path.dirname(targetFile);
+        if (path.basename(dir).toLowerCase() === 'scripts') {
+          const rootCandidate = path.dirname(dir);
+          if (fs.existsSync(rootCandidate)) {
+            return { cwd: rootCandidate, command: cmd };
+          }
+        }
+        return { cwd, command: cmd };
+      }
+    }
+
+    // Check if targetFile already exists in current cwd
+    const directPath = path.resolve(cwd, targetFile);
+    if (fs.existsSync(directPath)) {
+      return { cwd, command: cmd };
+    }
+
+    // Check parent directories (e.g. inner nested repository inside a monorepo root)
+    const candidateParents = [
+      path.resolve(cwd, '..'),
+      path.resolve(cwd, '../..'),
+    ];
+
+    for (const parent of candidateParents) {
+      if (fs.existsSync(parent)) {
+        // Check 1: does targetFile exist in parent?
+        const inParent = path.resolve(parent, targetFile);
+        if (fs.existsSync(inParent)) {
+          return { cwd: parent, command: cmd };
+        }
+
+        // Check 2: if targetFile is just "start-backend.bat", does "scripts/start-backend.bat" exist in parent?
+        const inParentScripts = path.resolve(parent, 'scripts', targetFile);
+        if (fs.existsSync(inParentScripts)) {
+          const replacement = path.join('scripts', targetFile);
+          const updatedCmd = cmd.includes(targetFile) ? cmd.replace(targetFile, replacement) : replacement;
+          return { cwd: parent, command: updatedCmd };
+        }
+      }
+    }
+
+    // Check 3: if targetFile is just "start-backend.bat", does "scripts/start-backend.bat" exist in cwd?
+    const inCwdScripts = path.resolve(cwd, 'scripts', targetFile);
+    if (fs.existsSync(inCwdScripts)) {
+      const replacement = path.join('scripts', targetFile);
+      const updatedCmd = cmd.includes(targetFile) ? cmd.replace(targetFile, replacement) : replacement;
+      return { cwd, command: updatedCmd };
+    }
+
+    return { cwd, command: cmd };
+  }
+
   public start(
     config: ServiceRunConfig,
     onLog?: (serviceId: string, data: string, stream: 'stdout' | 'stderr') => void,
@@ -265,7 +386,9 @@ export class NodeServiceProcessManager extends EventEmitter {
     }
 
     const isWin = process.platform === 'win32';
-    const cwd = config.cwd && fs.existsSync(config.cwd) ? config.cwd : process.cwd();
+    const resolved = this.resolveCommandAndCwd(config.cwd, config.command);
+    const cwd = resolved.cwd;
+    let execCommand = resolved.command;
 
     const mergedEnv = Object.assign({}, process.env, config.env, {
       FORCE_COLOR: '3',
@@ -274,17 +397,17 @@ export class NodeServiceProcessManager extends EventEmitter {
 
     try {
       let child: ChildProcess;
-      let execCommand = (config.command || '').trim();
+      const cleanCmd = execCommand.trim().replace(/^["']|["']$/g, '');
 
       if (isWin) {
-        if (execCommand.toLowerCase().endsWith('.ps1')) {
-          execCommand = `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${execCommand}"`;
-        } else if (execCommand.toLowerCase().endsWith('.bat') || execCommand.toLowerCase().endsWith('.cmd')) {
-          execCommand = `cmd.exe /d /s /c "${execCommand}"`;
+        if (cleanCmd.toLowerCase().endsWith('.ps1')) {
+          execCommand = `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${cleanCmd}"`;
+        } else if (cleanCmd.toLowerCase().endsWith('.bat') || cleanCmd.toLowerCase().endsWith('.cmd')) {
+          execCommand = `cmd.exe /d /s /c "${cleanCmd}"`;
         }
       } else {
-        if (execCommand.toLowerCase().endsWith('.sh') || execCommand.toLowerCase().endsWith('.bash')) {
-          execCommand = `sh "${execCommand}"`;
+        if (cleanCmd.toLowerCase().endsWith('.sh') || cleanCmd.toLowerCase().endsWith('.bash')) {
+          execCommand = `sh "${cleanCmd}"`;
         }
       }
 
@@ -331,13 +454,13 @@ export class NodeServiceProcessManager extends EventEmitter {
       this.addRecord(record);
 
       child.stdout?.on('data', (chunk) => {
-        const text = chunk.toString();
+        const text = decodeStreamBuffer(chunk);
         if (onLog) onLog(config.serviceId, text, 'stdout');
         this.emit('log', { serviceId: config.serviceId, data: text, stream: 'stdout' });
       });
 
       child.stderr?.on('data', (chunk) => {
-        const text = chunk.toString();
+        const text = decodeStreamBuffer(chunk);
         if (onLog) onLog(config.serviceId, text, 'stderr');
         this.emit('log', { serviceId: config.serviceId, data: text, stream: 'stderr' });
       });
@@ -375,19 +498,22 @@ export class NodeServiceProcessManager extends EventEmitter {
       if (entry.stopCommand && entry.stopCommand.trim()) {
         try {
           const isWin = process.platform === 'win32';
-          let stopCmd = entry.stopCommand.trim();
+          const resolvedStop = this.resolveCommandAndCwd(entry.cwd, entry.stopCommand);
+          let stopCmd = resolvedStop.command;
+          const stopCwd = resolvedStop.cwd;
+          const cleanStop = stopCmd.trim().replace(/^["']|["']$/g, '');
           if (isWin) {
-            if (stopCmd.toLowerCase().endsWith('.ps1')) {
-              stopCmd = `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${stopCmd}"`;
-            } else if (stopCmd.toLowerCase().endsWith('.bat') || stopCmd.toLowerCase().endsWith('.cmd')) {
-              stopCmd = `cmd.exe /d /s /c "${stopCmd}"`;
+            if (cleanStop.toLowerCase().endsWith('.ps1')) {
+              stopCmd = `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${cleanStop}"`;
+            } else if (cleanStop.toLowerCase().endsWith('.bat') || cleanStop.toLowerCase().endsWith('.cmd')) {
+              stopCmd = `cmd.exe /d /s /c "${cleanStop}"`;
             }
           } else {
-            if (stopCmd.toLowerCase().endsWith('.sh') || stopCmd.toLowerCase().endsWith('.bash')) {
-              stopCmd = `sh "${stopCmd}"`;
+            if (cleanStop.toLowerCase().endsWith('.sh') || cleanStop.toLowerCase().endsWith('.bash')) {
+              stopCmd = `sh "${cleanStop}"`;
             }
           }
-          execSync(stopCmd, { cwd: entry.cwd, timeout: 5000, stdio: 'ignore' });
+          execSync(stopCmd, { cwd: stopCwd, timeout: 5000, stdio: 'ignore' });
         } catch (e) {
           console.warn(`[NodeServiceProcessManager] Custom stop command error:`, e);
         }
