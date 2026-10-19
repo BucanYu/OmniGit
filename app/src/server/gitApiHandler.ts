@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import { gitService } from './gitService';
 import { fileSystemService } from './fileSystemService';
 import { fileEncodingService } from './fileEncodingService';
+import { nodeServiceProcessManager } from './nodeServiceProcessManager';
 
 /**
  * Universal Git & File System API Request Handler
@@ -12,14 +13,56 @@ import { fileEncodingService } from './fileEncodingService';
  */
 export async function handleGitApiRequest(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
   const url = req.url || '';
-  if (!url.startsWith('/api/git') && !url.startsWith('/api/fs')) {
+  if (!url.startsWith('/api/git') && !url.startsWith('/api/fs') && !url.startsWith('/api/services')) {
     return false;
   }
 
-  res.setHeader('Content-Type', 'application/json; charset=utf-8');
   const urlObj = new URL(url, 'http://127.0.0.1:5345');
   const pathname = urlObj.pathname;
   const query = Object.fromEntries(urlObj.searchParams.entries());
+
+  if (pathname === '/api/services/stream') {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+      'Connection': 'keep-alive',
+      'Access-Control-Allow-Origin': '*',
+    });
+    res.write('event: connected\ndata: {}\n\n');
+
+    const onLog = (payload: { serviceId: string; data: string; stream: 'stdout' | 'stderr' }) => {
+      try {
+        res.write(`event: log\ndata: ${JSON.stringify(payload)}\n\n`);
+      } catch {}
+    };
+
+    const onExit = (payload: { serviceId: string; exitCode: number; signal?: string }) => {
+      try {
+        res.write(`event: exit\ndata: ${JSON.stringify(payload)}\n\n`);
+      } catch {}
+    };
+
+    nodeServiceProcessManager.on('log', onLog);
+    nodeServiceProcessManager.on('exit', onExit);
+
+    const heartbeat = setInterval(() => {
+      try {
+        res.write(': heartbeat\n\n');
+      } catch {
+        clearInterval(heartbeat);
+      }
+    }, 15000);
+
+    req.on('close', () => {
+      clearInterval(heartbeat);
+      nodeServiceProcessManager.off('log', onLog);
+      nodeServiceProcessManager.off('exit', onExit);
+    });
+
+    return true;
+  }
+
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
 
   let body: any = {};
   if (req.method === 'POST') {
@@ -468,6 +511,28 @@ export async function handleGitApiRequest(req: IncomingMessage, res: ServerRespo
       }
 
       res.end(JSON.stringify({ matches: allMatches }));
+    } else if (pathname === '/api/services/start') {
+      const result = nodeServiceProcessManager.start({
+        serviceId: body.serviceId,
+        serviceName: body.serviceName,
+        projectId: body.projectId,
+        command: body.command,
+        cwd: body.cwd,
+        env: body.env,
+      });
+      res.end(JSON.stringify(result));
+    } else if (pathname === '/api/services/stop') {
+      const success = nodeServiceProcessManager.stop(body.serviceId);
+      res.end(JSON.stringify({ success }));
+    } else if (pathname === '/api/services/stop-all') {
+      const count = nodeServiceProcessManager.stopAll(body.projectId);
+      res.end(JSON.stringify({ success: true, count }));
+    } else if (pathname === '/api/services/running') {
+      const running = nodeServiceProcessManager.getRunningServices(query.projectId);
+      res.end(JSON.stringify(running));
+    } else if (pathname === '/api/services/check-orphans') {
+      const result = nodeServiceProcessManager.checkAndCleanOrphanProcesses();
+      res.end(JSON.stringify(result));
     } else {
       res.statusCode = 404;
       res.end(JSON.stringify({ error: 'Endpoint not found' }));

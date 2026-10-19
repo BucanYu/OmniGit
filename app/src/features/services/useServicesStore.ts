@@ -92,8 +92,7 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
 
   getServices: (projectId: string) => {
     if (!projectId) return [];
-    const list = get().configsByProject[projectId];
-    return list ? list : get().loadProjectServices(projectId);
+    return get().configsByProject[projectId] || [];
   },
 
   getRuntime: (serviceId: string) => {
@@ -331,9 +330,66 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
         }));
         return false;
       }
-    }
+    } else {
+      // Web browser mode via HTTP API
+      try {
+        const resp = await fetch('/api/services/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            serviceId,
+            serviceName: service.name,
+            projectId,
+            command,
+            cwd: resolvedCwd,
+            env: service.env,
+          }),
+        });
+        const res = await resp.json();
 
-    return false;
+        if (res.success && res.pid) {
+          set((state) => ({
+            runtimeStates: {
+              ...state.runtimeStates,
+              [serviceId]: {
+                ...state.getRuntime(serviceId),
+                status: 'running',
+                pid: res.pid,
+                startedAt: Date.now(),
+                exitCode: null,
+              },
+            },
+          }));
+          return true;
+        } else {
+          get().appendLog(serviceId, `\x1b[31m[OmniGit Error] 启动失败: ${res.error || '未知错误'}\x1b[0m\n`);
+          set((state) => ({
+            runtimeStates: {
+              ...state.runtimeStates,
+              [serviceId]: {
+                ...state.getRuntime(serviceId),
+                status: 'failed',
+                exitCode: 1,
+              },
+            },
+          }));
+          return false;
+        }
+      } catch (err: any) {
+        get().appendLog(serviceId, `\x1b[31m[OmniGit Error] 启动异常: ${err.message || String(err)}\x1b[0m\n`);
+        set((state) => ({
+          runtimeStates: {
+            ...state.runtimeStates,
+            [serviceId]: {
+              ...state.getRuntime(serviceId),
+              status: 'failed',
+              exitCode: 1,
+            },
+          },
+        }));
+        return false;
+      }
+    }
   },
 
   stopService: async (serviceId: string) => {
@@ -342,6 +398,16 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
         await (window as any).electronAPI.services.stop(serviceId);
       } catch (err) {
         console.warn('[useServicesStore] Stop service error:', err);
+      }
+    } else {
+      try {
+        await fetch('/api/services/stop', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ serviceId }),
+        });
+      } catch (err) {
+        console.warn('[useServicesStore] Stop service HTTP error:', err);
       }
     }
 
@@ -385,6 +451,19 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
       if (runtime.status === 'running' || runtime.status === 'starting') {
         await get().stopService(item.id);
       }
+    }
+    if ((window as any).electronAPI?.services?.stopAll) {
+      try {
+        await (window as any).electronAPI.services.stopAll(projectId);
+      } catch {}
+    } else {
+      try {
+        await fetch('/api/services/stop-all', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ projectId }),
+        });
+      } catch {}
     }
   },
 
@@ -459,8 +538,12 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
   },
 
   handleProcessExit: (serviceId: string, exitCode: number, signal?: string) => {
-    const isSuccess = exitCode === 0;
-    const exitMsg = signal
+    const prevRuntime = get().getRuntime(serviceId);
+    const wasUserStopped = prevRuntime.status === 'stopped';
+    const isSuccess = exitCode === 0 || wasUserStopped;
+    const exitMsg = wasUserStopped
+      ? `\n\x1b[33m>>> [OmniGit] 进程已主动终止关闭\x1b[0m\n`
+      : signal
       ? `\n\x1b[33m>>> [OmniGit] 进程收到信号退出: ${signal} (代码: ${exitCode})\x1b[0m\n`
       : isSuccess
       ? `\n\x1b[32m>>> [OmniGit] 进程正常退出 (代码: 0)\x1b[0m\n`
@@ -482,15 +565,89 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
   },
 }));
 
-// Setup global IPC event listeners for services
-if (typeof window !== 'undefined' && (window as any).electronAPI?.services) {
-  const electronAPI = (window as any).electronAPI;
+// Setup global event listeners (Electron IPC or Web browser SSE)
+if (typeof window !== 'undefined') {
+  if ((window as any).electronAPI?.services) {
+    const electronAPI = (window as any).electronAPI;
 
-  electronAPI.services.onLog((payload: { serviceId: string; data: string; stream: 'stdout' | 'stderr' }) => {
-    useServicesStore.getState().appendLog(payload.serviceId, payload.data);
-  });
+    electronAPI.services.onLog((payload: { serviceId: string; data: string; stream: 'stdout' | 'stderr' }) => {
+      useServicesStore.getState().appendLog(payload.serviceId, payload.data);
+    });
 
-  electronAPI.services.onExit((payload: { serviceId: string; exitCode: number; signal?: string }) => {
-    useServicesStore.getState().handleProcessExit(payload.serviceId, payload.exitCode, payload.signal);
-  });
+    electronAPI.services.onExit((payload: { serviceId: string; exitCode: number; signal?: string }) => {
+      useServicesStore.getState().handleProcessExit(payload.serviceId, payload.exitCode, payload.signal);
+    });
+
+    if (electronAPI.services.getRunning) {
+      electronAPI.services
+        .getRunning()
+        .then((runningList: Array<{ serviceId: string; pid: number; startedAt: number }>) => {
+          if (Array.isArray(runningList) && runningList.length > 0) {
+            useServicesStore.setState((state) => {
+              const nextStates = { ...state.runtimeStates };
+              for (const item of runningList) {
+                nextStates[item.serviceId] = {
+                  ...(nextStates[item.serviceId] || DEFAULT_RUNTIME_STATE),
+                  status: 'running',
+                  pid: item.pid,
+                  startedAt: item.startedAt,
+                };
+              }
+              return { runtimeStates: nextStates };
+            });
+          }
+        })
+        .catch(() => {});
+    }
+  } else {
+    // Web browser mode: connect SSE
+    let sse: EventSource | null = null;
+    const connectSSE = () => {
+      try {
+        sse = new EventSource('/api/services/stream');
+        sse.addEventListener('log', (event) => {
+          try {
+            const payload = JSON.parse(event.data);
+            useServicesStore.getState().appendLog(payload.serviceId, payload.data);
+          } catch {}
+        });
+
+        sse.addEventListener('exit', (event) => {
+          try {
+            const payload = JSON.parse(event.data);
+            useServicesStore.getState().handleProcessExit(payload.serviceId, payload.exitCode, payload.signal);
+          } catch {}
+        });
+
+        sse.onerror = () => {
+          sse?.close();
+          setTimeout(connectSSE, 3000);
+        };
+      } catch (err) {
+        console.warn('[useServicesStore] Failed to connect SSE:', err);
+      }
+    };
+    connectSSE();
+
+    // Query running services from web server
+    fetch('/api/services/running')
+      .then((res) => res.json())
+      .then((runningList: Array<{ serviceId: string; pid: number; startedAt: number }>) => {
+        if (Array.isArray(runningList) && runningList.length > 0) {
+          useServicesStore.setState((state) => {
+            const nextStates = { ...state.runtimeStates };
+            for (const item of runningList) {
+              nextStates[item.serviceId] = {
+                ...(nextStates[item.serviceId] || DEFAULT_RUNTIME_STATE),
+                status: 'running',
+                pid: item.pid,
+                startedAt: item.startedAt,
+              };
+            }
+            return { runtimeStates: nextStates };
+          });
+        }
+      })
+      .catch(() => {});
+  }
 }
