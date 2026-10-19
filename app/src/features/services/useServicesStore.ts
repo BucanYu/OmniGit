@@ -48,6 +48,68 @@ interface ServicesState {
   handleProcessExit: (serviceId: string, exitCode: number, signal?: string) => void;
 }
 
+export class StreamLogBuffer {
+  private lines: string[] = [];
+  private currentLine: string = '';
+  private maxLines: number;
+
+  constructor(maxLines = 2000) {
+    this.maxLines = maxLines;
+  }
+
+  public append(incoming: string): string[] {
+    if (!incoming) return this.getDisplayLines();
+
+    let i = 0;
+    while (i < incoming.length) {
+      const ch = incoming[i];
+      if (ch === '\r') {
+        if (incoming[i + 1] === '\n') {
+          // Windows CRLF (\r\n) -> finish current line
+          this.lines.push(this.currentLine);
+          this.currentLine = '';
+          i += 2;
+          continue;
+        } else {
+          // Bare CR (\r) -> carriage return (reset line for in-place progress update)
+          this.currentLine = '';
+          i++;
+          continue;
+        }
+      } else if (ch === '\n') {
+        // Unix LF (\n) -> finish current line
+        this.lines.push(this.currentLine);
+        this.currentLine = '';
+        i++;
+        continue;
+      } else {
+        this.currentLine += ch;
+        i++;
+      }
+    }
+
+    if (this.lines.length > this.maxLines) {
+      this.lines = this.lines.slice(this.lines.length - this.maxLines);
+    }
+
+    return this.getDisplayLines();
+  }
+
+  public getDisplayLines(): string[] {
+    if (this.currentLine.length > 0) {
+      return [...this.lines, this.currentLine];
+    }
+    return this.lines;
+  }
+
+  public clear(): void {
+    this.lines = [];
+    this.currentLine = '';
+  }
+}
+
+const serviceLogBuffers = new Map<string, StreamLogBuffer>();
+
 const DEFAULT_RUNTIME_STATE: ServiceRuntimeState = {
   status: 'stopped',
   logs: [],
@@ -554,6 +616,7 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
   },
 
   clearLogs: (serviceId: string) => {
+    serviceLogBuffers.get(serviceId)?.clear();
     set((state) => ({
       runtimeStates: {
         ...state.runtimeStates,
@@ -604,19 +667,21 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
   },
 
   appendLog: (serviceId: string, text: string) => {
+    let buffer = serviceLogBuffers.get(serviceId);
+    if (!buffer) {
+      buffer = new StreamLogBuffer(2000);
+      serviceLogBuffers.set(serviceId, buffer);
+    }
+    const updatedLines = buffer.append(text);
+
     set((state) => {
       const prevRuntime = state.getRuntime(serviceId);
-      const prevLogs = prevRuntime.logs;
-      const combined = [...prevLogs, text];
-      // Limit to 2000 entries
-      const clamped = combined.length > 2000 ? combined.slice(combined.length - 2000) : combined;
-
       return {
         runtimeStates: {
           ...state.runtimeStates,
           [serviceId]: {
             ...prevRuntime,
-            logs: clamped,
+            logs: updatedLines,
           },
         },
       };

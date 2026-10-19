@@ -22,6 +22,7 @@ interface ServiceLogViewerProps {
 
 // Convert standard ANSI color escape sequences to safe styled HTML spans
 function parseAnsiToHtml(text: string): string {
+  if (!text) return '';
   // Replace HTML entities first
   let html = text
     .replace(/&/g, '&amp;')
@@ -141,7 +142,7 @@ export const ServiceLogViewer: React.FC<ServiceLogViewerProps> = ({
 
   const handleCopyLogs = () => {
     if (!runtime || runtime.logs.length === 0) return;
-    const plainText = runtime.logs.join('').replace(/\x1b\[[0-9;]*m/g, '');
+    const plainText = runtime.logs.join('\n').replace(/\x1b\[[0-9;]*m/g, '');
     navigator.clipboard.writeText(plainText).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
@@ -352,11 +353,11 @@ export const ServiceLogViewer: React.FC<ServiceLogViewerProps> = ({
             )}
           </div>
         ) : (
-          runtime.logs.map((chunk, index) => (
+          runtime.logs.map((line, index) => (
             <div
               key={index}
-              className="whitespace-pre-wrap break-all"
-              dangerouslySetInnerHTML={{ __html: parseAnsiToHtml(chunk) }}
+              className="whitespace-pre-wrap break-all min-h-[1.25em]"
+              dangerouslySetInnerHTML={{ __html: parseAnsiToHtml(line) || '&nbsp;' }}
             />
           ))
         )}
