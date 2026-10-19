@@ -241,24 +241,26 @@ export const ServiceLogViewer: React.FC<ServiceLogViewerProps> = ({
             <span
               className={`text-[10px] px-2 py-0.5 rounded-full font-medium inline-flex items-center gap-1 shrink-0 ${
                 isRunning
-                  ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                  ? 'bg-emerald-500/10 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25 dark:border-emerald-500/30'
                   : isStarting
-                  ? 'bg-sky-500/15 text-sky-400 border border-sky-500/30'
+                  ? 'bg-sky-500/10 dark:bg-sky-500/15 text-sky-600 dark:text-sky-400 border border-sky-500/25 dark:border-sky-500/30'
+                  : isStopping
+                  ? 'bg-amber-500/10 dark:bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/25 dark:border-amber-500/30'
                   : runtime.status === 'failed'
-                  ? 'bg-rose-500/15 text-rose-400 border border-rose-500/30'
-                  : 'bg-zinc-500/15 text-zinc-400 border border-zinc-500/30'
+                  ? 'bg-rose-500/10 dark:bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/25 dark:border-rose-500/30'
+                  : 'bg-zinc-500/10 dark:bg-zinc-500/15 text-zinc-600 dark:text-zinc-400 border border-zinc-500/25 dark:border-zinc-500/30'
               }`}
             >
               <span
                 className={`w-1.5 h-1.5 rounded-full ${
                   isRunning
-                    ? 'bg-emerald-400 animate-pulse'
+                    ? 'bg-emerald-500 dark:bg-emerald-400 animate-pulse'
                     : isStarting
-                    ? 'bg-sky-400 animate-pulse'
+                    ? 'bg-sky-500 dark:bg-sky-400 animate-pulse'
                     : isStopping
-                    ? 'bg-amber-400 animate-pulse'
+                    ? 'bg-amber-500 dark:bg-amber-400 animate-pulse'
                     : runtime.status === 'failed'
-                    ? 'bg-rose-400'
+                    ? 'bg-rose-500 dark:bg-rose-400'
                     : 'bg-zinc-400'
                 }`}
               />

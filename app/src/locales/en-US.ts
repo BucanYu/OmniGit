@@ -1196,7 +1196,7 @@ export const enUS: LocaleDictionary = {
     reload: 'Reload',
   },
   services: {
-    modeTitle: 'Launch Scripts & Services',
+    modeTitle: 'Launch Services',
     newService: 'Add Service',
     editService: 'Edit Service',
     renameService: 'Rename Service',

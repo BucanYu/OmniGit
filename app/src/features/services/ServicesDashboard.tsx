@@ -108,18 +108,19 @@ export const ServicesDashboard: React.FC = () => {
       >
         {/* Header */}
         <div className="p-3 border-b border-theme-border flex items-center justify-between gap-2 shrink-0 bg-theme-sidebar/90">
-          <div className="flex items-center gap-2 min-w-0">
-            <div className="p-1.5 rounded-lg bg-sky-500/15 text-sky-400 shrink-0">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <div className="p-1.5 rounded-lg bg-sky-500/10 dark:bg-sky-500/15 text-sky-600 dark:text-sky-400 shrink-0">
               <Server className="w-4 h-4" />
             </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs font-semibold text-theme-main truncate">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="text-xs font-semibold text-theme-main truncate" title={t.services.modeTitle}>
                   {t.services.modeTitle}
                 </span>
                 {runningCount > 0 && (
-                  <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                    {t.services.runningCountBadge(runningCount)}
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium leading-none shrink-0 whitespace-nowrap bg-emerald-500/10 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25 dark:border-emerald-500/30 select-none shadow-2xs">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-pulse shrink-0" />
+                    <span>{t.services.runningCountBadge(runningCount)}</span>
                   </span>
                 )}
               </div>
@@ -135,7 +136,7 @@ export const ServicesDashboard: React.FC = () => {
             <button
               onClick={handleScanAndImport}
               disabled={isScanning}
-              className="p-1.5 rounded-lg text-theme-muted hover:text-sky-400 hover:bg-sky-500/10 transition-colors cursor-pointer disabled:opacity-40"
+              className="p-1.5 rounded-lg text-theme-muted hover:text-sky-600 dark:hover:text-sky-400 hover:bg-sky-500/10 transition-colors cursor-pointer disabled:opacity-40"
               title={t.services.scanScriptsTooltip}
             >
               <FileSearch className={`w-3.5 h-3.5 ${isScanning ? 'animate-spin' : ''}`} />
@@ -145,7 +146,7 @@ export const ServicesDashboard: React.FC = () => {
             <button
               onClick={() => startAllServices(projectId)}
               disabled={services.length === 0}
-              className="p-1.5 rounded-lg text-theme-muted hover:text-emerald-400 hover:bg-emerald-500/10 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+              className="p-1.5 rounded-lg text-theme-muted hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-500/10 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
               title={t.services.startAll}
             >
               <Play className="w-3.5 h-3.5 fill-current" />
@@ -155,7 +156,7 @@ export const ServicesDashboard: React.FC = () => {
             <button
               onClick={() => stopAllServices(projectId)}
               disabled={!hasRunning}
-              className="p-1.5 rounded-lg text-theme-muted hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+              className="p-1.5 rounded-lg text-theme-muted hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
               title={t.services.stopAll}
             >
               <Square className="w-3.5 h-3.5 fill-current" />
@@ -164,7 +165,7 @@ export const ServicesDashboard: React.FC = () => {
             {/* Add Service */}
             <button
               onClick={openAddModal}
-              className="p-1.5 rounded-lg bg-sky-500/15 text-sky-400 hover:bg-sky-500/25 border border-sky-500/30 transition-colors cursor-pointer"
+              className="p-1.5 rounded-lg bg-sky-500/10 dark:bg-sky-500/15 text-sky-600 dark:text-sky-400 hover:bg-sky-500/20 border border-sky-500/25 dark:border-sky-500/30 transition-colors cursor-pointer"
               title={t.services.newService}
             >
               <Plus className="w-3.5 h-3.5" />

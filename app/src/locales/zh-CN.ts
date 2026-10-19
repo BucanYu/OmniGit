@@ -1196,7 +1196,7 @@ export const zhCN: LocaleDictionary = {
     reload: '重新加载',
   },
   services: {
-    modeTitle: '项目服务管理与启动脚本',
+    modeTitle: '启动脚本与服务',
     newService: '新增启动服务',
     editService: '编辑服务配置',
     renameService: '重命名服务',

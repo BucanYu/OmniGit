@@ -346,13 +346,13 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
           <span
             className={`font-medium ${
               isRunning
-                ? 'text-emerald-400'
+                ? 'text-emerald-600 dark:text-emerald-400'
                 : isStarting
-                ? 'text-sky-400'
+                ? 'text-sky-600 dark:text-sky-400'
                 : isStopping
-                ? 'text-amber-400'
+                ? 'text-amber-600 dark:text-amber-400'
                 : runtime.status === 'failed'
-                ? 'text-rose-400'
+                ? 'text-rose-600 dark:text-rose-400'
                 : 'text-theme-muted'
             }`}
           >
@@ -369,7 +369,7 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
 
           {/* PID badge */}
           {runtime.pid && (
-            <span className="font-mono text-zinc-400 bg-theme-hover px-1.5 py-0.5 rounded">
+            <span className="font-mono text-zinc-600 dark:text-zinc-400 bg-theme-hover px-1.5 py-0.5 rounded">
               PID: {runtime.pid}
             </span>
           )}
@@ -377,7 +377,7 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
 
         {/* Uptime clock */}
         {uptimeText && (
-          <span className="flex items-center gap-1 font-mono text-emerald-400/90">
+          <span className="flex items-center gap-1 font-mono text-emerald-600 dark:text-emerald-400">
             <Clock className="w-3 h-3" />
             {uptimeText}
           </span>
