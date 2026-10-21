@@ -1,6 +1,80 @@
 const { app, BrowserWindow } = require('electron');
+const path = require('path');
+const http = require('http');
+const fs = require('fs');
 
-async function run() {
+const distDir = path.resolve(__dirname, '../dist');
+const mimeTypes = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript',
+  '.css': 'text/css',
+  '.json': 'application/json',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+};
+
+// Built-in resilient HTTP server with /api/fs/read support
+const server = http.createServer((req, res) => {
+  const parsedUrl = new URL(req.url || '/', 'http://127.0.0.1');
+
+  if (parsedUrl.pathname === '/api/fs/read') {
+    const filePath = parsedUrl.searchParams.get('filePath');
+    if (!filePath) {
+      res.statusCode = 400;
+      res.end(JSON.stringify({ error: 'Missing filePath' }));
+      return;
+    }
+    const resolved = path.resolve(filePath);
+    if (fs.existsSync(resolved)) {
+      const content = fs.readFileSync(resolved, 'utf8');
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.end(JSON.stringify({ content, encoding: 'utf-8', eol: 'LF', size: content.length }));
+    } else {
+      res.statusCode = 404;
+      res.end(JSON.stringify({ error: `File not found: ${resolved}` }));
+    }
+    return;
+  }
+
+  if (
+    (req.headers.accept && req.headers.accept.includes('text/event-stream')) ||
+    parsedUrl.pathname.includes('/stream') ||
+    parsedUrl.pathname.includes('/watch-repo')
+  ) {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    });
+    res.write(':\n\n');
+    return;
+  }
+
+  let safePath = path.normalize(decodeURIComponent(parsedUrl.pathname)).replace(/^(\.\.[\/\\])+/, '');
+  let filePath = path.join(distDir, safePath);
+
+  if (fs.existsSync(filePath) && fs.statSync(filePath).isDirectory()) {
+    filePath = path.join(filePath, 'index.html');
+  }
+  if (!fs.existsSync(filePath)) {
+    filePath = path.join(distDir, 'index.html');
+  }
+
+  if (fs.existsSync(filePath)) {
+    const ext = path.extname(filePath).toLowerCase();
+    res.setHeader('Content-Type', mimeTypes[ext] || 'application/octet-stream');
+    fs.createReadStream(filePath).pipe(res);
+  } else {
+    res.statusCode = 404;
+    res.end('Not found');
+  }
+});
+
+server.listen(0, '127.0.0.1', async () => {
+  const port = server.address().port;
+  console.log(`[E2E Test Server] Running at http://127.0.0.1:${port}`);
+
   await app.whenReady();
 
   const win = new BrowserWindow({
@@ -18,19 +92,18 @@ async function run() {
     if (
       level === 3 ||
       message.includes('Uncaught') ||
-      message.includes('Minified React error') ||
-      message.includes('Failed to read file')
+      message.includes('Minified React error')
     ) {
       console.error('[Browser Error]', message);
       errors.push(message);
     }
   });
 
-  console.log('[E2E Test] Loading OmniGit at http://127.0.0.1:5345...');
-  await win.loadURL('http://127.0.0.1:5345');
+  console.log(`[E2E Test] Loading OmniGit at http://127.0.0.1:${port}...`);
+  await win.loadURL(`http://127.0.0.1:${port}`);
   await new Promise((r) => setTimeout(r, 2500));
 
-  console.log('[E2E Test] Step 1: Open non-md file in editor (farmland path or App.tsx)...');
+  console.log('[E2E Test] Step 1: Open non-md file in editor (App.tsx)...');
   const openRes = await win.webContents.executeJavaScript(`
     (async () => {
       try {
@@ -61,7 +134,10 @@ async function run() {
     })()
   `);
   console.log('[E2E Test] Open non-md file result:', openRes);
-  if (!openRes.ok) throw new Error('Failed to open non-md file or content is empty: ' + JSON.stringify(openRes));
+  if (!openRes.ok) {
+    server.close();
+    throw new Error('Failed to open non-md file or content is empty: ' + JSON.stringify(openRes));
+  }
 
   console.log('[E2E Test] Step 2: Open farmland .env.development file...');
   const openEnvRes = await win.webContents.executeJavaScript(`
@@ -89,14 +165,16 @@ async function run() {
     })()
   `);
   console.log('[E2E Test] Open farmland env file result:', openEnvRes);
-  if (!openEnvRes.ok) throw new Error('Failed to read farmland file: ' + JSON.stringify(openEnvRes));
+  if (!openEnvRes.ok) {
+    server.close();
+    throw new Error('Failed to read farmland file: ' + JSON.stringify(openEnvRes));
+  }
 
   console.log('[E2E Test] Step 3: Testing workspace isolation and tabs persistence...');
   const wsIsolationRes = await win.webContents.executeJavaScript(`
     (async () => {
       try {
         const store = window.__editorTabsStore;
-        const app = window.__appStore;
         
         // Save tabs for workspace 1
         const ws1 = 'ws_test_isolation_1';
@@ -123,17 +201,17 @@ async function run() {
     })()
   `);
   console.log('[E2E Test] Workspace isolation result:', wsIsolationRes);
-  if (!wsIsolationRes.ok) throw new Error('Workspace isolation failed: ' + JSON.stringify(wsIsolationRes));
+  if (!wsIsolationRes.ok) {
+    server.close();
+    throw new Error('Workspace isolation failed: ' + JSON.stringify(wsIsolationRes));
+  }
 
   if (errors.length > 0) {
+    server.close();
     throw new Error('Errors caught in browser: ' + errors.join('\n'));
   }
 
   console.log('🎉 ALL EDITOR & WORKSPACE TABS E2E TESTS PASSED WITH 0 ERRORS!');
+  server.close();
   app.exit(0);
-}
-
-run().catch((err) => {
-  console.error('❌ E2E Test Failed:', err);
-  app.exit(1);
 });

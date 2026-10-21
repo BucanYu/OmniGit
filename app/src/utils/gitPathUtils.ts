@@ -13,9 +13,12 @@ export function decodeGitPath(rawPath: string): string {
   if (!rawPath) return '';
   let str = rawPath.trim();
 
-  // Guard 1: Standard Windows absolute paths (e.g. "D:\projects\...") or UNC paths ("\\server\share")
-  // MUST NEVER be decoded as C-style escapes!
-  if (/^[a-zA-Z]:[/\\]/.test(str) || str.startsWith('\\\\')) {
+  // Guard 1: Physical absolute paths across all operating systems:
+  // - Windows drive letters: "D:\projects\..." or "d:/projects/..."
+  // - Windows UNC network paths: "\\server\share\..."
+  // - macOS / Linux POSIX absolute paths: "/Users/...", "/home/...", "/var/..."
+  // MUST NEVER be decoded as Git C-style escapes!
+  if (/^[a-zA-Z]:[/\\]/.test(str) || str.startsWith('\\\\') || str.startsWith('/')) {
     if (str.startsWith('"') && str.endsWith('"') && str.length >= 2) {
       return str.slice(1, -1);
     }
