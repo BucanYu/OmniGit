@@ -45,11 +45,12 @@ All `.bat` scripts can be executed by **double-clicking in Windows Explorer** or
 
 | Script Name | Purpose & Description | Typical Use Case | How to Run |
 | :--- | :--- | :--- | :--- |
-| **`build_desktop.bat`** | **[Core Pipeline] Cross-platform automated build & packaging**<br>Validates environment, runs TypeScript type checks, builds Vite production bundle, packages Electron app, and compiles NSIS Windows installer. | Official release / Packaging | Double-click, or run in terminal:<br>• `build_desktop.bat` (All)<br>• `build_desktop.bat win` (Windows only)<br>• `build_desktop.bat mac` (macOS only) |
+| **`build_desktop.bat`** | **[Core Pipeline] Cross-platform automated build & packaging**<br>Validates environment, runs TypeScript type checks, builds Vite production bundle, packages Electron app, prunes unused locales, and compiles NSIS Windows installer (output ~76MB). | Official release / Packaging | Double-click, or run in terminal:<br>• `build_desktop.bat` (All)<br>• `build_desktop.bat win` (Windows only)<br>• `build_desktop.bat mac` (macOS only) |
 | **`start_desktop.bat`** | **Native Desktop Client Direct Launch**<br>Automatically compiles frontend/backend and launches OmniGit in a native borderless desktop window to preview real standalone desktop behavior. | Local desktop testing | Double-click to run |
 | **`start_dev.bat`**<br>`start_dev.ps1` | **Web Browser Fast Dev Server (HMR)**<br>Starts local Vite dev server (listening on `http://localhost:5345`) and automatically opens the default system browser with hot-reload debugging. | UI & component development | Double-click `start_dev.bat`, or run `./start_dev.ps1` in PowerShell |
 | **`stop_dev.bat`**<br>`stop_dev.ps1` | **Port Cleanup & Process Termination**<br>Intelligently finds and terminates background Node processes occupying port `5345`, resolving port conflict issues. | Server shutdown / Port cleanup | Double-click `stop_dev.bat` |
-| `installer.nsi` | **NSIS Single-File Installer Script**<br>Defines wizard UI, custom installation path, desktop/start menu shortcuts, uninstaller registry entries, and silent updates. | Invoked by `build_desktop.bat` | Automated |
+| `package.cjs` | **Core Packaging Orchestrator**<br>Handles compilation, locale pruning, LZMA solid compression, and automated headless smoke testing. | Invoked by `build_desktop.bat` | Automated |
+| `installer.nsi` | **NSIS Single-File Installer Script**<br>Defines wizard UI, custom installation path, desktop/start menu shortcuts, uninstaller registry entries, and silent updates. | Invoked by build pipeline | Automated |
 | `generate_icon.ps1` | **Desktop Icon Generator**<br>Generates standard multi-resolution lossless `.ico` and `.png` brand icons from vector specs. | Branding updates | Pipeline / Manual |
 
 ---
@@ -60,10 +61,10 @@ When you run `scripts/build_desktop.bat`, the output files are generated in **`a
 
 ```
 app/release/
- ├── OmniGit-Setup-0.4.0.exe        <- [Official Release] Windows single-file installer (LZMA compressed, ~80MB)
+ ├── OmniGit-Setup-0.5.0.exe        <- [Official Release] Windows single-file installer (LZMA compressed, ~76MB)
  ├── OmniGit-win32-x64/             <- [Portable Preview] Windows portable folder (run OmniGit.exe directly)
- ├── OmniGit-v0.4.0-mac-arm64.zip   <- [Official Release] macOS Apple Silicon (M-series) app bundle
- └── OmniGit-v0.4.0-mac-x64.zip     <- [Official Release] macOS Intel x64 app bundle
+ ├── OmniGit-v0.5.0-mac-arm64.zip   <- [Official Release] macOS Apple Silicon (M-series) app bundle
+ └── OmniGit-v0.5.0-mac-x64.zip     <- [Official Release] macOS Intel x64 app bundle
 ```
 
 > [!IMPORTANT]

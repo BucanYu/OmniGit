@@ -17,12 +17,13 @@ const REPORTS_DIR = path.resolve(__dirname, '..', 'reports');
 const DOCS_IMAGES_DIR = path.resolve(__dirname, '..', '..', 'docs', 'images');
 
 const FRAMES_CONFIG = [
-  { file: 'omnigit_workbench_preview.png', delay: 2800, title: 'Git Workbench: Changes, Commit, Diff & 3-Way Merge' },
+  { file: '01_omnigit_workbench.png', delay: 2800, title: 'Git Core Workbench: Changes, Commit & 3-Way Merge' },
+  { file: '08_selective_push_modal.png', delay: 2600, title: 'Zero-Checkout Selective Push & Patch Branches' },
   { file: '02_workspace_explorer_editor.png', delay: 2800, title: 'Multi-Project Explorer & Monaco Code Editor' },
-  { file: '03_markdown_fullscreen_preview.png', delay: 2500, title: 'Markdown Split Live Preview & Fullscreen' },
-  { file: '04_find_replace_widget.png', delay: 2200, title: 'Monaco Floating Find & Replace Widget (Ctrl+F)' },
-  { file: '07_terminal_dock_and_menu.png', delay: 2800, title: 'Integrated Terminal Dock with VS Code Controls' },
-  { file: '06_english_mode_ui.png', delay: 2500, title: 'Seamless Bilingual Localization & Theme Previews' },
+  { file: '03_markdown_split_preview.png', delay: 2500, title: 'Markdown Split Live Preview & Free Dragging' },
+  { file: '04_terminal_dock.png', delay: 2500, title: 'Integrated Terminal Dock with VS Code Controls' },
+  { file: '07_services_orchestrator.png', delay: 2800, title: 'Multi-Service Orchestrator & Real-Time ANSI Logs' },
+  { file: '06_english_mode_ui.png', delay: 2400, title: 'Seamless Bilingual Localization & Classic Themes' },
 ];
 
 function sleep(ms) {
