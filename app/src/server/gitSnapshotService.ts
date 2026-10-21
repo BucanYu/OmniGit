@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { OmniGitSettings } from './gitTypes';
+import { decodeGitPath } from '../utils/gitPathUtils';
 
 function getConfigFile(): string {
   const candidate1 = path.resolve(process.cwd(), '.omnigit_config.json');
@@ -182,10 +183,10 @@ export const gitSnapshotService = {
         files: (snapshot.files || [])
           .filter((f: any) => f.status !== 'conflict')
           .map((f: any) => ({
-            path: f.path,
+            path: decodeGitPath(f.path || '').replace(/\\/g, '/'),
             status: f.status,
             staged: Boolean(f.staged),
-            oldPath: f.oldPath,
+            oldPath: f.oldPath ? decodeGitPath(f.oldPath).replace(/\\/g, '/') : undefined,
           })),
         selectedFilePath: snapshot.selectedFilePath || null,
         commitMessage: snapshot.commitMessage || '',
@@ -222,7 +223,15 @@ export const gitSnapshotService = {
       const filePath = getRepoSnapshotPath(settings.cacheDir, repoPath);
       if (fs.existsSync(filePath)) {
         const raw = fs.readFileSync(filePath, 'utf8');
-        return JSON.parse(raw);
+        const parsed = JSON.parse(raw);
+        if (parsed && Array.isArray(parsed.files)) {
+          parsed.files = parsed.files.map((f: any) => ({
+            ...f,
+            path: decodeGitPath(f.path || '').replace(/\\/g, '/'),
+            oldPath: f.oldPath ? decodeGitPath(f.oldPath).replace(/\\/g, '/') : undefined,
+          }));
+        }
+        return parsed;
       }
     } catch (e) {
       console.error('[gitSnapshotService] Failed to read single disk snapshot:', e);

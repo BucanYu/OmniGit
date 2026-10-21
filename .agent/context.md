@@ -2,9 +2,10 @@
 
 ## 1. 最高优先级安全红线 (Project Safety Rules)
 
-- **禁止自动提交 Git 代码**：
-  - **严禁** Agent 自主执行 `git commit` 或 `git push` 等代码提交与推送命令（除非用户在对话中明确要求）。
-  - 代码修改与验证通过后，仅向用户清晰汇报修改的文件列表、改动逻辑与构建校验结果，保留修改处于 staged 或 unstaged 状态，由用户自行手动提交。
+- **代码自动提交铁律（用户明确授权指令）**：
+  - 用户已明确指示：**后续每次修改完毕且自主测试验证通过后，必须自动执行 `git commit` 将改动提交到本地 Git**，无需等待用户手动提交。
+  - Commit 提交信息必须规范清晰（遵循 Conventional Commits，如 `feat:`, `fix:`, `refactor:`），准确概括本次改动的核心逻辑与影响文件。
+  - 除非用户明确要求 push，默认仅在本地完成 commit 提交，确保用户的远程分支保持可控安全。
 - **严禁自主执行破坏性 Git 操作**：
   - **严禁**自主执行 `git push --force`、`git reset --hard`、`git clean -f`、`git branch -D` 等可能导致用户本地未保存代码丢失的高危命令。
   - 若排查或修复确实需要破坏性操作，必须将拟执行的命令以规范代码块形式清晰提示用户，由用户确认并手动执行。
@@ -109,3 +110,28 @@
     - **秒级回捞**：切换工程或分支时，若 L2 无全量数据，系统直接从 L3 磁盘文件夹秒级回捞（3~5ms）并升温进 L1 内存，避免等待缓慢的 Git CLI 原生命令；
   - **工作空间磁盘双重容灾与无感恢复**：
     - 工作空间配置必须异步备份写入磁盘 `workspaces_backup.json`；若前端存储为空，自动从磁盘无感恢复，做到双保险防丢。
+
+---
+
+## 7. 代码文件体量与大文件拆分治理红线 (File Size & Modular Architecture Protocol)
+
+- **文件行数体量分级标准**：
+  - **健康标准 (Optimal)**：单个源文件（TSX / TS / JS）代码行数建议控制在 **400 行以内**。小而美、职责单一、上下文紧凑，便于开发者与 AI 模型快速阅读和准确定位。
+  - **大文件警告线 (Warning)**：超过 **500 行** 视为偏大文件。日常需求迭代时，严禁继续无节制向该文件中塞入新功能，应开始梳理其职责，考虑抽取子组件、提取自定义 Hook 或抽取公共函数。
+  - **巨型文件重构拆分红线 (Hard Limit)**：超过 **800 行** 判定为超标巨型文件（Monolithic File）。此类文件维护风险极高、协作容易引发冲突，**必须主动分文件拆分**！禁止向 800+ 行的大文件中继续累加逻辑。
+
+- **分文件与架构解耦规范**：
+  - **零破坏与门面模式 (Facade / Barrel Pattern)**：
+    - 原文件作为主入口（或通过同目录 `index.ts`），将拆分移出的类型、子方法、子组件统一进行 `export` 重新导出（re-export）。
+    - 严禁因文件拆分破坏其余模块对移出方法的现有 `import` 路径，坚决避免因漏导或改名导致其他文件引发 `Uncaught ReferenceError` 或构建失败。
+  - **UI 巨石组件拆分范式 (React Monolith Decomposition)**：
+    - **视觉区块组件化**：将视觉上相对独立或自成一体的区块抽离为同级 `components/` 目录下的子组件（如 `StatusHeader.tsx`, `CommitBox.tsx`, `MergeBanner.tsx` 等），每个子组件行数控制在 100~300 行；
+    - **状态与交互 Hook 化**：将复杂的手势、快捷键监听、拖拽、过滤筛选等副作用逻辑抽离为 `hooks/`（如 `useStatusPanelActions.ts`, `useFileTreeNavigation.ts`）；
+    - **逻辑与纯计算工具化**：树形目录递归转换、时间格式化、图标映射等纯函数抽离至 `utils/` 或 `helpers.ts`；
+    - **数据模型类型收拢**：内部专用接口与数据类型抽离至 `types.ts`。
+  - **服务端与逻辑模块拆分范式 (Service / Store Decomposition)**：
+    - 针对体积庞大的业务引擎（如 `gitService.ts`、巨型 Slice），按业务领域与操作维度（如 Status、Branch、Commit、Diff、Remote、Conflict 等）建立子模块分治，主模块作为 Facade 进行组装与向后兼容导出。
+
+- **自验证交付闭环铁律 (Self-Contained Verification Guarantee)**：
+  - 代码拆分或调整后，开发者/Agent 必须严格执行 `npm run typecheck` 确保全局 0 错误、0 警告；
+  - 必须由开发者/Agent 自主启动测试服务或无头浏览器 E2E 脚本进行全功能验证，亲自核验控制台 0 报错、0 警告、无渲染白屏，严禁未经自主验证直接把半成品抛给用户测试！

@@ -2,6 +2,9 @@ import { execFile, exec, spawn, type ChildProcess } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { decodeGitPath, splitGitPath } from '../utils/gitPathUtils';
+
+export { decodeGitPath, splitGitPath };
 
 export interface CloneProgressEvent {
   phase: 'counting' | 'compressing' | 'receiving' | 'resolving' | 'checkout' | 'completing' | 'unknown';
@@ -216,11 +219,8 @@ function parseGitLogBatchOutput(raw: string): { commits: OutgoingCommitItem[]; a
         const segs = line.split(/\t+/);
         if (segs.length >= 2) {
           const statusCode = segs[0];
-          const filePath = segs[segs.length - 1];
-          const normalizedPath = filePath.replace(/\\/g, '/');
-          const lastSlash = normalizedPath.lastIndexOf('/');
-          const fileName = lastSlash >= 0 ? normalizedPath.slice(lastSlash + 1) : normalizedPath;
-          const dirPath = lastSlash >= 0 ? normalizedPath.slice(0, lastSlash) : '';
+          const rawFilePath = segs[segs.length - 1];
+          const { fileName, dirPath, forwardPath } = splitGitPath(rawFilePath);
 
           let status: OutgoingCommitFile['status'] = 'modified';
           if (statusCode.startsWith('A')) status = 'added';
@@ -228,14 +228,14 @@ function parseGitLogBatchOutput(raw: string): { commits: OutgoingCommitItem[]; a
           else if (statusCode.startsWith('R')) status = 'renamed';
 
           const fileObj: OutgoingCommitFile = {
-            path: normalizedPath,
+            path: forwardPath,
             fileName,
             dirPath,
             status,
             statusCode,
           };
           files.push(fileObj);
-          allFilesMap.set(normalizedPath, fileObj);
+          allFilesMap.set(forwardPath, fileObj);
         }
       }
     }
@@ -283,9 +283,15 @@ function runGit(
   timeout = 120000
 ): Promise<{ stdout: string; stderr: string; code: number }> {
   return new Promise((resolve) => {
+    // Explicitly enforce core.quotepath=false so Git outputs raw UTF-8 strings
+    // instead of C-style octal escape sequences for non-ASCII characters (e.g. Chinese filenames)
+    const gitArgs = args.includes('core.quotepath=false')
+      ? args
+      : ['-c', 'core.quotepath=false', ...args];
+
     execFile(
       'git',
-      args,
+      gitArgs,
       {
         cwd: cwd || process.cwd(),
         maxBuffer: 50 * 1024 * 1024,
@@ -606,15 +612,13 @@ export const gitService = {
         const match = line.match(/^([ MADRCU?]{2})\s+(.*)$/);
         if (!match) continue;
         const code = match[1];
-        let rawPath = match[2].trim();
-        // Remove quotes if present
-        if (rawPath.startsWith('"') && rawPath.endsWith('"')) {
-          rawPath = rawPath.slice(1, -1);
+        let rawTarget = match[2].trim();
+        // Handle renames e.g. "old" -> "new" or old -> new
+        if (rawTarget.includes(' -> ')) {
+          const parts = rawTarget.split(' -> ');
+          rawTarget = parts[parts.length - 1].trim();
         }
-
-        const normalizedPath = rawPath.replace(/\//g, '\\');
-        const fileName = path.basename(normalizedPath);
-        const dirPath = path.dirname(normalizedPath);
+        const { fileName, dirPath, forwardPath } = splitGitPath(rawTarget);
 
         const isConflict =
           code.includes('U') ||
@@ -626,7 +630,7 @@ export const gitService = {
           code === 'DU';
 
         if (isConflict) {
-          const fullPath = path.resolve(repoPath, rawPath);
+          const fullPath = path.resolve(repoPath, forwardPath);
           let conflictResolvedExternally = false;
           if (fs.existsSync(fullPath)) {
             try {
@@ -637,7 +641,7 @@ export const gitService = {
                 if (!hasConflictMarkers) {
                   // Conflict markers were resolved externally in another editor/tool!
                   // Auto-stage with `git add` to synchronize Git index with the resolved working copy.
-                  await runGit(['add', '--', rawPath], repoPath);
+                  await runGit(['add', '--', forwardPath], repoPath);
                   conflictResolvedExternally = true;
                 }
               }
@@ -648,18 +652,18 @@ export const gitService = {
 
           if (conflictResolvedExternally) {
             files.push({
-              path: rawPath,
+              path: forwardPath,
               fileName,
-              dirPath: dirPath === '.' ? '' : dirPath,
+              dirPath,
               status: 'modified',
               group: 'changes',
               checked: true,
             });
           } else {
             files.push({
-              path: rawPath,
+              path: forwardPath,
               fileName,
-              dirPath: dirPath === '.' ? '' : dirPath,
+              dirPath,
               status: 'conflict',
               group: 'conflict',
               checked: false,
@@ -667,27 +671,27 @@ export const gitService = {
           }
         } else if (code === '??') {
           files.push({
-            path: rawPath,
+            path: forwardPath,
             fileName,
-            dirPath: dirPath === '.' ? '' : dirPath,
+            dirPath,
             status: 'untracked',
             group: 'unversioned',
             checked: false,
           });
         } else if (code.includes('A')) {
           files.push({
-            path: rawPath,
+            path: forwardPath,
             fileName,
-            dirPath: dirPath === '.' ? '' : dirPath,
+            dirPath,
             status: 'added',
             group: 'changes',
             checked: true,
           });
         } else if (code.includes('D')) {
           files.push({
-            path: rawPath,
+            path: forwardPath,
             fileName,
-            dirPath: dirPath === '.' ? '' : dirPath,
+            dirPath,
             status: 'deleted',
             group: 'changes',
             checked: true,
@@ -695,9 +699,9 @@ export const gitService = {
         } else {
           // 'M ', ' M', 'MM'
           files.push({
-            path: rawPath,
+            path: forwardPath,
             fileName,
-            dirPath: dirPath === '.' ? '' : dirPath,
+            dirPath,
             status: 'modified',
             group: 'changes',
             checked: true,
@@ -812,7 +816,8 @@ export const gitService = {
 
   // 5. Get file diff
   async getFileDiff(repoPath: string, filePath: string): Promise<{ oldContent: string; newContent: string; isBinary?: boolean }> {
-    const ext = path.extname(filePath).toLowerCase();
+    const cleanFilePath = decodeGitPath(filePath).replace(/\\/g, '/');
+    const ext = path.extname(cleanFilePath).toLowerCase();
     const binaryExtensions = new Set([
       '.png', '.jpg', '.jpeg', '.gif', '.ico', '.webp', '.bmp', '.tiff', '.tif',
       '.pdf', '.zip', '.tar', '.gz', '.7z', '.rar',
@@ -822,7 +827,7 @@ export const gitService = {
       '.pyc', '.class', '.o', '.obj'
     ]);
 
-    const fullPath = path.join(repoPath, filePath);
+    const fullPath = path.resolve(repoPath, cleanFilePath);
     let isBinary = binaryExtensions.has(ext);
 
     if (!isBinary && fs.existsSync(fullPath)) {
@@ -843,7 +848,7 @@ export const gitService = {
     }
 
     // 1. Get HEAD version
-    const headRes = await runGit(['show', `HEAD:${filePath}`], repoPath, 20000);
+    const headRes = await runGit(['show', `HEAD:${cleanFilePath}`], repoPath, 20000);
     const oldContent = headRes.code === 0 ? headRes.stdout : '';
 
     // 2. Get working copy version
@@ -861,14 +866,15 @@ export const gitService = {
 
   // 6. Save modified file content back to disk
   async saveFileContent(repoPath: string, filePath: string, content: string): Promise<boolean> {
-    const fullPath = path.join(repoPath, filePath);
+    const cleanFilePath = decodeGitPath(filePath).replace(/\\/g, '/');
+    const fullPath = path.resolve(repoPath, cleanFilePath);
     try {
       fs.writeFileSync(fullPath, content, 'utf8');
       // If the file was in conflict, and now has no conflict markers, auto-mark as resolved via git add!
       if (!hasGitConflictMarkers(content)) {
-        const statusRes = await runGit(['status', '--porcelain=v1', '--', filePath], repoPath);
+        const statusRes = await runGit(['status', '--porcelain=v1', '--', cleanFilePath], repoPath);
         if (statusRes.stdout && (statusRes.stdout.includes('U') || statusRes.stdout.startsWith('AA'))) {
-          await runGit(['add', '--', filePath], repoPath);
+          await runGit(['add', '--', cleanFilePath], repoPath);
         }
       }
       return true;
@@ -969,8 +975,9 @@ export const gitService = {
 
   // 9. Commit selected files
   async commit(repoPath: string, files: string[], message: string, isAmend = false): Promise<{ success: boolean; message: string }> {
-    if (files.length > 0) {
-      await runGit(['add', '--', ...files], repoPath);
+    const cleanFiles = (files || []).map((f) => decodeGitPath(f).replace(/\\/g, '/'));
+    if (cleanFiles.length > 0) {
+      await runGit(['add', '--', ...cleanFiles], repoPath);
     }
     const args = ['commit', '-m', message];
     if (isAmend) {
@@ -985,14 +992,15 @@ export const gitService = {
 
   // 10. Rollback files
   async rollback(repoPath: string, files: string[]): Promise<{ success: boolean; message: string }> {
+    const cleanFiles = (files || []).map((f) => decodeGitPath(f).replace(/\\/g, '/'));
     // Restore tracked changes
-    const restoreRes = await runGit(['restore', '--staged', '--worktree', '--', ...files], repoPath);
+    const restoreRes = await runGit(['restore', '--staged', '--worktree', '--', ...cleanFiles], repoPath);
     // If restore is not supported or failed, fallback to checkout
     if (restoreRes.code !== 0) {
-      await runGit(['checkout', 'HEAD', '--', ...files], repoPath);
+      await runGit(['checkout', 'HEAD', '--', ...cleanFiles], repoPath);
     }
     // Clean untracked files if any
-    await runGit(['clean', '-f', '--', ...files], repoPath);
+    await runGit(['clean', '-f', '--', ...cleanFiles], repoPath);
     return {
       success: true,
       message: 'Changes rolled back successfully',
@@ -1495,15 +1503,17 @@ export const gitService = {
           else if (statusCode === 'M') status = 'modified';
           else if (statusCode === 'R') {
             status = 'renamed';
-            oldPath = segs[1];
-            pathStr = segs[2] || segs[1];
+            oldPath = decodeGitPath(segs[1]).replace(/\\/g, '/');
+            pathStr = decodeGitPath(segs[2] || segs[1]).replace(/\\/g, '/');
           } else if (statusCode === 'C') {
             status = 'copied';
-            oldPath = segs[1];
-            pathStr = segs[2] || segs[1];
+            oldPath = decodeGitPath(segs[1]).replace(/\\/g, '/');
+            pathStr = decodeGitPath(segs[2] || segs[1]).replace(/\\/g, '/');
           } else {
             status = 'unknown';
           }
+
+          pathStr = decodeGitPath(pathStr).replace(/\\/g, '/');
 
           files.push({
             path: pathStr,
@@ -1542,20 +1552,22 @@ export const gitService = {
       return { original: '', modified: '', filePath: filePath || '', oldLabel: '', newLabel: '' };
     }
 
+    const cleanFilePath = decodeGitPath(filePath).replace(/\\/g, '/');
+
     const parentRes = await runGit(['rev-parse', '--verify', '--quiet', `${hash}^`], repoPath);
     const hasParent = parentRes.code === 0 && Boolean(parentRes.stdout);
     const parentHash = hasParent ? `${hash.slice(0, 7)}^` : 'Initial';
 
     let original = '';
     if (hasParent) {
-      const oldRes = await runGit(['show', `${hash}^:${filePath}`], repoPath);
+      const oldRes = await runGit(['show', `${hash}^:${cleanFilePath}`], repoPath);
       if (oldRes.code === 0) {
         original = oldRes.stdout;
       }
     }
 
     let modified = '';
-    const newRes = await runGit(['show', `${hash}:${filePath}`], repoPath);
+    const newRes = await runGit(['show', `${hash}:${cleanFilePath}`], repoPath);
     if (newRes.code === 0) {
       modified = newRes.stdout;
     }
@@ -1563,7 +1575,7 @@ export const gitService = {
     return {
       original,
       modified,
-      filePath,
+      filePath: cleanFilePath,
       oldLabel: `Parent (${parentHash})`,
       newLabel: `Commit (${hash.slice(0, 7)})`,
     };
@@ -2580,7 +2592,8 @@ export const gitService = {
 
   // 28. Open file in external editor (VS Code or system default)
   async openFileInEditor(repoPath: string, filePath: string): Promise<{ success: boolean; message: string }> {
-    const fullPath = path.resolve(repoPath, filePath);
+    const cleanFilePath = decodeGitPath(filePath);
+    const fullPath = path.resolve(repoPath, cleanFilePath);
     if (!fs.existsSync(fullPath)) {
       return { success: false, message: `File not found: ${filePath}` };
     }
@@ -2610,20 +2623,21 @@ export const gitService = {
 
   // 28b. Reveal file/folder in OS file manager (Windows File Explorer / macOS Finder / Linux Desktop)
   async revealInFileManager(repoPath: string, filePath: string): Promise<{ success: boolean; message: string; target?: string }> {
+    const cleanFilePath = decodeGitPath(filePath);
     // 1. 规范化路径解析（支持绝对路径、相对路径以及多层级嵌套项目）
-    let resolvedPath = path.isAbsolute(filePath)
-      ? path.normalize(filePath)
-      : path.resolve(repoPath, filePath);
+    let resolvedPath = path.isAbsolute(cleanFilePath)
+      ? path.normalize(cleanFilePath)
+      : path.resolve(repoPath, cleanFilePath);
 
     if (!fs.existsSync(resolvedPath)) {
       // 检查嵌套目录（如 repoPath/basename(repoPath)/filePath）
-      const nestedPath = path.resolve(repoPath, path.basename(repoPath), filePath);
+      const nestedPath = path.resolve(repoPath, path.basename(repoPath), cleanFilePath);
       if (fs.existsSync(nestedPath)) {
         resolvedPath = nestedPath;
       } else {
         // 检查上级目录
         const parentDir = path.dirname(repoPath);
-        const altPath = path.resolve(parentDir, filePath);
+        const altPath = path.resolve(parentDir, cleanFilePath);
         if (fs.existsSync(altPath)) {
           resolvedPath = altPath;
         }
@@ -2711,28 +2725,31 @@ export const gitService = {
 
   // 29. Stage single or multiple files (git add)
   async stageFile(repoPath: string, filePath: string): Promise<{ success: boolean; message: string }> {
-    const res = await runGit(['add', '--', filePath], repoPath);
+    const cleanFilePath = decodeGitPath(filePath).replace(/\\/g, '/');
+    const res = await runGit(['add', '--', cleanFilePath], repoPath);
     return {
       success: res.code === 0,
-      message: res.code === 0 ? `Staged ${filePath}` : res.stderr || res.stdout,
+      message: res.code === 0 ? `Staged ${cleanFilePath}` : res.stderr || res.stdout,
     };
   },
 
   // 30. Unstage single or multiple files (git restore --staged)
   async unstageFile(repoPath: string, filePath: string): Promise<{ success: boolean; message: string }> {
-    let res = await runGit(['restore', '--staged', '--', filePath], repoPath);
+    const cleanFilePath = decodeGitPath(filePath).replace(/\\/g, '/');
+    let res = await runGit(['restore', '--staged', '--', cleanFilePath], repoPath);
     if (res.code !== 0) {
-      res = await runGit(['reset', 'HEAD', '--', filePath], repoPath);
+      res = await runGit(['reset', 'HEAD', '--', cleanFilePath], repoPath);
     }
     return {
       success: res.code === 0,
-      message: res.code === 0 ? `Unstaged ${filePath}` : res.stderr || res.stdout,
+      message: res.code === 0 ? `Unstaged ${cleanFilePath}` : res.stderr || res.stdout,
     };
   },
 
     // 31. Get 3-way conflict data (Yours, Result, Theirs, Base)
   async getConflict3Way(repoPath: string, filePath: string): Promise<Conflict3WayData> {
-    const fullPath = path.resolve(repoPath, filePath);
+    const cleanFilePath = decodeGitPath(filePath).replace(/\\/g, '/');
+    const fullPath = path.resolve(repoPath, cleanFilePath);
     let result = '';
     try {
       if (fs.existsSync(fullPath)) {
@@ -2744,9 +2761,9 @@ export const gitService = {
 
     // If file on disk has no conflict markers, it was resolved outside or manually!
     if (!hasConflictMarkers && fs.existsSync(fullPath)) {
-      await runGit(['add', '--', filePath], repoPath);
+      await runGit(['add', '--', cleanFilePath], repoPath);
       return {
-        filePath,
+        filePath: cleanFilePath,
         repoPath,
         yours: result,
         theirs: result,
@@ -2760,9 +2777,9 @@ export const gitService = {
 
     // Stage 1, 2, 3: Fetch Base, Yours, and Theirs concurrently in parallel for 3x speedup
     const [baseRes, yoursRes, theirsRes] = await Promise.all([
-      runGit(['show', `:1:${filePath}`], repoPath),
-      runGit(['show', `:2:${filePath}`], repoPath),
-      runGit(['show', `:3:${filePath}`], repoPath),
+      runGit(['show', `:1:${cleanFilePath}`], repoPath),
+      runGit(['show', `:2:${cleanFilePath}`], repoPath),
+      runGit(['show', `:3:${cleanFilePath}`], repoPath),
     ]);
 
     const base = baseRes.code === 0 ? baseRes.stdout : '';
@@ -2772,8 +2789,8 @@ export const gitService = {
     // Parallel fallback if stage 2 or 3 not present in index
     if (!yours || !theirs) {
       const [headRes, mRes] = await Promise.all([
-        !yours ? runGit(['show', `HEAD:${filePath}`], repoPath) : Promise.resolve(null),
-        !theirs ? runGit(['show', `MERGE_HEAD:${filePath}`], repoPath) : Promise.resolve(null),
+        !yours ? runGit(['show', `HEAD:${cleanFilePath}`], repoPath) : Promise.resolve(null),
+        !theirs ? runGit(['show', `MERGE_HEAD:${cleanFilePath}`], repoPath) : Promise.resolve(null),
       ]);
       if (headRes && headRes.code === 0) yours = headRes.stdout;
       if (mRes && mRes.code === 0) theirs = mRes.stdout;
@@ -2788,7 +2805,7 @@ export const gitService = {
     }
 
     return {
-      filePath,
+      filePath: cleanFilePath,
       repoPath,
       yours,
       theirs,
@@ -2806,7 +2823,8 @@ export const gitService = {
     resolution: 'yours' | 'theirs' | 'content' | 'mark-resolved',
     content?: string
   ): Promise<{ success: boolean; message: string }> {
-    const fullPath = path.resolve(repoPath, filePath);
+    const cleanFilePath = decodeGitPath(filePath).replace(/\\/g, '/');
+    const fullPath = path.resolve(repoPath, cleanFilePath);
 
     if (resolution === 'mark-resolved') {
       let currentFileContent = '';
@@ -2821,32 +2839,32 @@ export const gitService = {
           message: '标记解决失败: 文件中仍包含未解决的代码冲突标记 (<<<<<<< 或 =======)，请先清除冲突标记',
         };
       }
-      await runGit(['add', '--', filePath], repoPath);
-      return { success: true, message: `冲突已标记为已解决并已暂存: ${filePath}` };
+      await runGit(['add', '--', cleanFilePath], repoPath);
+      return { success: true, message: `冲突已标记为已解决并已暂存: ${cleanFilePath}` };
     }
 
     if (resolution === 'yours') {
-      const res = await runGit(['checkout', '--ours', '--', filePath], repoPath);
+      const res = await runGit(['checkout', '--ours', '--', cleanFilePath], repoPath);
       if (res.code !== 0) {
-        const yoursRes = await runGit(['show', `:2:${filePath}`], repoPath);
+        const yoursRes = await runGit(['show', `:2:${cleanFilePath}`], repoPath);
         if (yoursRes.code === 0) {
           fs.writeFileSync(fullPath, yoursRes.stdout, 'utf8');
         }
       }
-      await runGit(['add', '--', filePath], repoPath);
-      return { success: true, message: `Accepted local version (Yours) / 已采纳本地版本: ${filePath}` };
+      await runGit(['add', '--', cleanFilePath], repoPath);
+      return { success: true, message: `Accepted local version (Yours) / 已采纳本地版本: ${cleanFilePath}` };
     }
 
     if (resolution === 'theirs') {
-      const res = await runGit(['checkout', '--theirs', '--', filePath], repoPath);
+      const res = await runGit(['checkout', '--theirs', '--', cleanFilePath], repoPath);
       if (res.code !== 0) {
-        const theirsRes = await runGit(['show', `:3:${filePath}`], repoPath);
+        const theirsRes = await runGit(['show', `:3:${cleanFilePath}`], repoPath);
         if (theirsRes.code === 0) {
           fs.writeFileSync(fullPath, theirsRes.stdout, 'utf8');
         }
       }
-      await runGit(['add', '--', filePath], repoPath);
-      return { success: true, message: `Accepted incoming version (Theirs) / 已采纳传入版本: ${filePath}` };
+      await runGit(['add', '--', cleanFilePath], repoPath);
+      return { success: true, message: `Accepted incoming version (Theirs) / 已采纳传入版本: ${cleanFilePath}` };
     }
 
     if (resolution === 'content' && typeof content === 'string') {
@@ -2857,8 +2875,8 @@ export const gitService = {
         };
       }
       fs.writeFileSync(fullPath, content, 'utf8');
-      await runGit(['add', '--', filePath], repoPath);
-      return { success: true, message: `Three-way merge applied / 三方合并结果已应用: ${filePath}` };
+      await runGit(['add', '--', cleanFilePath], repoPath);
+      return { success: true, message: `Three-way merge applied / 三方合并结果已应用: ${cleanFilePath}` };
     }
 
     return { success: false, message: 'Invalid conflict resolution mode / 无效的冲突解决模式' };
@@ -3137,7 +3155,7 @@ export const gitService = {
         } catch {}
       }
 
-      const args = ['clone', '--progress'];
+      const args = ['-c', 'core.quotepath=false', 'clone', '--progress'];
       if (options?.branch && options.branch.trim()) {
         args.push('-b', options.branch.trim());
       }
@@ -3349,9 +3367,9 @@ export const gitService = {
             const lowerQuery = query.toLowerCase();
             for (const f of files) {
               if (matches.length >= maxResults) break;
-              const cleanF = f.trim();
+              const cleanF = decodeGitPath(f.trim());
               if (!cleanF) continue;
-              const baseName = path.basename(cleanF);
+              const { fileName: baseName, forwardPath: relForwardPath } = splitGitPath(cleanF);
 
               if (options.filePattern && options.filePattern.trim()) {
                 const patterns = options.filePattern.split(',').map((p) => p.trim().toLowerCase()).filter(Boolean);
@@ -3392,7 +3410,7 @@ export const gitService = {
 
                 matches.push({
                   filePath: fullPath,
-                  relativePath: cleanF.replace(/\\/g, '/'),
+                  relativePath: relForwardPath,
                   fileName: baseName,
                   lineNumber: 1,
                   lineContent: baseName,
@@ -3419,14 +3437,14 @@ export const gitService = {
             const secondColon = rawLine.indexOf(':', firstColon + 1);
             if (secondColon === -1) continue;
 
-            const relPath = rawLine.slice(0, firstColon).replace(/\\/g, '/');
+            const rawRelPath = rawLine.slice(0, firstColon);
+            const { fileName, forwardPath: relPath } = splitGitPath(rawRelPath);
             const lineNumStr = rawLine.slice(firstColon + 1, secondColon);
             const lineContent = rawLine.slice(secondColon + 1);
             const lineNum = parseInt(lineNumStr, 10);
             if (isNaN(lineNum)) continue;
 
-            const fullPath = path.join(repoPath, relPath);
-            const fileName = path.basename(relPath);
+            const fullPath = path.resolve(repoPath, relPath);
 
             let matchStart = -1;
             const matchLength = query.length;

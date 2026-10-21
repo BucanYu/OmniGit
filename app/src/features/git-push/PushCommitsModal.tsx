@@ -3,103 +3,34 @@ import {
   X,
   ArrowUpRight,
   GitBranch,
-  GitCommit,
-  GitMerge,
-  Folder,
-  FolderOpen,
-  FileCode,
-  FileText,
-  Database,
-  File,
   AlertTriangle,
   Loader2,
   HelpCircle,
-  ChevronRight,
   ChevronDown,
-  List,
-  FolderTree,
   RefreshCw,
-  ExternalLink,
-  GitCompare,
-  Copy,
-  CheckSquare,
-  Square,
-  MinusSquare,
-  Search,
   Rocket,
-  Check,
 } from 'lucide-react';
 import { useAppStore, type OutgoingCommitFile, type OutgoingCommitItem } from '../../store/useAppStore';
 import { useTranslation } from '../../locales';
 import { ResizeDivider } from '../../components/ui/ResizeDivider';
 import { PushDiffModal } from './PushDiffModal';
+import {
+  type CommitContextMenuState,
+  type FileContextMenuState,
+  type SelectiveModalState,
+  type DiffModalState,
+} from './types';
+import { buildFileTree } from './utils/pushModalUtils';
+import { CommitContextMenu } from './components/CommitContextMenu';
+import { FileContextMenu } from './components/FileContextMenu';
+import { SelectivePushModal } from './components/SelectivePushModal';
+import { PushBranchDropdown } from './components/PushBranchDropdown';
+import { PushCommitListPane } from './components/PushCommitListPane';
+import { PushChangedFilesPane } from './components/PushChangedFilesPane';
 
-// File TreeNode structure for hierarchical directory display
-interface FileTreeNode {
-  name: string;
-  fullPath: string;
-  isDirectory: boolean;
-  fileCount: number;
-  file?: OutgoingCommitFile;
-  children: Map<string, FileTreeNode>;
-}
-
-function buildFileTree(files: OutgoingCommitFile[] = []): FileTreeNode {
-  const safeFiles = Array.isArray(files) ? files : [];
-  const root: FileTreeNode = {
-    name: 'root',
-    fullPath: '',
-    isDirectory: true,
-    fileCount: safeFiles.length,
-    children: new Map(),
-  };
-
-  for (const file of safeFiles) {
-    if (!file || !file.path || typeof file.path !== 'string') continue;
-    const parts = file.path.split('/');
-    let current = root;
-
-    for (let i = 0; i < parts.length; i++) {
-      const part = parts[i];
-      const isLast = i === parts.length - 1;
-      const currentPath = parts.slice(0, i + 1).join('/');
-
-      if (!current.children.has(part)) {
-        current.children.set(part, {
-          name: part,
-          fullPath: currentPath,
-          isDirectory: !isLast,
-          fileCount: 0,
-          file: isLast ? file : undefined,
-          children: new Map(),
-        });
-      }
-
-      const nextNode = current.children.get(part)!;
-      nextNode.fileCount += 1;
-      current = nextNode;
-    }
-  }
-
-  return root;
-}
-
-function formatCommitTime(dateStr?: string): string {
-  if (!dateStr) return '';
-  try {
-    const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return dateStr;
-    const pad = (n: number) => n.toString().padStart(2, '0');
-    const year = d.getFullYear();
-    const month = pad(d.getMonth() + 1);
-    const day = pad(d.getDate());
-    const hours = pad(d.getHours());
-    const minutes = pad(d.getMinutes());
-    return `${year}-${month}-${day} ${hours}:${minutes}`;
-  } catch {
-    return dateStr || '';
-  }
-}
+// Re-export types & utilities to guarantee zero breaking changes for other modules
+export * from './types';
+export * from './utils/pushModalUtils';
 
 export const PushCommitsModal: React.FC = () => {
   const { t } = useTranslation();
@@ -144,39 +75,38 @@ export const PushCommitsModal: React.FC = () => {
   const [targetBranchSearch, setTargetBranchSearch] = useState('');
 
   // Mode B: Selective Push Popover state
-  const [selectiveModal, setSelectiveModal] = useState<{
-    isOpen: boolean;
-    hashes: string[];
-    mode: 'target' | 'patch';
-    targetBranch: string;
-    patchBranchName: string;
-  } | null>(null);
+  const [selectiveModal, setSelectiveModal] = useState<SelectiveModalState | null>(null);
 
-  // Pulling loading state for inline banner
-  const [isPulling, setIsPulling] = useState(false);
+  // File diff modal state (double click / context menu inspect)
+  const [diffModalState, setDiffModalState] = useState<DiffModalState | null>(null);
+
+  // File context menu state
+  const [contextMenu, setContextMenu] = useState<FileContextMenuState | null>(null);
 
   // Commit context menu state
-  const [commitContextMenu, setCommitContextMenu] = useState<{
-    x: number;
-    y: number;
-    commit: OutgoingCommitItem;
-  } | null>(null);
+  const [commitContextMenu, setCommitContextMenu] = useState<CommitContextMenuState | null>(null);
 
-  // Dedicated diff modal & right-click context menu states
-  const [diffModalState, setDiffModalState] = useState<{
-    isOpen: boolean;
-    filePath: string;
-    commitHash: string;
-    commitMessage?: string;
-  } | null>(null);
+  // Error diagnostic states
+  const [isPulling, setIsPulling] = useState(false);
 
-  const [contextMenu, setContextMenu] = useState<{
-    x: number;
-    y: number;
-    file: OutgoingCommitFile;
-    commitHash: string;
-  } | null>(null);
+  // Left pane resizable width state
+  const [pushModalLeftWidth, setPushModalLeftWidth] = useState(() => {
+    try {
+      const saved = localStorage.getItem('omnigit_push_modal_left_width');
+      return saved ? Math.max(200, Math.min(560, Number(saved))) : 340;
+    } catch {
+      return 340;
+    }
+  });
 
+  const handleResizePushModalLeft = (newWidth: number) => {
+    setPushModalLeftWidth(newWidth);
+    try {
+      localStorage.setItem('omnigit_push_modal_left_width', String(newWidth));
+    } catch {}
+  };
+
+  // Close menus on outside click or Esc
   useEffect(() => {
     const handleClose = () => {
       setContextMenu(null);
@@ -211,37 +141,17 @@ export const PushCommitsModal: React.FC = () => {
   };
 
   const openDiffForFile = (file: OutgoingCommitFile) => {
-    const hash = getCommitHashForFile(file);
-    const commitObj = outgoingCommitsData?.commits.find((c) => c.hash === hash);
-    setSelectedFilePath(file.path);
+    const commitHash = getCommitHashForFile(file);
+    const commit = outgoingCommitsData?.commits.find((c) => c.hash === commitHash);
     setDiffModalState({
       isOpen: true,
       filePath: file.path,
-      commitHash: hash,
-      commitMessage: commitObj?.subject || (commitObj as any)?.message,
+      commitHash,
+      commitMessage: commit?.subject,
     });
   };
 
-  // Left Commits List Resizable Width (default 340px, persisted)
-  const [pushModalLeftWidth, setPushModalLeftWidth] = useState<number>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('omnigit_push_modal_left_width');
-      if (saved) {
-        const val = parseInt(saved, 10);
-        if (!isNaN(val) && val >= 180 && val <= 600) return val;
-      }
-    }
-    return 340;
-  });
-
-  const handleResizePushModalLeft = (newWidth: number) => {
-    setPushModalLeftWidth(newWidth);
-    try {
-      localStorage.setItem('omnigit_push_modal_left_width', String(newWidth));
-    } catch {}
-  };
-
-  // Derive which commit is active (defaults immediately to the first commit rather than null)
+  // Derive which commit is active
   const effectiveSelectedCommit = useMemo(() => {
     if (!outgoingCommitsData?.commits || outgoingCommitsData.commits.length === 0) return null;
     if (selectedCommitHash) {
@@ -251,7 +161,7 @@ export const PushCommitsModal: React.FC = () => {
     return outgoingCommitsData.commits[0];
   }, [outgoingCommitsData, selectedCommitHash]);
 
-  // Derive which files to display based on selected commit (or fallback to first commit's files)
+  // Derive which files to display based on selected commit
   const displayedFiles = useMemo(() => {
     if (effectiveSelectedCommit && Array.isArray(effectiveSelectedCommit.files)) {
       return effectiveSelectedCommit.files;
@@ -262,8 +172,8 @@ export const PushCommitsModal: React.FC = () => {
   // Build hierarchical tree safely
   const fileTree = useMemo(() => buildFileTree(displayedFiles), [displayedFiles]);
 
-  // Auto-expand folders smartly (avoids DOM explosion if thousands of files)
-  React.useEffect(() => {
+  // Auto-expand folders smartly
+  useEffect(() => {
     if (displayedFiles && displayedFiles.length > 0) {
       const allPaths = new Set<string>(['root']);
       const isLarge = displayedFiles.length > 150;
@@ -280,7 +190,7 @@ export const PushCommitsModal: React.FC = () => {
   }, [displayedFiles]);
 
   // Auto-select first commit and check all commits when outgoing commits load
-  React.useEffect(() => {
+  useEffect(() => {
     if (outgoingCommitsData?.commits && outgoingCommitsData.commits.length > 0) {
       if (!selectedCommitHash || !outgoingCommitsData.commits.some((c) => c.hash === selectedCommitHash)) {
         setSelectedCommitHash(outgoingCommitsData.commits[0].hash);
@@ -293,7 +203,7 @@ export const PushCommitsModal: React.FC = () => {
   }, [outgoingCommitsData]);
 
   // Reset internal states on modal close
-  React.useEffect(() => {
+  useEffect(() => {
     if (!isPushModalOpen) {
       setSelectedCommitHash(null);
       setSelectedFilePath(null);
@@ -344,12 +254,12 @@ export const PushCommitsModal: React.FC = () => {
 
   const expandAll = () => {
     const allPaths = new Set<string>();
-    function collect(node: FileTreeNode) {
+    const collect = (node: ReturnType<typeof buildFileTree>) => {
       if (node.isDirectory) {
         allPaths.add(node.fullPath || 'root');
         node.children.forEach(collect);
       }
-    }
+    };
     collect(fileTree);
     setExpandedFolders(allPaths);
   };
@@ -358,142 +268,6 @@ export const PushCommitsModal: React.FC = () => {
     setExpandedFolders(new Set());
   };
 
-  const renderFileIcon = (fileName?: string) => {
-    if (!fileName || typeof fileName !== 'string') {
-      return <File className="w-3.5 h-3.5 text-theme-dim shrink-0" />;
-    }
-    const lower = fileName.toLowerCase();
-    if (lower.endsWith('.java')) {
-      return (
-        <span className="w-3.5 h-3.5 rounded bg-blue-600/90 text-white font-bold text-[9px] flex items-center justify-center shrink-0">
-          C
-        </span>
-      );
-    }
-    if (lower.endsWith('.sql')) {
-      return <Database className="w-3.5 h-3.5 text-emerald-400 shrink-0" />;
-    }
-    if (lower.endsWith('.md')) {
-      return <FileText className="w-3.5 h-3.5 text-sky-300 shrink-0" />;
-    }
-    if (lower.endsWith('.ts') || lower.endsWith('.tsx') || lower.endsWith('.json') || lower.endsWith('.vue') || lower.endsWith('.js') || lower.endsWith('.jsx')) {
-      return <FileCode className="w-3.5 h-3.5 text-sky-400 shrink-0" />;
-    }
-    return <File className="w-3.5 h-3.5 text-theme-dim shrink-0" />;
-  };
-
-  const renderStatusCode = (statusCode = '', status = '') => {
-    const code = statusCode || '';
-    const st = status || '';
-    if (code.startsWith('A') || st === 'added') {
-      return <span className="text-[10px] font-mono font-bold text-emerald-400">A</span>;
-    }
-    if (code.startsWith('D') || st === 'deleted') {
-      return <span className="text-[10px] font-mono font-bold text-rose-400">D</span>;
-    }
-    if (code.startsWith('R') || st === 'renamed') {
-      return <span className="text-[10px] font-mono font-bold text-amber-400">R</span>;
-    }
-    return <span className="text-[10px] font-mono font-bold text-sky-400">M</span>;
-  };
-
-  const renderTreeNodes = (node: FileTreeNode, depth = 0): React.ReactNode => {
-    const isRoot = node.name === 'root';
-    const childrenArray = Array.from(node.children.values());
-
-    return (
-      <div key={node.fullPath || 'root'} className="select-none">
-        {!isRoot && (
-          <div
-            onClick={() => {
-              if (node.isDirectory) {
-                toggleFolder(node.fullPath);
-              } else if (node.file) {
-                setSelectedFilePath(node.file.path);
-                setSelectedFile(node.file.path);
-              }
-            }}
-            onDoubleClick={(e) => {
-              if (!node.isDirectory && node.file) {
-                e.stopPropagation();
-                openDiffForFile(node.file);
-              }
-            }}
-            onContextMenu={(e) => {
-              if (!node.isDirectory && node.file) {
-                e.preventDefault();
-                e.stopPropagation();
-                setContextMenu({
-                  x: e.clientX,
-                  y: e.clientY,
-                  file: node.file,
-                  commitHash: getCommitHashForFile(node.file),
-                });
-              }
-            }}
-            style={{ paddingLeft: `${Math.max(4, depth * 14)}px` }}
-            className={`group py-1 px-2 flex items-center justify-between cursor-pointer rounded transition text-[11px] ${
-              selectedFilePath === node.fullPath
-                ? 'bg-sky-500/20 text-sky-400 font-medium'
-                : 'hover:bg-theme-hover text-theme-main'
-            }`}
-            title={node.isDirectory ? node.name : t.modals.push.showDiffDoubleTooltip(node.fullPath)}
-          >
-            <div className="flex items-center gap-1.5 min-w-0 flex-1 pr-2">
-              {node.isDirectory ? (
-                <>
-                  <span className="text-theme-dim">
-                    {expandedFolders.has(node.fullPath) ? (
-                      <ChevronDown className="w-3.5 h-3.5" />
-                    ) : (
-                      <ChevronRight className="w-3.5 h-3.5" />
-                    )}
-                  </span>
-                  {expandedFolders.has(node.fullPath) ? (
-                    <FolderOpen className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-                  ) : (
-                    <Folder className="w-3.5 h-3.5 text-sky-500/80 shrink-0" />
-                  )}
-                  <span className="font-semibold text-theme-main truncate">{node.name}</span>
-                  <span className="text-[10px] text-theme-dim ml-1 font-mono">
-                    {node.fileCount} file{node.fileCount > 1 ? 's' : ''}
-                  </span>
-                </>
-              ) : (
-                <>
-                  <span className="w-3.5 shrink-0" />
-                  {renderFileIcon(node.name)}
-                  <span className="truncate text-theme-main font-mono text-[11px]">{node.name}</span>
-                </>
-              )}
-            </div>
-
-            {!node.isDirectory && node.file && (
-              <div className="shrink-0 flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    openDiffForFile(node.file!);
-                  }}
-                  title={t.modals.push.showDiffTooltip}
-                  className="p-0.5 hover:bg-sky-500/20 text-theme-dim hover:text-sky-400 rounded opacity-0 group-hover:opacity-100 transition cursor-pointer"
-                >
-                  <GitCompare className="w-3.5 h-3.5" />
-                </button>
-                {renderStatusCode(node.file.statusCode, node.file.status)}
-              </div>
-            )}
-          </div>
-        )}
-
-        {(isRoot || expandedFolders.has(node.fullPath)) &&
-          childrenArray.map((child) => renderTreeNodes(child, isRoot ? 0 : depth + 1))}
-      </div>
-    );
-  };
-
-  const isAllChecked = commits.length > 0 && checkedCommitHashes.size === commits.length;
   const isNoneChecked = checkedCommitHashes.size === 0;
   const isSubsetChecked = checkedCommitHashes.size > 0 && checkedCommitHashes.size < commits.length;
   const isPushDisabled = pushingLoading || (isNoneChecked && !pushTags);
@@ -512,7 +286,6 @@ export const PushCommitsModal: React.FC = () => {
     if (isPushDisabled) return;
 
     if (isSubsetChecked) {
-      // User only checked a subset of commits: open selective push confirmation for ONLY the checked commits!
       setSelectiveModal({
         isOpen: true,
         hashes: Array.from(checkedCommitHashes),
@@ -550,7 +323,7 @@ export const PushCommitsModal: React.FC = () => {
           </button>
         </div>
 
-        {/* 2. Target Routing Bar (Interactive Source Branch → Remote: Target Branch) */}
+        {/* 2. Target Routing Bar */}
         <div className="px-3 py-2 bg-theme-header border-b border-theme flex items-center justify-between text-xs shrink-0 relative">
           <div className="flex items-center gap-2 font-medium min-w-0">
             {/* Source Branch Selector */}
@@ -569,58 +342,21 @@ export const PushCommitsModal: React.FC = () => {
                 <ChevronDown className="w-3 h-3 text-theme-dim shrink-0" />
               </button>
 
-              {/* Source Branch Dropdown */}
-              {isSourceBranchDropdownOpen && (
-                <div
-                  onClick={(e) => e.stopPropagation()}
-                  className="absolute left-0 top-full mt-1 w-64 bg-theme-panel border border-theme-border-card rounded-lg shadow-2xl z-[1050] py-1 text-xs animate-in fade-in zoom-in-95 duration-75"
-                >
-                  <div className="p-1.5 border-b border-theme">
-                    <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-theme-input border border-theme-border-card">
-                      <Search className="w-3 h-3 text-theme-dim shrink-0" />
-                      <input
-                        type="text"
-                        value={sourceBranchSearch}
-                        onChange={(e) => setSourceBranchSearch(e.target.value)}
-                        placeholder={t.modals.push.searchLocalBranchesPlaceholder}
-                        className="bg-transparent border-none text-xs text-theme-main focus:outline-none w-full"
-                        autoFocus
-                      />
-                    </div>
-                  </div>
-                  <div className="max-h-48 overflow-y-auto py-1">
-                    {filteredLocalBranches.length === 0 ? (
-                      <div className="px-3 py-2 text-center text-theme-dim text-[11px]">{t.modals.push.noMatchingBranches}</div>
-                    ) : (
-                      filteredLocalBranches.map((b) => (
-                        <button
-                          key={b.name}
-                          type="button"
-                          onClick={async () => {
-                            setIsSourceBranchDropdownOpen(false);
-                            if (b.name !== sourceBranch) {
-                              await switchPushSourceBranch(b.name);
-                            }
-                          }}
-                          className={`w-full px-3 py-1.5 flex items-center justify-between text-left hover:bg-theme-card hover:text-sky-400 cursor-pointer transition ${
-                            b.name === sourceBranch ? 'text-sky-400 font-bold bg-sky-500/10' : 'text-theme-main'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2 truncate">
-                            <GitBranch className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-                            <span className="truncate">{b.name}</span>
-                          </div>
-                          {b.outgoing > 0 && (
-                            <span className="text-[10px] bg-sky-500/20 text-sky-400 px-1.5 py-0.2 rounded font-mono shrink-0">
-                              ↗ {b.outgoing}
-                            </span>
-                          )}
-                        </button>
-                      ))
-                    )}
-                  </div>
-                </div>
-              )}
+              <PushBranchDropdown
+                isOpen={isSourceBranchDropdownOpen}
+                search={sourceBranchSearch}
+                onSearchChange={setSourceBranchSearch}
+                placeholder={t.modals.push.searchLocalBranchesPlaceholder}
+                emptyText={t.modals.push.noMatchingBranches}
+                items={filteredLocalBranches}
+                currentValue={sourceBranch}
+                onSelect={async (name) => {
+                  setIsSourceBranchDropdownOpen(false);
+                  if (name !== sourceBranch) {
+                    await switchPushSourceBranch(name);
+                  }
+                }}
+              />
             </div>
 
             <span className="text-theme-dim shrink-0">→</span>
@@ -641,49 +377,22 @@ export const PushCommitsModal: React.FC = () => {
                 <ChevronDown className="w-3 h-3 text-theme-dim shrink-0" />
               </button>
 
-              {/* Target Branch Dropdown */}
-              {isTargetBranchDropdownOpen && (
-                <div
-                  onClick={(e) => e.stopPropagation()}
-                  className="absolute left-0 top-full mt-1 w-64 bg-theme-panel border border-theme-border-card rounded-lg shadow-2xl z-[1050] py-1 text-xs animate-in fade-in zoom-in-95 duration-75"
-                >
-                  <div className="p-1.5 border-b border-theme">
-                    <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-theme-input border border-theme-border-card">
-                      <Search className="w-3 h-3 text-theme-dim shrink-0" />
-                      <input
-                        type="text"
-                        value={targetBranchSearch}
-                        onChange={(e) => setTargetBranchSearch(e.target.value)}
-                        placeholder={t.modals.push.searchRemoteBranchesPlaceholder}
-                        className="bg-transparent border-none text-xs text-theme-main focus:outline-none w-full"
-                        autoFocus
-                      />
-                    </div>
-                  </div>
-                  <div className="max-h-48 overflow-y-auto py-1">
-                    {filteredRemoteBranches.map((name) => (
-                      <button
-                        key={name}
-                        type="button"
-                        onClick={async () => {
-                          setIsTargetBranchDropdownOpen(false);
-                          if (name !== targetBranch) {
-                            await switchPushSourceBranch(sourceBranch, name);
-                          }
-                        }}
-                        className={`w-full px-3 py-1.5 flex items-center justify-between text-left hover:bg-theme-card hover:text-sky-400 cursor-pointer transition ${
-                          name === targetBranch ? 'text-sky-400 font-bold bg-sky-500/10' : 'text-theme-main'
-                        }`}
-                      >
-                        <span className="truncate">{name}</span>
-                        {name === sourceBranch && (
-                          <span className="text-[10px] text-theme-dim">{t.modals.push.sameNameBranch}</span>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
+              <PushBranchDropdown
+                isOpen={isTargetBranchDropdownOpen}
+                search={targetBranchSearch}
+                onSearchChange={setTargetBranchSearch}
+                placeholder={t.modals.push.searchRemoteBranchesPlaceholder}
+                items={filteredRemoteBranches}
+                currentValue={targetBranch}
+                sourceValue={sourceBranch}
+                sameNameLabel={t.modals.push.sameNameBranch}
+                onSelect={async (name) => {
+                  setIsTargetBranchDropdownOpen(false);
+                  if (name !== targetBranch) {
+                    await switchPushSourceBranch(sourceBranch, name);
+                  }
+                }}
+              />
             </div>
           </div>
 
@@ -703,170 +412,55 @@ export const PushCommitsModal: React.FC = () => {
 
         {/* 3. Main Split Body (Left: Commit List, Right: Changed Files) */}
         <div className="flex-1 flex overflow-hidden min-h-0 relative">
-          {/* Left Pane: Commits List */}
-          <div
-            style={{
-              width: `${pushModalLeftWidth}px`,
-              minWidth: `${pushModalLeftWidth}px`,
-              maxWidth: `${pushModalLeftWidth}px`,
+          <PushCommitListPane
+            width={pushModalLeftWidth}
+            commits={commits}
+            loading={outgoingCommitsLoading}
+            hasLoadedData={Boolean(outgoingCommitsData)}
+            sourceBranch={sourceBranch}
+            targetBranch={targetBranch}
+            selectedCommitHash={selectedCommitHash}
+            checkedCommitHashes={checkedCommitHashes}
+            onSelectCommit={setSelectedCommitHash}
+            onToggleCommitCheck={(hash) => {
+              setCheckedCommitHashes((prev) => {
+                const next = new Set(prev);
+                if (next.has(hash)) {
+                  next.delete(hash);
+                } else {
+                  next.add(hash);
+                }
+                return next;
+              });
             }}
-            className="flex flex-col bg-theme-panel shrink-0"
-          >
-            {/* Header with Select All Checkbox */}
-            <div className="px-3 py-1.5 border-b border-theme bg-theme-header text-[11px] font-semibold text-theme-muted flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  disabled={commits.length === 0}
-                  onClick={() => {
-                    if (checkedCommitHashes.size === commits.length) {
-                      setCheckedCommitHashes(new Set());
-                    } else {
-                      setCheckedCommitHashes(new Set(commits.map((c) => c.hash)));
-                    }
-                  }}
-                  className="p-0.5 hover:text-sky-400 transition cursor-pointer flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
-                  title={checkedCommitHashes.size === commits.length ? t.modals.push.deselectAllCommitsTooltip : t.modals.push.selectAllCommitsTooltip}
-                >
-                  {checkedCommitHashes.size === commits.length && commits.length > 0 ? (
-                    <CheckSquare className="w-3.5 h-3.5 text-sky-400" />
-                  ) : checkedCommitHashes.size > 0 ? (
-                    <MinusSquare className="w-3.5 h-3.5 text-sky-400" />
-                  ) : (
-                    <Square className="w-3.5 h-3.5 text-theme-dim" />
-                  )}
-                  <span>{t.modals.push.commitsHeader}</span>
-                </button>
-                <span className="text-theme-dim text-[10px] font-mono">({commits.length})</span>
-              </div>
+            onToggleAllCheck={() => {
+              if (checkedCommitHashes.size === commits.length) {
+                setCheckedCommitHashes(new Set());
+              } else {
+                setCheckedCommitHashes(new Set(commits.map((c) => c.hash)));
+              }
+            }}
+            onContextMenu={(e, commit) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setCommitContextMenu({
+                x: e.clientX,
+                y: e.clientY,
+                commit,
+              });
+            }}
+            onOpenSelectiveModal={(hash, shortHash) => {
+              setSelectiveModal({
+                isOpen: true,
+                hashes: [hash],
+                mode: 'target',
+                targetBranch,
+                patchBranchName: `patch/fix-${shortHash}`,
+              });
+            }}
+          />
 
-              {checkedCommitHashes.size > 0 && checkedCommitHashes.size < commits.length && (
-                <span className="text-[10px] text-sky-400 bg-sky-500/10 px-1.5 py-0.2 rounded font-mono">
-                  {t.modals.push.selectedCommitsBadge(checkedCommitHashes.size)}
-                </span>
-              )}
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-1 space-y-1">
-              {outgoingCommitsLoading && (!outgoingCommitsData || commits.length === 0) ? (
-                <div className="p-8 text-center text-theme-dim space-y-2">
-                  <Loader2 className="w-5 h-5 animate-spin mx-auto text-sky-400" />
-                  <p>{t.modals.push.loadingCommits}</p>
-                </div>
-              ) : commits.length === 0 ? (
-                <div className="p-8 text-center text-theme-dim space-y-1">
-                  <p className="font-semibold text-theme-main">{t.modals.push.everythingUpToDate}</p>
-                  <p className="text-[11px]">{t.modals.push.noUnpushedCommits(sourceBranch)}</p>
-                </div>
-              ) : (
-                commits.map((commit: OutgoingCommitItem) => {
-                  const isSelected = selectedCommitHash === commit.hash;
-                  const isChecked = checkedCommitHashes.has(commit.hash);
-                  return (
-                    <div
-                      key={commit.hash}
-                      onClick={() =>
-                        setSelectedCommitHash(isSelected ? null : commit.hash)
-                      }
-                      onContextMenu={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setCommitContextMenu({
-                          x: e.clientX,
-                          y: e.clientY,
-                          commit,
-                        });
-                      }}
-                      className={`group p-2 rounded border cursor-pointer transition text-xs select-none ${
-                        isSelected
-                          ? 'bg-sky-500/15 border-sky-500/40 text-theme-main shadow-xs'
-                          : 'bg-theme-card hover:bg-theme-card-hover border-theme-border-card text-theme-main'
-                      }`}
-                    >
-                      <div className="flex items-start gap-1.5">
-                        {/* Commit Item Checkbox */}
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setCheckedCommitHashes((prev) => {
-                              const next = new Set(prev);
-                              if (next.has(commit.hash)) {
-                                next.delete(commit.hash);
-                              } else {
-                                next.add(commit.hash);
-                              }
-                              return next;
-                            });
-                          }}
-                          className="p-0.5 mt-0.5 hover:text-sky-400 transition cursor-pointer shrink-0"
-                          title={isChecked ? t.modals.push.uncheckCommitTooltip : t.modals.push.checkCommitTooltip}
-                        >
-                          {isChecked ? (
-                            <CheckSquare className="w-3.5 h-3.5 text-sky-400" />
-                          ) : (
-                            <Square className="w-3.5 h-3.5 text-theme-dim group-hover:text-theme-main" />
-                          )}
-                        </button>
-
-                        {commit.isMerge ? (
-                          <span title={t.modals.push.mergeCommitBadge} className="inline-flex shrink-0 mt-0.5">
-                            <GitMerge className="w-3.5 h-3.5 text-purple-400" />
-                          </span>
-                        ) : (
-                          <GitCommit className="w-3.5 h-3.5 text-sky-400 shrink-0 mt-0.5" />
-                        )}
-                        <div className="min-w-0 flex-1">
-                          <p className="font-medium text-theme-main leading-tight line-clamp-2" title={commit.subject}>
-                            {commit.subject}
-                          </p>
-                          <div className="mt-1 flex items-center justify-between text-[10px] text-theme-dim font-mono gap-1.5">
-                            <div className="flex items-center gap-1.5 min-w-0 truncate">
-                              <span className="truncate max-w-[100px]" title={commit.authorName}>{commit.authorName}</span>
-                              {commit.date && (
-                                <>
-                                  <span className="text-theme-dim/60 shrink-0">•</span>
-                                  <span className="text-theme-dim shrink-0" title={commit.date}>
-                                    {formatCommitTime(commit.date)}
-                                  </span>
-                                </>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              <span className="text-theme-dim hover:text-theme-main" title={commit.hash}>
-                                {commit.shortHash}
-                              </span>
-                              {/* Quick Selective Push Button */}
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setSelectiveModal({
-                                    isOpen: true,
-                                    hashes: [commit.hash],
-                                    mode: 'target',
-                                    targetBranch,
-                                    patchBranchName: `patch/fix-${commit.shortHash}`,
-                                  });
-                                }}
-                                className="opacity-0 group-hover:opacity-100 px-1.5 py-0.5 rounded bg-sky-500/20 hover:bg-sky-500/30 text-sky-400 text-[10px] transition cursor-pointer flex items-center gap-1"
-                                title={t.modals.push.pushAloneCommitTooltip}
-                              >
-                                <Rocket className="w-2.5 h-2.5" />
-                                <span>{t.modals.push.pushAloneBtn}</span>
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
-
-          {/* Horizontal Resize Divider between Commits List and Changed Files */}
+          {/* Horizontal Resize Divider */}
           <ResizeDivider
             currentWidth={pushModalLeftWidth}
             minWidth={200}
@@ -877,153 +471,36 @@ export const PushCommitsModal: React.FC = () => {
           />
 
           {/* Right Pane: Changed Files Tree / List */}
-          <div className="flex-1 flex flex-col bg-theme-panel min-w-0">
-            {/* Toolbar */}
-            <div className="px-3 py-1.5 border-b border-theme bg-theme-header flex items-center justify-between text-[11px]">
-              <div className="flex items-center gap-2 text-theme-muted font-semibold">
-                <span>{t.modals.push.changedFilesHeader}</span>
-                <span className="text-[10px] font-mono text-theme-dim">
-                  ({displayedFiles.length})
-                </span>
-                {selectedCommitHash && (
-                  <span className="text-[10px] text-sky-400 font-mono bg-sky-500/10 px-1.5 py-0.2 rounded border border-sky-500/20">
-                    Filter: {selectedCommitHash.slice(0, 7)}
-                  </span>
-                )}
-              </div>
-
-              <div className="flex items-center gap-1 text-theme-dim">
-                <button
-                  type="button"
-                  disabled={!selectedFilePath}
-                  onClick={() => {
-                    const file = displayedFiles.find((f) => f.path === selectedFilePath);
-                    if (file) openDiffForFile(file);
-                  }}
-                  className="px-1.5 py-0.5 rounded hover:bg-theme-card text-theme-dim hover:text-sky-400 disabled:opacity-30 disabled:cursor-not-allowed transition cursor-pointer flex items-center gap-1 mr-1"
-                  title={t.modals.push.showDiffTooltip}
-                >
-                  <GitCompare className="w-3.5 h-3.5" />
-                  <span className="text-[10px]">{t.modals.push.showDiffBtn}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setViewMode(viewMode === 'tree' ? 'flat' : 'tree')}
-                  className={`p-1 rounded hover:bg-theme-card hover:text-theme-main transition cursor-pointer ${
-                    viewMode === 'tree' ? 'text-sky-400' : ''
-                  }`}
-                  title={viewMode === 'tree' ? t.modals.push.switchToFlatList : t.modals.push.switchToTreeList}
-                >
-                  {viewMode === 'tree' ? (
-                    <FolderTree className="w-3.5 h-3.5" />
-                  ) : (
-                    <List className="w-3.5 h-3.5" />
-                  )}
-                </button>
-
-                {viewMode === 'tree' && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={expandAll}
-                      className="p-1 rounded hover:bg-theme-card hover:text-theme-main transition cursor-pointer"
-                      title={t.common.expand}
-                    >
-                      <ChevronDown className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={collapseAll}
-                      className="p-1 rounded hover:bg-theme-card hover:text-theme-main transition cursor-pointer"
-                      title={t.common.collapse}
-                    >
-                      <ChevronRight className="w-3.5 h-3.5" />
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-
-            {/* File List / Tree View */}
-            <div className="flex-1 overflow-y-auto p-2">
-              {outgoingCommitsLoading && (!outgoingCommitsData || commits.length === 0) ? (
-                <div className="p-8 text-center text-theme-dim text-xs flex flex-col items-center gap-2">
-                  <Loader2 className="w-4 h-4 animate-spin text-sky-400" />
-                  <span>{t.modals.push.loadingCommits}</span>
-                </div>
-              ) : displayedFiles.length === 0 ? (
-                <div className="p-8 text-center text-theme-dim text-xs">
-                  {t.modals.push.noChangedFiles}
-                </div>
-              ) : viewMode === 'tree' ? (
-                renderTreeNodes(fileTree)
-              ) : (
-                <div className="space-y-0.5">
-                  {displayedFiles.slice(0, 300).map((file) => (
-                    <div
-                      key={file.path}
-                      onClick={() => {
-                        setSelectedFilePath(file.path);
-                        setSelectedFile(file.path);
-                      }}
-                      onDoubleClick={(e) => {
-                        e.stopPropagation();
-                        openDiffForFile(file);
-                      }}
-                      onContextMenu={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setContextMenu({
-                          x: e.clientX,
-                          y: e.clientY,
-                          file,
-                          commitHash: getCommitHashForFile(file),
-                        });
-                      }}
-                      className={`group px-2 py-1.5 flex items-center justify-between cursor-pointer rounded transition text-xs ${
-                        selectedFilePath === file.path
-                          ? 'bg-sky-500/20 text-sky-400 font-medium'
-                          : 'hover:bg-theme-hover text-theme-main'
-                      }`}
-                      title={t.modals.push.showDiffDoubleTooltip(file.path)}
-                    >
-                      <div className="flex items-center gap-2 min-w-0 flex-1 pr-2">
-                        {renderFileIcon(file.fileName)}
-                        <span className="font-mono text-xs text-theme-main truncate">
-                          {file.fileName}
-                        </span>
-                        <span className="text-[11px] text-theme-dim truncate font-mono">
-                          {file.dirPath}
-                        </span>
-                      </div>
-
-                      <div className="shrink-0 flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openDiffForFile(file);
-                          }}
-                          title={t.modals.push.showDiffTooltip}
-                          className="p-0.5 hover:bg-sky-500/20 text-theme-dim hover:text-sky-400 rounded opacity-0 group-hover:opacity-100 transition cursor-pointer"
-                        >
-                          <GitCompare className="w-3.5 h-3.5" />
-                        </button>
-                        {renderStatusCode(file.statusCode, file.status)}
-                      </div>
-                    </div>
-                  ))}
-
-                  {displayedFiles.length > 300 && (
-                    <div className="py-2 px-3 text-center text-[11px] text-theme-dim bg-theme-subbar/60 rounded border border-theme/40 my-1">
-                      {t.modals.push.maxFilesLimitNotice(displayedFiles.length)}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
+          <PushChangedFilesPane
+            files={displayedFiles}
+            loading={outgoingCommitsLoading}
+            commitsCount={commits.length}
+            hasLoadedData={Boolean(outgoingCommitsData)}
+            selectedCommitHash={selectedCommitHash}
+            selectedFilePath={selectedFilePath}
+            fileTree={fileTree}
+            expandedFolders={expandedFolders}
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
+            onToggleFolder={toggleFolder}
+            onExpandAll={expandAll}
+            onCollapseAll={collapseAll}
+            onSelectFile={(path) => {
+              setSelectedFilePath(path);
+              setSelectedFile(path);
+            }}
+            onOpenDiff={openDiffForFile}
+            onContextMenu={(e, file) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setContextMenu({
+                x: e.clientX,
+                y: e.clientY,
+                file,
+                commitHash: getCommitHashForFile(file),
+              });
+            }}
+          />
         </div>
 
         {/* 4. Error Banner (Inline Diagnostics) */}
@@ -1072,7 +549,7 @@ export const PushCommitsModal: React.FC = () => {
           </div>
         )}
 
-        {/* 5. Bottom Footer Toolbar (Matches Screenshot 3) */}
+        {/* 5. Bottom Footer Toolbar */}
         <div className="h-12 px-3 bg-theme-subbar border-t border-theme flex items-center justify-between shrink-0">
           {/* Left: Help & Push Tags option */}
           <div className="flex items-center gap-4 text-xs text-theme-muted">
@@ -1161,89 +638,72 @@ export const PushCommitsModal: React.FC = () => {
         </div>
       </div>
 
-      {/* 5. Right-Click Context Menu on Changed Files */}
-      {contextMenu && (() => {
-        const menuWidth = 220;
-        const menuHeight = 200;
-        const clampedX = Math.max(10, Math.min(contextMenu.x, window.innerWidth - menuWidth - 10));
-        const clampedY = Math.max(10, Math.min(contextMenu.y, window.innerHeight - menuHeight - 10));
-        return (
-          <div
-            style={{ left: `${clampedX}px`, top: `${clampedY}px` }}
-            onClick={(e) => e.stopPropagation()}
-            className="fixed z-[1060] bg-theme-panel border border-theme-border rounded-lg shadow-2xl py-1 min-w-[200px] text-xs select-none backdrop-blur-md animate-in fade-in zoom-in-95 duration-75 font-sans"
-          >
-          <div className="px-3 py-1 text-[10px] text-theme-dim border-b border-theme-border font-mono truncate max-w-[240px]">
-            {contextMenu.file.fileName}
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              openDiffForFile(contextMenu.file);
-              setContextMenu(null);
-            }}
-            className="w-full px-3 py-1.5 flex items-center gap-2 text-theme-main hover:bg-theme-hover hover:text-sky-400 transition cursor-pointer text-left font-medium"
-          >
-            <GitCompare className="w-3.5 h-3.5 text-sky-400" />
-            <span>{t.modals.push.showDiffTooltip}</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              revealFileInOS(contextMenu.file.path);
-              setContextMenu(null);
-            }}
-            className="w-full px-3 py-1.5 flex items-center gap-2 text-theme-main hover:bg-theme-hover transition cursor-pointer text-left"
-          >
-            <FolderOpen className="w-3.5 h-3.5 text-theme-dim" />
-            <span>{t.modals.push.openInExplorer}</span>
-          </button>
-          <div className="h-px bg-theme-border my-1" />
-          <button
-            type="button"
-            onClick={() => {
-              if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-                navigator.clipboard.writeText(contextMenu.file.path);
-                setNotification({
-                  id: Date.now(),
-                  title: t.modals.push.relativePathCopied,
-                  detail: contextMenu.file.path,
-                  type: 'info',
-                });
-              }
-              setContextMenu(null);
-            }}
-            className="w-full px-3 py-1.5 flex items-center gap-2 text-theme-main hover:bg-theme-hover transition cursor-pointer text-left"
-          >
-            <Copy className="w-3.5 h-3.5 text-theme-dim" />
-            <span>{t.modals.push.copyRelativePath}</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              const sep = currentProject?.path.includes('\\') ? '\\' : '/';
-              const full = `${currentProject?.path || ''}${sep}${contextMenu.file.path.replace(/\//g, sep)}`;
-              if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-                navigator.clipboard.writeText(full);
-                setNotification({
-                  id: Date.now(),
-                  title: t.modals.push.absolutePathCopied,
-                  detail: full,
-                  type: 'info',
-                });
-              }
-              setContextMenu(null);
-            }}
-            className="w-full px-3 py-1.5 flex items-center gap-2 text-theme-main hover:bg-theme-hover transition cursor-pointer text-left"
-          >
-            <Copy className="w-3.5 h-3.5 text-theme-dim" />
-            <span>{t.modals.push.copyAbsolutePath}</span>
-          </button>
-        </div>
-      );
-    })()}
+      {/* 6. Right-Click Context Menu on Changed Files */}
+      {contextMenu && (
+        <FileContextMenu
+          state={contextMenu}
+          projectPath={currentProject?.path}
+          onClose={() => setContextMenu(null)}
+          onOpenDiff={openDiffForFile}
+          onRevealInOS={revealFileInOS}
+          onNotify={setNotification}
+        />
+      )}
 
-      {/* 6. Push Diff Modal (Dedicated Comparison Dialog) */}
+      {/* 7. Mode B: Selective Push Popover Modal */}
+      {selectiveModal && selectiveModal.isOpen && (
+        <SelectivePushModal
+          state={selectiveModal}
+          remoteName={remoteName}
+          targetBranch={targetBranch}
+          pushingLoading={pushingLoading}
+          pushError={pushError}
+          onClose={() => setSelectiveModal(null)}
+          onUpdateState={setSelectiveModal}
+          onSubmit={async () => {
+            const res = await pushSelectedCommits({
+              hashes: selectiveModal.hashes,
+              targetBranch: selectiveModal.targetBranch,
+              createNewBranch: selectiveModal.mode === 'patch',
+              newBranchName: selectiveModal.patchBranchName.trim(),
+            });
+            if (res && res.success) {
+              setSelectiveModal(null);
+              closePushModal();
+            }
+          }}
+        />
+      )}
+
+      {/* 8. Commit Card Right-Click Context Menu */}
+      {commitContextMenu && (
+        <CommitContextMenu
+          state={commitContextMenu}
+          targetBranch={targetBranch}
+          onClose={() => setCommitContextMenu(null)}
+          onOpenSelectiveModal={setSelectiveModal}
+          onExecutePushToCommit={async (hash) => {
+            const res = await executePush({
+              targetCommit: hash,
+              targetBranch,
+            });
+            if (res && res.success) {
+              closePushModal();
+            }
+          }}
+          onCopyHash={(hash) => {
+            navigator.clipboard.writeText(hash);
+            setNotification({
+              id: Date.now(),
+              title: t.notifications.copyHashSuccess,
+              detail: hash,
+              type: 'info',
+            });
+          }}
+        />
+      )}
+
+      {/* 9. Standalone Diff Modal */}
       {diffModalState && diffModalState.isOpen && (
         <PushDiffModal
           isOpen={diffModalState.isOpen}
@@ -1254,198 +714,6 @@ export const PushCommitsModal: React.FC = () => {
           initialFilePath={diffModalState.filePath}
           files={displayedFiles}
         />
-      )}
-
-      {/* 7. Mode B: Selective Push Popover Modal */}
-      {selectiveModal && selectiveModal.isOpen && (
-        <div
-          className="fixed inset-0 z-[1100] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 select-none"
-          onClick={() => setSelectiveModal(null)}
-        >
-          <div
-            className="bg-theme-panel border border-theme-border-card rounded-lg shadow-2xl w-[460px] max-w-full p-4 flex flex-col gap-3.5 animate-in fade-in zoom-in-95 duration-100 text-xs text-theme-main font-sans"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between border-b border-theme pb-2.5">
-              <div className="flex items-center gap-2 font-bold text-sm text-theme-main">
-                <Rocket className="w-4 h-4 text-sky-400" />
-                <span>{t.modals.push.selectiveModalTitle(selectiveModal.hashes.length)}</span>
-              </div>
-              <button
-                type="button"
-                disabled={pushingLoading}
-                onClick={() => !pushingLoading && setSelectiveModal(null)}
-                className="p-1 text-theme-dim hover:text-theme-main rounded transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <p className="text-theme-dim text-[11px] leading-relaxed">
-              {t.modals.push.selectiveModalDesc}
-            </p>
-
-            <div className="space-y-2.5 bg-theme-card p-3 rounded border border-theme-border-card">
-              <label className="flex items-start gap-2.5 cursor-pointer">
-                <input
-                  type="radio"
-                  name="selectiveMode"
-                  checked={selectiveModal.mode === 'target'}
-                  onChange={() => setSelectiveModal({ ...selectiveModal, mode: 'target' })}
-                  className="mt-0.5 text-sky-500 focus:ring-0 cursor-pointer"
-                />
-                <div className="flex-1 min-w-0">
-                  <span className="font-semibold text-theme-main">{t.modals.push.pushDirectTargetTitle}</span>
-                  <p className="text-[11px] text-theme-dim mt-0.5">{t.modals.push.pushDirectTargetDesc(remoteName, targetBranch)}</p>
-                </div>
-              </label>
-
-              <label className="flex items-start gap-2.5 cursor-pointer pt-2 border-t border-theme/60">
-                <input
-                  type="radio"
-                  name="selectiveMode"
-                  checked={selectiveModal.mode === 'patch'}
-                  onChange={() => setSelectiveModal({ ...selectiveModal, mode: 'patch' })}
-                  className="mt-0.5 text-sky-500 focus:ring-0 cursor-pointer"
-                />
-                <div className="flex-1 min-w-0">
-                  <span className="font-semibold text-theme-main">{t.modals.push.pushPatchBranchTitle}</span>
-                  <p className="text-[11px] text-theme-dim mt-0.5">{t.modals.push.pushPatchBranchDesc}</p>
-                  {selectiveModal.mode === 'patch' && (
-                    <input
-                      type="text"
-                      value={selectiveModal.patchBranchName}
-                      onChange={(e) => setSelectiveModal({ ...selectiveModal, patchBranchName: e.target.value })}
-                      placeholder={t.modals.push.patchBranchPlaceholder}
-                      className="mt-2 w-full px-2.5 py-1.5 rounded bg-theme-input border border-theme-border-card text-xs text-theme-main focus:outline-none focus:border-sky-500 font-mono"
-                    />
-                  )}
-                </div>
-              </label>
-            </div>
-
-            {pushError && (
-              <div className="p-2.5 rounded bg-rose-500/15 border border-rose-500/30 text-rose-400 text-xs flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
-                <span className="leading-snug">{pushError}</span>
-              </div>
-            )}
-
-            <div className="flex items-center justify-end gap-2 pt-1">
-              <button
-                type="button"
-                disabled={pushingLoading}
-                onClick={() => setSelectiveModal(null)}
-                className="px-3.5 py-1.5 rounded bg-theme-card hover:bg-theme-card-hover border border-theme-border-card text-theme-main text-xs transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {t.common.cancel}
-              </button>
-              <button
-                type="button"
-                disabled={pushingLoading || (selectiveModal.mode === 'patch' && !selectiveModal.patchBranchName.trim())}
-                onClick={async () => {
-                  const res = await pushSelectedCommits({
-                    hashes: selectiveModal.hashes,
-                    targetBranch: selectiveModal.targetBranch,
-                    createNewBranch: selectiveModal.mode === 'patch',
-                    newBranchName: selectiveModal.patchBranchName.trim(),
-                  });
-                  if (res && res.success) {
-                    setSelectiveModal(null);
-                    closePushModal();
-                  }
-                }}
-                className="px-4 py-1.5 rounded bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs shadow-xs transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
-              >
-                {pushingLoading ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>{t.modals.push.pushing}</span>
-                  </>
-                ) : (
-                  <>
-                    <Rocket className="w-3.5 h-3.5" />
-                    <span>{t.modals.push.confirmSelectivePush}</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 8. Commit Card Right-Click Context Menu */}
-      {commitContextMenu && (
-        <div
-          style={{
-            left: `${Math.min(commitContextMenu.x, window.innerWidth - 220)}px`,
-            top: `${Math.min(commitContextMenu.y, window.innerHeight - 160)}px`,
-          }}
-          onClick={(e) => e.stopPropagation()}
-          className="fixed z-[1070] bg-theme-panel border border-theme rounded-lg shadow-2xl py-1 min-w-[200px] text-xs select-none backdrop-blur-md animate-in fade-in zoom-in-95 duration-75 font-sans"
-        >
-          <div className="px-3 py-1.5 border-b border-theme/60 bg-theme-header/50 mb-1 flex items-center justify-between">
-            <span className="font-mono text-[11px] font-semibold text-sky-400">
-              {commitContextMenu.commit.shortHash}
-            </span>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => {
-              const hash = commitContextMenu.commit.hash;
-              setCommitContextMenu(null);
-              setSelectiveModal({
-                isOpen: true,
-                hashes: [hash],
-                mode: 'target',
-                targetBranch,
-                patchBranchName: `patch/fix-${commitContextMenu.commit.shortHash}`,
-              });
-            }}
-            className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-theme-main hover:bg-theme-card hover:text-sky-400 transition cursor-pointer"
-          >
-            <Rocket className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-            <span>{t.modals.push.pushAloneCommitTooltip}...</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={async () => {
-              const hash = commitContextMenu.commit.hash;
-              setCommitContextMenu(null);
-              const res = await executePush({
-                targetCommit: hash,
-                targetBranch,
-              });
-              if (res && res.success) {
-                closePushModal();
-              }
-            }}
-            className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-theme-main hover:bg-theme-card hover:text-sky-400 transition cursor-pointer"
-          >
-            <ArrowUpRight className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-            <span>{t.modals.push.pushOnlyUpToThisCommit}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              navigator.clipboard.writeText(commitContextMenu.commit.hash);
-              setCommitContextMenu(null);
-              setNotification({
-                id: Date.now(),
-                title: t.notifications.copyHashSuccess,
-                detail: commitContextMenu.commit.hash,
-                type: 'info',
-              });
-            }}
-            className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-theme-muted hover:bg-theme-card hover:text-theme-main transition cursor-pointer"
-          >
-            <Copy className="w-3.5 h-3.5 text-theme-dim shrink-0" />
-            <span>{t.modals.push.copyCommitHash}</span>
-          </button>
-        </div>
       )}
     </div>
   );

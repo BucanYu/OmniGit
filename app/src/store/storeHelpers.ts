@@ -1,4 +1,5 @@
 import type { AppLanguage, AppTheme, GitFileItem, LightRepoCache, WorkspaceGroupItem, WorkspaceRepoItem, OutgoingCommitsData } from './types';
+import { splitGitPath } from '../utils/gitPathUtils';
 
 export function normalizePath(p: string): string {
   if (!p) return '';
@@ -331,13 +332,14 @@ export function normalizeSnapshotFiles(files: any[]): GitFileItem[] {
   if (!Array.isArray(files)) return [];
   return files.map((f) => {
     const rawPath = f.path || '';
-    const norm = rawPath.replace(/\\/g, '/');
-    const fileName = f.fileName || norm.split('/').filter(Boolean).pop() || rawPath;
-    const dirPath = f.dirPath || (norm.includes('/') ? norm.substring(0, norm.lastIndexOf('/')) : '');
+    const { fileName: decodedFileName, dirPath: decodedDirPath, forwardPath } = splitGitPath(rawPath);
+    const needsDecode = rawPath.includes('\\') || rawPath.startsWith('"');
+    const fileName = needsDecode || !f.fileName ? decodedFileName : f.fileName;
+    const dirPath = needsDecode || !f.dirPath ? decodedDirPath : f.dirPath;
     const status = f.status || 'modified';
     const group = f.group || (status === 'conflict' ? 'conflict' : (status === 'untracked' ? 'unversioned' : 'changes'));
     return {
-      path: rawPath,
+      path: forwardPath,
       fileName,
       dirPath,
       status,

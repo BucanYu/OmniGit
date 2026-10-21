@@ -5,6 +5,7 @@ import { gitService } from './gitService';
 import { fileSystemService } from './fileSystemService';
 import { fileEncodingService } from './fileEncodingService';
 import { nodeServiceProcessManager } from './nodeServiceProcessManager';
+import { decodeGitPath } from '../utils/gitPathUtils';
 
 /**
  * Universal Git & File System API Request Handler
@@ -126,10 +127,12 @@ export async function handleGitApiRequest(req: IncomingMessage, res: ServerRespo
       const branches = await gitService.getRepoBranches(query.path || '');
       res.end(JSON.stringify(branches));
     } else if (pathname === '/api/git/diff') {
-      const diff = await gitService.getFileDiff(query.path || '', query.file || '');
+      const filePath = decodeGitPath(query.file || '');
+      const diff = await gitService.getFileDiff(query.path || '', filePath);
       res.end(JSON.stringify(diff));
     } else if (pathname === '/api/git/save-file') {
-      const success = await gitService.saveFileContent(body.path, body.file, body.content);
+      const filePath = decodeGitPath(body.file || '');
+      const success = await gitService.saveFileContent(body.path, filePath, body.content);
       res.end(JSON.stringify({ success }));
     } else if (pathname === '/api/git/checkout') {
       const result = await gitService.checkoutBranch(body.path, body.branch, body.autoPull !== false);
@@ -138,10 +141,12 @@ export async function handleGitApiRequest(req: IncomingMessage, res: ServerRespo
       const result = await gitService.pull(body.path);
       res.end(JSON.stringify(result));
     } else if (pathname === '/api/git/commit') {
-      const result = await gitService.commit(body.path, body.files, body.message, body.isAmend);
+      const files = Array.isArray(body.files) ? body.files.map((f: string) => decodeGitPath(f)) : [];
+      const result = await gitService.commit(body.path, files, body.message, body.isAmend);
       res.end(JSON.stringify(result));
     } else if (pathname === '/api/git/rollback') {
-      const result = await gitService.rollback(body.path, body.files);
+      const files = Array.isArray(body.files) ? body.files.map((f: string) => decodeGitPath(f)) : [];
+      const result = await gitService.rollback(body.path, files);
       res.end(JSON.stringify(result));
     } else if (pathname === '/api/git/inspect-folder') {
       const result = await gitService.inspectFolder(body.folderPath);
@@ -247,7 +252,8 @@ export async function handleGitApiRequest(req: IncomingMessage, res: ServerRespo
       const details = await gitService.getCommitDetails(query.path || '', query.hash || '');
       res.end(JSON.stringify(details));
     } else if (pathname === '/api/git/commit-file-diff') {
-      const diff = await gitService.getCommitFileDiff(query.path || '', query.hash || '', query.file || '');
+      const filePath = decodeGitPath(query.file || '');
+      const diff = await gitService.getCommitFileDiff(query.path || '', query.hash || '', filePath);
       res.end(JSON.stringify(diff));
     } else if (pathname === '/api/git/reset') {
       const result = await gitService.resetToCommit(body.path, body.hash, body.mode);
@@ -339,22 +345,28 @@ export async function handleGitApiRequest(req: IncomingMessage, res: ServerRespo
       const result = await gitService.getRecentCommitMessages(query.path || body.path || '', limit);
       res.end(JSON.stringify(result));
     } else if (pathname === '/api/git/open-file') {
-      const result = await gitService.openFileInEditor(body.path || query.path || '', body.file || query.file || '');
+      const filePath = decodeGitPath(body.file || query.file || '');
+      const result = await gitService.openFileInEditor(body.path || query.path || '', filePath);
       res.end(JSON.stringify(result));
     } else if (pathname === '/api/git/reveal-file') {
-      const result = await gitService.revealInFileManager(body.path || query.path || '', body.file || query.file || '');
+      const filePath = decodeGitPath(body.file || query.file || '');
+      const result = await gitService.revealInFileManager(body.path || query.path || '', filePath);
       res.end(JSON.stringify(result));
     } else if (pathname === '/api/git/stage-file') {
-      const result = await gitService.stageFile(body.path || query.path || '', body.file || query.file || '');
+      const filePath = decodeGitPath(body.file || query.file || '');
+      const result = await gitService.stageFile(body.path || query.path || '', filePath);
       res.end(JSON.stringify(result));
     } else if (pathname === '/api/git/unstage-file') {
-      const result = await gitService.unstageFile(body.path || query.path || '', body.file || query.file || '');
+      const filePath = decodeGitPath(body.file || query.file || '');
+      const result = await gitService.unstageFile(body.path || query.path || '', filePath);
       res.end(JSON.stringify(result));
     } else if (pathname === '/api/git/conflict-3way') {
-      const result = await gitService.getConflict3Way(body.path || query.path || '', body.file || query.file || '');
+      const filePath = decodeGitPath(body.file || query.file || '');
+      const result = await gitService.getConflict3Way(body.path || query.path || '', filePath);
       res.end(JSON.stringify(result));
     } else if (pathname === '/api/git/resolve-conflict') {
-      const result = await gitService.resolveConflict(body.path, body.file, body.resolution, body.content);
+      const filePath = decodeGitPath(body.file || '');
+      const result = await gitService.resolveConflict(body.path, filePath, body.resolution, body.content);
       res.end(JSON.stringify(result));
     } else if (pathname === '/api/git/abort-merge') {
       const result = await gitService.abortMerge(body.path || query.path || '');
@@ -406,8 +418,9 @@ export async function handleGitApiRequest(req: IncomingMessage, res: ServerRespo
       res.end(JSON.stringify(items));
     } else if (pathname === '/api/fs/read') {
       const repoPath = query.repoPath || '';
-      const relativePath = query.relativePath || '';
-      const filePath = query.filePath || (repoPath && relativePath ? path.join(repoPath, relativePath) : repoPath);
+      const relativePath = decodeGitPath(query.relativePath || '');
+      const rawFilePath = query.filePath ? decodeGitPath(query.filePath) : '';
+      const filePath = rawFilePath || (repoPath && relativePath ? path.join(repoPath, relativePath) : repoPath);
       if (!filePath) {
         res.statusCode = 400;
         res.end(JSON.stringify({ error: 'Missing filePath' }));
@@ -417,8 +430,9 @@ export async function handleGitApiRequest(req: IncomingMessage, res: ServerRespo
       res.end(JSON.stringify(result));
     } else if (pathname === '/api/fs/raw') {
       const repoPath = query.repoPath || '';
-      const relativePath = query.relativePath || '';
-      const targetFilePath = query.filePath || (repoPath && relativePath ? path.join(repoPath, relativePath) : repoPath);
+      const relativePath = decodeGitPath(query.relativePath || '');
+      const rawFilePath = query.filePath ? decodeGitPath(query.filePath) : '';
+      const targetFilePath = rawFilePath || (repoPath && relativePath ? path.join(repoPath, relativePath) : repoPath);
       if (!targetFilePath) {
         res.statusCode = 400;
         res.end(JSON.stringify({ error: 'Missing filePath' }));

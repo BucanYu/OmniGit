@@ -17,6 +17,21 @@ const mimeTypes = {
 
 const server = http.createServer((req, res) => {
   const parsedUrl = new URL(req.url || '/', 'http://127.0.0.1');
+
+  if (
+    (req.headers.accept && req.headers.accept.includes('text/event-stream')) ||
+    parsedUrl.pathname.includes('/stream') ||
+    parsedUrl.pathname.includes('/watch-repo')
+  ) {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    });
+    res.write(':\n\n');
+    return;
+  }
+
   let safePath = path.normalize(decodeURIComponent(parsedUrl.pathname)).replace(/^(\.\.[\/\\])+/, '');
   let filePath = path.join(distDir, safePath);
 
@@ -107,6 +122,48 @@ server.listen(0, '127.0.0.1', async () => {
           selectedFileDiff: { oldContent: '# Hello', newContent: '# Hello World' },
         });
         await new Promise(r => setTimeout(r, 500));
+
+        // Step 5: Test StatusPanel tabs (commit, shelf, log)
+        store.setState({ activeTab: 'shelf' });
+        await new Promise(r => setTimeout(r, 300));
+        store.setState({ activeTab: 'log' });
+        await new Promise(r => setTimeout(r, 300));
+        store.setState({ activeTab: 'commit' });
+        await new Promise(r => setTimeout(r, 300));
+
+        // Step 6: Test opening refactored PushCommitsModal with tree/flat files
+        store.setState({
+          isPushModalOpen: true,
+          pushModalSourceBranch: 'main',
+          pushModalTargetBranch: 'main',
+          outgoingCommitsData: {
+            sourceBranch: 'main',
+            targetBranch: 'main',
+            remote: 'origin',
+            commits: [
+              {
+                hash: '1a2b3c4d5e6f7a8b9c0d',
+                shortHash: '1a2b3c4',
+                subject: 'feat: modularize oversized files and components',
+                authorName: 'Developer',
+                date: new Date().toISOString(),
+                files: [
+                  { path: 'src/features/git-push/PushCommitsModal.tsx', fileName: 'PushCommitsModal.tsx', dirPath: 'src/features/git-push', status: 'modified', statusCode: 'M' },
+                  { path: 'src/features/git-status/StatusPanel.tsx', fileName: 'StatusPanel.tsx', dirPath: 'src/features/git-status', status: 'modified', statusCode: 'M' }
+                ]
+              }
+            ],
+            allFiles: [
+              { path: 'src/features/git-push/PushCommitsModal.tsx', fileName: 'PushCommitsModal.tsx', dirPath: 'src/features/git-push', status: 'modified', statusCode: 'M' },
+              { path: 'src/features/git-status/StatusPanel.tsx', fileName: 'StatusPanel.tsx', dirPath: 'src/features/git-status', status: 'modified', statusCode: 'M' }
+            ]
+          }
+        });
+        await new Promise(r => setTimeout(r, 600));
+
+        // Step 7: Close PushCommitsModal
+        store.setState({ isPushModalOpen: false });
+        await new Promise(r => setTimeout(r, 300));
 
         // Check DOM for crash / Error boundary modal
         const bodyText = document.body.innerText;
