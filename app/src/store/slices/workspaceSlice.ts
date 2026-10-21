@@ -18,6 +18,7 @@ import {
   aggregateReposIntoWorkspaces,
 } from '../storeHelpers';
 import { getLocale, type AppLanguage } from '../../locales';
+import { useEditorTabsStore } from '../../features/code-editor/useEditorTabsStore';
 
 export const createWorkspaceSlice = (set: any, get: any) => ({
   workspaceId: currentWorkspaceId,
@@ -274,6 +275,15 @@ export const createWorkspaceSlice = (set: any, get: any) => ({
   openWorkspaceGroup: async (ws: WorkspaceGroupItem, inNewWindow = false) => {
     if (!ws) return;
     const targetWsId = ws.id || `ws_${Date.now()}`;
+
+    // Auto-save current workspace editor tabs before switching away
+    const currentWsId = get().workspaceId;
+    if (currentWsId && currentWsId !== 'default' && currentWsId !== targetWsId && !inNewWindow) {
+      try {
+        useEditorTabsStore.getState().savePersistedTabs(currentWsId);
+      } catch {}
+    }
+
     const rawRepos = Array.isArray(ws.repos) ? ws.repos : [];
     let repoPaths = rawRepos
       .map((r: any) => (typeof r === 'string' ? r : r?.path))
@@ -405,6 +415,11 @@ export const createWorkspaceSlice = (set: any, get: any) => ({
     } catch (projErr) {
       console.error('[OmniGit] Failed to load workspace projects:', projErr);
     }
+
+    // 6. Explicitly restore editor tabs for target workspace with strict isolation
+    try {
+      useEditorTabsStore.getState().restorePersistedTabs(targetWsId);
+    } catch {}
   },
 
   syncCurrentWorkspaceToSaved: (activePathOverride?: string) => {

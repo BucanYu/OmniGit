@@ -418,20 +418,26 @@ export async function handleGitApiRequest(req: IncomingMessage, res: ServerRespo
       res.end(JSON.stringify(items));
     } else if (pathname === '/api/fs/read') {
       const repoPath = query.repoPath || '';
-      const relativePath = decodeGitPath(query.relativePath || '');
-      const rawFilePath = query.filePath ? decodeGitPath(query.filePath) : '';
+      const relativePath = query.relativePath ? decodeGitPath(query.relativePath) : '';
+      const rawFilePath = query.filePath ? query.filePath.trim().replace(/^"(.*)"$/, '$1') : '';
       const filePath = rawFilePath || (repoPath && relativePath ? path.join(repoPath, relativePath) : repoPath);
       if (!filePath) {
         res.statusCode = 400;
         res.end(JSON.stringify({ error: 'Missing filePath' }));
         return true;
       }
-      const result = fileEncodingService.readFile(filePath);
+      const resolvedPath = path.resolve(filePath);
+      if (!fs.existsSync(resolvedPath)) {
+        res.statusCode = 404;
+        res.end(JSON.stringify({ error: `File not found: ${resolvedPath}` }));
+        return true;
+      }
+      const result = fileEncodingService.readFile(resolvedPath);
       res.end(JSON.stringify(result));
     } else if (pathname === '/api/fs/raw') {
       const repoPath = query.repoPath || '';
-      const relativePath = decodeGitPath(query.relativePath || '');
-      const rawFilePath = query.filePath ? decodeGitPath(query.filePath) : '';
+      const relativePath = query.relativePath ? decodeGitPath(query.relativePath) : '';
+      const rawFilePath = query.filePath ? query.filePath.trim().replace(/^"(.*)"$/, '$1') : '';
       const targetFilePath = rawFilePath || (repoPath && relativePath ? path.join(repoPath, relativePath) : repoPath);
       if (!targetFilePath) {
         res.statusCode = 400;

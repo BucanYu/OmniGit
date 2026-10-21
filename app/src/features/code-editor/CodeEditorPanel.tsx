@@ -508,6 +508,21 @@ export function CodeEditorPanel() {
             <AlertCircle className="w-8 h-8 text-amber-400 mb-2" />
             <p>{t.editor.binaryFileWarning}</p>
           </div>
+        ) : activeTab.readError ? (
+          <div className="flex flex-col items-center justify-center h-full text-theme-muted text-xs gap-3 p-4">
+            <AlertCircle className="w-10 h-10 text-rose-400" />
+            <div className="text-center max-w-md">
+              <p className="text-rose-300 font-medium text-sm mb-1">{activeTab.readError}</p>
+              <p className="text-theme-muted text-[11px] font-mono break-all">{activeTab.filePath}</p>
+            </div>
+            <button
+              onClick={() => reloadTabFromDisk(activeTab.id)}
+              className="px-3 py-1.5 rounded bg-sky-600 hover:bg-sky-500 text-white font-medium flex items-center gap-1.5 cursor-pointer text-xs shadow-sm transition"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>{t.editor.reloadDiskAction || '重新读取'}</span>
+            </button>
+          </div>
         ) : isMarkdown && mdViewMode === 'preview' ? (
           /* Pure Fullscreen Markdown Preview */
           <MarkdownPreview content={activeTab.content} theme={theme} filePath={activeTab.filePath} />

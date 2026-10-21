@@ -19,6 +19,7 @@ export interface EditorTabItem {
   mtime?: number;
   hasDiskConflict?: boolean;
   diskMtime?: number;
+  readError?: string;
 }
 
 export interface PersistedEditorTab {
@@ -181,16 +182,24 @@ export const useEditorTabsStore = create<EditorTabsState>((set, get) => ({
   restorePersistedTabs: async (workspaceId: string) => {
     if (!workspaceId || workspaceId === 'default' || typeof window === 'undefined') return;
     const raw = localStorage.getItem(`omnigit_editor_tabs_${workspaceId}`);
-    if (!raw) return;
+    if (!raw) {
+      // Clean up previous workspace tabs so they don't leak into this workspace
+      set({ tabs: [], activeTabId: null });
+      return;
+    }
 
     let data: PersistedEditorTabsData;
     try {
       data = JSON.parse(raw);
     } catch {
+      set({ tabs: [], activeTabId: null });
       return;
     }
 
-    if (!data || !Array.isArray(data.tabs) || data.tabs.length === 0) return;
+    if (!data || !Array.isArray(data.tabs) || data.tabs.length === 0) {
+      set({ tabs: [], activeTabId: null });
+      return;
+    }
 
     // 1. Strictly deduplicate saved tabs first to heal any historical duplicates in localStorage
     const seenPaths = new Set<string>();
@@ -203,17 +212,21 @@ export const useEditorTabsStore = create<EditorTabsState>((set, get) => ({
       uniqueSavedTabs.push(item);
     }
 
-    if (uniqueSavedTabs.length === 0) return;
+    if (uniqueSavedTabs.length === 0) {
+      set({ tabs: [], activeTabId: null });
+      return;
+    }
 
     // 2. Concurrently fetch all tabs' file contents
     const fetchPromises = uniqueSavedTabs.map(async (item) => {
+      const id = `tab_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const fileName = item.filePath.split(/[\\/]/).pop() || 'Untitled';
+      const language = getLanguageFromPath(item.filePath);
+
       try {
         const res = await fetch(`/api/fs/read?filePath=${encodeURIComponent(item.filePath)}`);
         const fileData = await res.json();
-        if (fileData && fileData.content !== undefined) {
-          const id = `tab_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-          const fileName = item.filePath.split(/[\\/]/).pop() || 'Untitled';
-          const language = getLanguageFromPath(item.filePath);
+        if (res.ok && fileData && fileData.content !== undefined) {
           return {
             id,
             filePath: item.filePath,
@@ -232,11 +245,50 @@ export const useEditorTabsStore = create<EditorTabsState>((set, get) => ({
             mtime: fileData.mtime || Date.now(),
             hasDiskConflict: false,
           } as EditorTabItem;
+        } else {
+          // If read failed, KEEP the tab metadata! NEVER delete the tab from user's history!
+          return {
+            id,
+            filePath: item.filePath,
+            relativePath: item.relativePath,
+            fileName,
+            repoPath: item.repoPath,
+            repoName: item.repoName,
+            content: '',
+            originalContent: '',
+            encoding: 'utf-8',
+            eol: 'LF',
+            isDirty: false,
+            language,
+            isBinary: false,
+            size: 0,
+            mtime: Date.now(),
+            hasDiskConflict: false,
+            readError: fileData?.error || '无法读取文件内容',
+          } as EditorTabItem;
         }
       } catch (err) {
         console.warn('[EditorTabs] Failed to restore file:', item.filePath, err);
+        return {
+          id,
+          filePath: item.filePath,
+          relativePath: item.relativePath,
+          fileName,
+          repoPath: item.repoPath,
+          repoName: item.repoName,
+          content: '',
+          originalContent: '',
+          encoding: 'utf-8',
+          eol: 'LF',
+          isDirty: false,
+          language,
+          isBinary: false,
+          size: 0,
+          mtime: Date.now(),
+          hasDiskConflict: false,
+          readError: String(err),
+        } as EditorTabItem;
       }
-      return null;
     });
 
     const results = await Promise.all(fetchPromises);
@@ -321,6 +373,7 @@ export const useEditorTabsStore = create<EditorTabsState>((set, get) => ({
           size: data.size || 0,
           mtime: data.mtime || Date.now(),
           hasDiskConflict: false,
+          readError: res.ok ? undefined : (data.error || '无法读取文件'),
         };
 
         let resultId = id;
@@ -482,6 +535,7 @@ export const useEditorTabsStore = create<EditorTabsState>((set, get) => ({
                 mtime: data.mtime || Date.now(),
                 isDirty: false,
                 hasDiskConflict: false,
+                readError: undefined,
               };
             }
             return t;

@@ -394,9 +394,9 @@ function getDisambiguationLabel(tab: EditorTabItem, allTabs: EditorTabItem[]): s
                   {/* 2. Disambiguation Description (Project / Folder Context): Secondary, capped, yields space to file name */}
                   {isDuplicate && disambigLabel ? (
                     <span
-                      className="text-[10px] text-theme-muted/75 px-1.5 py-0.5 rounded bg-theme-border/40 font-mono truncate max-w-[95px] min-w-0 scale-95"
+                      className="text-[10px] text-theme-muted/75 px-1.5 py-0.5 rounded bg-theme-border/40 font-mono truncate max-w-[150px] min-w-0 scale-95"
                       style={{ flexShrink: 2 }}
-                      title={`${tab.fileName} • ${disambigLabel}\n${tab.filePath}`}
+                      title={`[${disambigLabel}] ${tab.fileName}\n${tab.filePath}`}
                     >
                       {disambigLabel}
                     </span>
