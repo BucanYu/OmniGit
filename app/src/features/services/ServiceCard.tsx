@@ -43,7 +43,7 @@ function formatUptime(ms: number): string {
   return `${hours}h ${remainingMin}m`;
 }
 
-export const ServiceCard: React.FC<ServiceCardProps> = ({
+export const ServiceCard: React.FC<ServiceCardProps> = React.memo(({
   service,
   index,
   projectId,
@@ -58,20 +58,23 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
   onDragEnd,
 }) => {
   const { t } = useTranslation();
-  const {
-    getRuntime,
-    startService,
-    stopService,
-    restartService,
-    renameService,
-    deleteService,
-    openEditModal,
-  } = useServicesStore();
 
-  const runtime = getRuntime(service.id);
-  const isRunning = runtime.status === 'running';
-  const isStarting = runtime.status === 'starting';
-  const isStopping = runtime.status === 'stopping';
+  // Fine-grained selectors: decouple card from log streams (prevent high-frequency re-renders)
+  const runtimeStatus = useServicesStore((state) => state.runtimeStates[service.id]?.status || 'stopped');
+  const startedAt = useServicesStore((state) => state.runtimeStates[service.id]?.startedAt);
+  const exitCode = useServicesStore((state) => state.runtimeStates[service.id]?.exitCode);
+  const pid = useServicesStore((state) => state.runtimeStates[service.id]?.pid);
+
+  const startService = useServicesStore((state) => state.startService);
+  const stopService = useServicesStore((state) => state.stopService);
+  const restartService = useServicesStore((state) => state.restartService);
+  const renameService = useServicesStore((state) => state.renameService);
+  const deleteService = useServicesStore((state) => state.deleteService);
+  const openEditModal = useServicesStore((state) => state.openEditModal);
+
+  const isRunning = runtimeStatus === 'running';
+  const isStarting = runtimeStatus === 'starting';
+  const isStopping = runtimeStatus === 'stopping';
   const isBusy = isRunning || isStarting || isStopping;
 
   // Inline rename state
@@ -84,17 +87,17 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
   // Uptime ticker
   const [uptimeText, setUptimeText] = useState('');
   useEffect(() => {
-    if (!isRunning || !runtime.startedAt) {
+    if (!isRunning || !startedAt) {
       setUptimeText('');
       return;
     }
     const update = () => {
-      setUptimeText(formatUptime(Date.now() - (runtime.startedAt || 0)));
+      setUptimeText(formatUptime(Date.now() - (startedAt || 0)));
     };
     update();
     const interval = setInterval(update, 1000);
     return () => clearInterval(interval);
-  }, [isRunning, runtime.startedAt]);
+  }, [isRunning, startedAt]);
 
   const isWindows =
     typeof window !== 'undefined' &&
@@ -183,7 +186,7 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
                   ? 'bg-sky-500'
                   : isStopping
                   ? 'bg-amber-500'
-                  : runtime.status === 'failed'
+                  : runtimeStatus === 'failed'
                   ? 'bg-rose-500'
                   : 'bg-zinc-400 dark:bg-zinc-600'
               }`}
@@ -351,26 +354,26 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
                 ? 'text-sky-600 dark:text-sky-400'
                 : isStopping
                 ? 'text-amber-600 dark:text-amber-400'
-                : runtime.status === 'failed'
+                : runtimeStatus === 'failed'
                 ? 'text-rose-600 dark:text-rose-400'
                 : 'text-theme-muted'
             }`}
           >
-            {runtime.status === 'running'
+            {runtimeStatus === 'running'
               ? t.services.status.running
-              : runtime.status === 'starting'
+              : runtimeStatus === 'starting'
               ? t.services.status.starting
-              : runtime.status === 'stopping'
+              : runtimeStatus === 'stopping'
               ? t.services.status.stopping
-              : runtime.status === 'failed'
-              ? `${t.services.status.failed} (${runtime.exitCode !== undefined ? runtime.exitCode : 1})`
+              : runtimeStatus === 'failed'
+              ? `${t.services.status.failed} (${exitCode !== undefined ? exitCode : 1})`
               : t.services.status.stopped}
           </span>
 
           {/* PID badge */}
-          {runtime.pid && (
+          {pid && (
             <span className="font-mono text-zinc-600 dark:text-zinc-400 bg-theme-hover px-1.5 py-0.5 rounded">
-              PID: {runtime.pid}
+              PID: {pid}
             </span>
           )}
         </div>
@@ -385,4 +388,4 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
       </div>
     </div>
   );
-};
+});

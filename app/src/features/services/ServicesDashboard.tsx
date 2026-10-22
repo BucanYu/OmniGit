@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import type { ServiceConfig } from './types';
 import { useServicesStore } from './useServicesStore';
 import { useAppStore } from '../../store/useAppStore';
 import { ServiceCard } from './ServiceCard';
@@ -16,30 +17,42 @@ import {
   FileSearch,
 } from 'lucide-react';
 
+const EMPTY_SERVICES: ServiceConfig[] = [];
+
 export const ServicesDashboard: React.FC = () => {
   const { t } = useTranslation();
-  const {
-    projects,
-    activeProjectId,
-  } = useAppStore();
+  // Fine-grained AppStore selectors: decouple services dashboard from git status/logs
+  const projects = useAppStore((state) => state.projects);
+  const activeProjectId = useAppStore((state) => state.activeProjectId);
 
-  const {
-    loadProjectServices,
-    getServices,
-    activeServiceId,
-    setActiveServiceId,
-    openAddModal,
-    startAllServices,
-    stopAllServices,
-    hasRunningServices,
-    getRunningCount,
-    scanProjectScripts,
-    importDiscoveredScripts,
-    reorderServices,
-  } = useServicesStore();
+  const projectId = activeProjectId || '';
+
+  // Fine-grained ServicesStore selectors: decouple services dashboard from high-frequency log updates
+  const services = useServicesStore((state) => state.configsByProject[projectId] || EMPTY_SERVICES);
+  const activeServiceId = useServicesStore((state) => state.activeServiceId);
+  const runningCount = useServicesStore((state) => {
+    let count = 0;
+    const projectServices = state.configsByProject[projectId] || [];
+    const sIds = new Set(projectServices.map((s) => s.id));
+    for (const [id, runtime] of Object.entries(state.runtimeStates)) {
+      if (sIds.has(id) && (runtime.status === 'running' || runtime.status === 'starting')) {
+        count++;
+      }
+    }
+    return count;
+  });
+  const hasRunning = runningCount > 0;
+
+  const loadProjectServices = useServicesStore((state) => state.loadProjectServices);
+  const setActiveServiceId = useServicesStore((state) => state.setActiveServiceId);
+  const openAddModal = useServicesStore((state) => state.openAddModal);
+  const startAllServices = useServicesStore((state) => state.startAllServices);
+  const stopAllServices = useServicesStore((state) => state.stopAllServices);
+  const scanProjectScripts = useServicesStore((state) => state.scanProjectScripts);
+  const importDiscoveredScripts = useServicesStore((state) => state.importDiscoveredScripts);
+  const reorderServices = useServicesStore((state) => state.reorderServices);
 
   const currentProject = projects.find((p) => p.id === activeProjectId);
-  const projectId = activeProjectId || '';
   const [isScanning, setIsScanning] = useState(false);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
@@ -66,10 +79,7 @@ export const ServicesDashboard: React.FC = () => {
     }
   }, [projectId, loadProjectServices]);
 
-  const services = getServices(projectId);
   const activeService = services.find((s) => s.id === activeServiceId) || (services.length > 0 ? services[0] : null);
-  const runningCount = getRunningCount(projectId);
-  const hasRunning = hasRunningServices(projectId);
 
   const handleScanAndImport = async () => {
     if (!projectId) return;

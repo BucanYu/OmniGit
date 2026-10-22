@@ -42,7 +42,8 @@ export function GlobalSearchModal() {
     executeSearch,
   } = useGlobalSearchStore();
 
-  const { projects, activeProjectId } = useAppStore();
+  const projects = useAppStore((state) => state.projects);
+  const activeProjectId = useAppStore((state) => state.activeProjectId);
   const { setWorkbenchMode } = useWorkbenchStore();
   const { openFileTab } = useEditorTabsStore();
   const { t } = useTranslation();

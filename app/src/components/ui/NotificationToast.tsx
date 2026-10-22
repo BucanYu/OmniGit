@@ -5,7 +5,8 @@ import { useTranslation } from '../../locales';
 
 export function NotificationToast() {
   const { t } = useTranslation();
-  const { notification, clearNotification } = useAppStore();
+  const notification = useAppStore((state) => state.notification);
+  const clearNotification = useAppStore((state) => state.clearNotification);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {

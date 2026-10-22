@@ -44,7 +44,8 @@ export function ImageViewer({
   onOpenFolder,
 }: ImageViewerProps) {
   const { t, isZh } = useTranslation();
-  const { openProjectFolder, openFileInEditor } = useAppStore();
+  const openProjectFolder = useAppStore((state) => state.openProjectFolder);
+  const openFileInEditor = useAppStore((state) => state.openFileInEditor);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);

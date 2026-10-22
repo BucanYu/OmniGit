@@ -34,22 +34,21 @@ function getProjectBadge(name: string): string {
 
 export function TopBar() {
   const { t } = useTranslation();
-  const {
-    branches,
-    projects,
-    activeProjectId,
-    setActiveProject,
-    isRepoLoading,
-    isBranchMenuOpen,
-    setIsBranchMenuOpen,
-    branchOperationLoading,
-    gitUser,
-    loadRepoData,
-    createNewWindow,
-    setIsAddRepoModalOpen,
-    setIsSettingsModalOpen,
-    openWelcomeScreen,
-  } = useAppStore();
+  // Fine-grained AppStore selectors: prevent TopBar from re-rendering on diffs/commit logs/status changes
+  const branches = useAppStore((state) => state.branches);
+  const projects = useAppStore((state) => state.projects);
+  const activeProjectId = useAppStore((state) => state.activeProjectId);
+  const setActiveProject = useAppStore((state) => state.setActiveProject);
+  const isRepoLoading = useAppStore((state) => state.isRepoLoading);
+  const isBranchMenuOpen = useAppStore((state) => state.isBranchMenuOpen);
+  const setIsBranchMenuOpen = useAppStore((state) => state.setIsBranchMenuOpen);
+  const branchOperationLoading = useAppStore((state) => state.branchOperationLoading);
+  const gitUser = useAppStore((state) => state.gitUser);
+  const loadRepoData = useAppStore((state) => state.loadRepoData);
+  const createNewWindow = useAppStore((state) => state.createNewWindow);
+  const setIsAddRepoModalOpen = useAppStore((state) => state.setIsAddRepoModalOpen);
+  const setIsSettingsModalOpen = useAppStore((state) => state.setIsSettingsModalOpen);
+  const openWelcomeScreen = useAppStore((state) => state.openWelcomeScreen);
 
   const [isProjectDropdownOpen, setIsProjectDropdownOpen] = useState(false);
   const projectDropdownRef = useRef<HTMLDivElement>(null);

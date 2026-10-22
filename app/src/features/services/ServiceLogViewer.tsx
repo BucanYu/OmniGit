@@ -96,28 +96,28 @@ export const ServiceLogViewer: React.FC<ServiceLogViewerProps> = ({
   projectId,
 }) => {
   const { t } = useTranslation();
-  const {
-    getRuntime,
-    startService,
-    stopService,
-    restartService,
-    clearLogs,
-    autoScrollByService,
-    setAutoScroll,
-    toggleAutoScroll,
-  } = useServicesStore();
+  const serviceId = service?.id || '';
+
+  // Fine-grained selector: only subscribe to THIS active service's runtime, ignoring other background services
+  const runtime = useServicesStore((state) => (serviceId ? state.runtimeStates[serviceId] : undefined));
+  const isAutoScroll = useServicesStore((state) => (serviceId ? state.autoScrollByService[serviceId] !== false : true));
+
+  const startService = useServicesStore((state) => state.startService);
+  const stopService = useServicesStore((state) => state.stopService);
+  const restartService = useServicesStore((state) => state.restartService);
+  const clearLogs = useServicesStore((state) => state.clearLogs);
+  const setAutoScroll = useServicesStore((state) => state.setAutoScroll);
+  const toggleAutoScroll = useServicesStore((state) => state.toggleAutoScroll);
 
   const logContainerRef = useRef<HTMLDivElement>(null);
   const isProgrammaticScrollRef = useRef(false);
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const runtime = service ? getRuntime(service.id) : null;
   const isRunning = runtime?.status === 'running';
   const isStarting = runtime?.status === 'starting';
   const isStopping = runtime?.status === 'stopping';
   const isBusy = isRunning || isStarting || isStopping;
-  const isAutoScroll = service ? autoScrollByService[service.id] !== false : true;
 
   // Uptime ticker
   const [uptimeText, setUptimeText] = useState('');

@@ -27,19 +27,18 @@ import { useServicesStore } from './features/services/useServicesStore';
 
 export default function App() {
   const { t } = useTranslation();
-  const {
-    initApp,
-    sidebarWidth,
-    statusPanelWidth,
-    setSidebarWidth,
-    setStatusPanelWidth,
-    openPushModal,
-    isRightPanelOpen,
-    activeProjectId,
-    isSettingsModalOpen,
-    setIsSettingsModalOpen,
-    isWelcomeScreenOpen,
-  } = useAppStore();
+  const initApp = useAppStore((state) => state.initApp);
+  const sidebarWidth = useAppStore((state) => state.sidebarWidth);
+  const statusPanelWidth = useAppStore((state) => state.statusPanelWidth);
+  const setSidebarWidth = useAppStore((state) => state.setSidebarWidth);
+  const setStatusPanelWidth = useAppStore((state) => state.setStatusPanelWidth);
+  const openPushModal = useAppStore((state) => state.openPushModal);
+  const isRightPanelOpen = useAppStore((state) => state.isRightPanelOpen);
+  const activeProjectId = useAppStore((state) => state.activeProjectId);
+  const isSettingsModalOpen = useAppStore((state) => state.isSettingsModalOpen);
+  const setIsSettingsModalOpen = useAppStore((state) => state.setIsSettingsModalOpen);
+  const isWelcomeScreenOpen = useAppStore((state) => state.isWelcomeScreenOpen);
+  const workspaceId = useAppStore((state) => state.workspaceId);
 
   const { workbenchMode, setWorkbenchMode } = useWorkbenchStore();
   const { toggleTerminal, createSession } = useTerminalStore();
@@ -77,7 +76,6 @@ export default function App() {
   }, [initApp]);
 
   // Restore persisted open editor tabs for active workspace on startup or workspace switch
-  const workspaceId = useAppStore((state) => state.workspaceId);
   useEffect(() => {
     if (workspaceId && workspaceId !== 'default') {
       useEditorTabsStore.getState().restorePersistedTabs(workspaceId);
@@ -85,6 +83,8 @@ export default function App() {
   }, [workspaceId]);
 
   // Real-time external file modifications sync: SSE watcher + Window focus (zero polling storm)
+  // Decoupled architecture: git status CLI processes are ONLY invoked when user is in 'git' workbench mode.
+  // When editing source files or monitoring services, git background CLI calls are suppressed to eliminate UI lag.
   useEffect(() => {
     const currentProject = useAppStore.getState().projects.find((p) => p.id === activeProjectId);
     if (!currentProject) return;
@@ -98,7 +98,9 @@ export default function App() {
         try {
           const data = JSON.parse(event.data);
           if (data.type === 'change') {
-            useAppStore.getState().syncRepoStatusSilently(repoPath);
+            if (useWorkbenchStore.getState().workbenchMode === 'git') {
+              useAppStore.getState().syncRepoStatusSilently(repoPath);
+            }
           }
         } catch {}
       };
@@ -106,9 +108,11 @@ export default function App() {
       console.warn('SSE watch error:', e);
     }
 
-    // 2. Window focus & visibility sync (instant refresh when user returns from external IDE or file manager)
+    // 2. Window focus & visibility sync: only trigger if in git mode
     const handleSync = () => {
-      useAppStore.getState().syncRepoStatusSilently(repoPath);
+      if (useWorkbenchStore.getState().workbenchMode === 'git') {
+        useAppStore.getState().syncRepoStatusSilently(repoPath);
+      }
     };
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
@@ -118,12 +122,14 @@ export default function App() {
     window.addEventListener('focus', handleSync);
     document.addEventListener('visibilitychange', handleVisibility);
 
-    // 3. Adaptive conflict poll: while repo is in merge or conflict state, auto-sync every 2s so external edits show in real-time
+    // 3. Adaptive conflict poll: while repo is in merge or conflict state, auto-sync every 2s
     const conflictTimer = setInterval(() => {
-      const state = useAppStore.getState();
-      const hasConflicts = state.isMerging || state.files.some((f) => f.status === 'conflict');
-      if (hasConflicts) {
-        state.syncRepoStatusSilently(repoPath);
+      if (useWorkbenchStore.getState().workbenchMode === 'git') {
+        const state = useAppStore.getState();
+        const hasConflicts = state.isMerging || state.files.some((f) => f.status === 'conflict');
+        if (hasConflicts) {
+          state.syncRepoStatusSilently(repoPath);
+        }
       }
     }, 2000);
 
@@ -136,6 +142,16 @@ export default function App() {
       clearInterval(conflictTimer);
     };
   }, [activeProjectId]);
+
+  // When switching back to Git workbench mode, refresh repo status on demand cleanly
+  useEffect(() => {
+    if (workbenchMode === 'git' && activeProjectId) {
+      const currentProject = useAppStore.getState().projects.find((p) => p.id === activeProjectId);
+      if (currentProject) {
+        useAppStore.getState().syncRepoStatusSilently(currentProject.path);
+      }
+    }
+  }, [workbenchMode, activeProjectId]);
 
   // Global shortcuts (Push, Settings, Terminal, Mode Switching)
   useEffect(() => {

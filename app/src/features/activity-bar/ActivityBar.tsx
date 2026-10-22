@@ -18,7 +18,16 @@ export function ActivityBar() {
   const { workbenchMode, setWorkbenchMode } = useWorkbenchStore();
   const { isTerminalOpen, toggleTerminal } = useTerminalStore();
   const setIsSettingsModalOpen = useAppStore((state) => state.setIsSettingsModalOpen);
-  const runningServicesCount = useServicesStore((state) => state.getRunningCount());
+  // Pure count selector: only triggers ActivityBar re-render if running count scalar changes
+  const runningServicesCount = useServicesStore((state) => {
+    let count = 0;
+    for (const runtime of Object.values(state.runtimeStates)) {
+      if (runtime.status === 'running' || runtime.status === 'starting') {
+        count++;
+      }
+    }
+    return count;
+  });
   const { t } = useTranslation();
 
   return (

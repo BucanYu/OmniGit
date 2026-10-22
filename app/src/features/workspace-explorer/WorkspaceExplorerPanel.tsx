@@ -123,14 +123,12 @@ const ProjectRootTreeItem = React.memo(function ProjectRootTreeItem({
 });
 
 export function WorkspaceExplorerPanel() {
-  const {
-    projects,
-    activeProjectId,
-    setActiveProject,
-    sidebarWidth,
-    setIsAddRepoModalOpen,
-    openProjectFolder,
-  } = useAppStore();
+  const projects = useAppStore((state) => state.projects);
+  const activeProjectId = useAppStore((state) => state.activeProjectId);
+  const setActiveProject = useAppStore((state) => state.setActiveProject);
+  const sidebarWidth = useAppStore((state) => state.sidebarWidth);
+  const setIsAddRepoModalOpen = useAppStore((state) => state.setIsAddRepoModalOpen);
+  const openProjectFolder = useAppStore((state) => state.openProjectFolder);
 
   const locateFile = useWorkspaceExplorerStore((state) => state.locateFile);
   const isLocating = useWorkspaceExplorerStore((state) => state.isLocating);
