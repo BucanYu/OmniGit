@@ -34,3 +34,8 @@
    - **绝对物理路径防护**：Windows 盘符（`D:\...`）、UNC 共享（`\\...`）与 macOS/Linux POSIX 根路径（`/Users/...`, `/home/...`）一律享有物理路径第一守卫，严禁调用 Git 相对路径解码器；
    - **Git C-Quote 严格守卫**：未被英文双引号包裹的普通路径严禁解析反斜杠转义，杜绝将普通路径字符误转为 ASCII 控制符；
    - **非破坏性持久化铁律**：异步水合与恢复阶段若单项文件读取失败，坚决禁止将其从用户打开的持久化数据中删除，只有当用户显式点击关闭时才允许移除。
+9. **全局代码安全防御与漏洞防范红线 (Security & Vulnerability Prevention Protocol)**：
+   - **命令注入防御 (Anti-Command Injection)**：严禁使用字符串拼接方式调用 `child_process.exec()` 或带 `shell: true` 的命令执行外部程序。凡调用外部程序（Git、系统应用等），必须采用参数数组（`args: string[]`）的 `execFile` 或 `spawn`，严防特殊字符逃逸与命令注入；
+   - **渲染防 XSS (Anti-XSS Defense)**：严禁使用 `dangerouslySetInnerHTML` 直接渲染未经清洗的用户输入或外部不可信文档（如 Markdown、Diff 内容、Git Commit 提交信息）。凡涉及 HTML 渲染，必须强制通过 `DOMPurify.sanitize()` 白名单过滤，坚决杜绝任何内联事件（`onerror`, `onload` 等）与恶意脚本执行；
+   - **网络与接口安全隔离 (Anti-CSRF & DNS Rebinding)**：本地内嵌 HTTP 服务必须严格校验 `Host`（仅允许 `localhost`/`127.0.0.1`）与 `Origin` 头，严禁对外部未受信域配置 `Access-Control-Allow-Origin: *`，防止恶意网页发起 DNS Rebinding 或跨站攻击；
+   - **路径穿越防御 (Anti-Path Traversal)**：静态资源与本地文件服务接口必须严格实施沙箱路径包含校验（`filePath.startsWith(baseDir)`），防止使用 `../` 越界读取或覆写系统敏感文件。

@@ -146,3 +146,24 @@
   2. **Git C-Quote 严格守卫**：只有被英文双引号包裹（`"..."`）的路径才属于 Git CLI C-Quote 格式；未带引号的普通路径坚决禁止反斜杠转义解析，杜绝将普通路径字符误转为 ASCII 控制符；
   3. **非破坏性持久化铁律**：水合恢复与异步加载阶段如果单项文件读取失败，坚决禁止将其从用户打开的持久化数据中删除，只有当用户显式点击关闭时才允许移除；
   4. **跨平台换行与快捷键适配**：保存文件时保留原始换行符（CRLF / LF）；键盘快捷键监听统一使用 `e.ctrlKey || e.metaKey`，保证 Windows / macOS 体验完全一致。
+
+---
+
+## 9. 全局代码安全防御与漏洞防范红线 (Security & Vulnerability Prevention Protocol)
+
+- **外部进程调用防命令注入 (Anti-Command Injection)**：
+  - **严禁**使用 `child_process.exec()` 或 `shell: true` 进行字符串拼接执行外部命令；
+  - 凡调用系统外部命令或原生 Git CLI，必须使用 `execFile` 或 `spawn`，以参数数组（`args: string[]`）形式传递参数，从根本上杜绝参数逃逸与任意命令注入风险；
+  - 在 Electron 桌面环境下唤起系统外部应用（如文件管理器、外部编辑器）时，优先采用 Electron 内置安全 API（`shell.openPath`、`shell.showItemInFolder`）。
+
+- **视图渲染防 XSS 攻击 (Anti-XSS Defense)**：
+  - **严禁**使用 `dangerouslySetInnerHTML` 直接渲染未经清洗的用户输入或外部不可信文档（如 Markdown、文件 Diff、Git Commit 提交信息）；
+  - 凡涉及 HTML 字符串渲染，必须强制通过 `DOMPurify.sanitize()` 进行白名单过滤清洗，严格拦截过滤 `<script>`、`onerror`、`onload`、`javascript:` 等恶意向量，防止通过恶意仓库或提交信息发起 XSS 提权。
+
+- **本地内嵌服务安全隔离 (Anti-CSRF & DNS Rebinding)**：
+  - OmniGit 本地启动的 HTTP 服务（如 `127.0.0.1:5345`）必须严格实施安全白名单校验：
+    - **Host 校验**：严格限定 Host 只能为 `localhost`、`127.0.0.1`、`::1` 或私有局域网 IP，全面阻断恶意网页的 DNS Rebinding 攻击；
+    - **Origin / Cross-Site 校验**：严格阻断未受信任的跨源请求与 `Sec-Fetch-Site: cross-site` 恶意交互，严禁在后端服务对未授权域开放 `Access-Control-Allow-Origin: *`。
+
+- **文件系统沙箱与路径穿越防御 (Anti-Path Traversal)**：
+  - 静态资源与本地文件服务接口在读取或写入文件时，必须严格执行目录包含沙箱校验（`filePath.startsWith(baseDir)`），防止使用 `../` 越界读取或覆写系统敏感文件。

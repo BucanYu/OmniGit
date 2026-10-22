@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Marked } from 'marked';
+import DOMPurify from 'dompurify';
 import { useTranslation } from '../../locales';
 import {
   FileText,
@@ -99,7 +100,13 @@ export function MarkdownPreview({ content, theme = 'darcula', filePath }: Markdo
         );
       }
 
-      return parsedHtml;
+      // Sanitize parsed HTML with DOMPurify to eliminate all XSS vectors while preserving rich markdown styling
+      const sanitizedHtml = DOMPurify.sanitize(parsedHtml, {
+        USE_PROFILES: { html: true, svg: true },
+        ADD_ATTR: ['target', 'rel'],
+      });
+
+      return sanitizedHtml;
     } catch (err) {
       console.error('[MarkdownPreview] Parsing failed:', err);
       return `<pre>${content}</pre>`;

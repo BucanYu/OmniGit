@@ -1,4 +1,4 @@
-import { execFile, exec, spawn, type ChildProcess } from 'child_process';
+import { execFile, spawn, type ChildProcess } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -24,7 +24,7 @@ function killProcessTree(child: ChildProcess): Promise<void> {
     if (!child || !child.pid) return resolve();
     const pid = child.pid;
     if (process.platform === 'win32') {
-      exec(`taskkill /PID ${pid} /T /F`, () => resolve());
+      execFile('taskkill', ['/PID', String(pid), '/T', '/F'], () => resolve());
     } else {
       try {
         process.kill(-pid, 'SIGKILL');
@@ -2599,22 +2599,51 @@ export const gitService = {
     }
     try {
       const isWin = process.platform === 'win32';
-      if (isWin) {
-        // Try opening with 'code' first; if not found, use explorer.exe directly (bypasses cmd.exe policy restriction)
-        exec(`code "${fullPath}"`, (err) => {
-          if (err) {
-            const child = spawn('explorer.exe', [fullPath.replace(/\//g, '\\')], {
-              detached: true,
-              stdio: 'ignore',
-            });
-            child.unref();
-          }
-        });
-      } else if (process.platform === 'darwin') {
-        exec(`code "${fullPath}" || open "${fullPath}"`);
-      } else {
-        exec(`code "${fullPath}" || xdg-open "${fullPath}"`);
-      }
+      const isMac = process.platform === 'darwin';
+
+      let electronShell: any = null;
+      try {
+        electronShell = require('electron').shell;
+      } catch {}
+
+      const winPath = fullPath.replace(/\//g, '\\');
+
+      // Secure file opening: use spawn with argument array (shell: false) to prevent command injection
+      const codeChild = spawn('code', [fullPath], {
+        detached: true,
+        stdio: 'ignore',
+        shell: false,
+      });
+
+      codeChild.on('error', () => {
+        // Fallback when 'code' CLI is not found in PATH
+        if (electronShell && typeof electronShell.openPath === 'function') {
+          electronShell.openPath(fullPath);
+        } else if (isWin) {
+          const fallbackChild = spawn('explorer.exe', [winPath], {
+            detached: true,
+            stdio: 'ignore',
+            shell: false,
+          });
+          fallbackChild.unref();
+        } else if (isMac) {
+          const fallbackChild = spawn('open', [fullPath], {
+            detached: true,
+            stdio: 'ignore',
+            shell: false,
+          });
+          fallbackChild.unref();
+        } else {
+          const fallbackChild = spawn('xdg-open', [fullPath], {
+            detached: true,
+            stdio: 'ignore',
+            shell: false,
+          });
+          fallbackChild.unref();
+        }
+      });
+      codeChild.unref();
+
       return { success: true, message: `Opened ${filePath}` };
     } catch (e: any) {
       return { success: false, message: e.message };
@@ -2676,31 +2705,29 @@ export const gitService = {
 
     try {
       const platform = process.platform;
-      if (platform === 'win32') {
+      let electronShell: any = null;
+      try {
+        electronShell = require('electron').shell;
+      } catch {}
+
+      if (electronShell && typeof electronShell.showItemInFolder === 'function' && fs.existsSync(resolvedPath)) {
+        electronShell.showItemInFolder(resolvedPath);
+      } else if (platform === 'win32') {
         const winDirPath = path.normalize(targetDir).replace(/\//g, '\\');
         console.log('[gitService] revealInFileManager opening winDirPath:', winDirPath);
-        // 在 Windows 上打开本地文件夹窗口的多重保障做法：
-        // 1. 优先使用 explorer.exe "<dir>" 直接唤起资源管理器窗口
-        //    （注意：Windows 上 explorer 打开成功交由桌面 Shell 窗口处理时通常返回 code 1，视为成功）
-        exec(`explorer "${winDirPath}"`, (err) => {
-          if (err && err.code !== 1 && err.code !== 0) {
-            console.warn('[gitService] explorer direct exec failed, trying PowerShell Start-Process:', err.message);
-            // 2. 备用：通过 PowerShell 的 Start-Process explorer.exe 委托 Windows Shell 唤起
-            const escaped = winDirPath.replace(/'/g, "''");
-            exec(`powershell.exe -NoProfile -NonInteractive -Command "Start-Process explorer.exe -ArgumentList '${escaped}'"`, (psErr) => {
-              if (psErr) {
-                console.warn('[gitService] PowerShell launch failed, trying cmd start:', psErr.message);
-                // 3. 终极兜底：cmd start
-                exec(`start "" "${winDirPath}"`);
-              }
-            });
-          }
+        // Safe spawn without shell to completely eliminate command injection
+        const child = spawn('explorer.exe', [winDirPath], {
+          detached: true,
+          stdio: 'ignore',
+          shell: false,
         });
+        child.unref();
       } else if (platform === 'darwin') {
         // macOS: open "<dir>" 直接在 Finder 中打开该文件夹
         const child = spawn('open', [targetDir], {
           detached: true,
           stdio: 'ignore',
+          shell: false,
         });
         child.unref();
       } else {
@@ -2708,6 +2735,7 @@ export const gitService = {
         const child = spawn('xdg-open', [targetDir], {
           detached: true,
           stdio: 'ignore',
+          shell: false,
         });
         child.unref();
       }
@@ -3305,8 +3333,9 @@ export const gitService = {
       const initDir = initialPath && fs.existsSync(initialPath) ? initialPath.replace(/'/g, "''") : '';
       const psCommand = `Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.FolderBrowserDialog; $f.Description = '选择本地文件夹 (Select Folder)'; $f.ShowNewFolderButton = $true; ${initDir ? `$f.SelectedPath = '${initDir}';` : ''} $t = New-Object System.Windows.Forms.Form; $t.TopMost = $true; if ($f.ShowDialog($t) -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Write-Output $f.SelectedPath }`;
 
-      exec(
-        `powershell -NoProfile -ExecutionPolicy Bypass -Command "${psCommand}"`,
+      execFile(
+        'powershell.exe',
+        ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', psCommand],
         { encoding: 'utf8', windowsHide: false, timeout: 120000 },
         (err, stdout) => {
           if (err) {

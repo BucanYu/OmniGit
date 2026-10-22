@@ -7,6 +7,59 @@ import { fileEncodingService } from './fileEncodingService';
 import { nodeServiceProcessManager } from './nodeServiceProcessManager';
 import { decodeGitPath } from '../utils/gitPathUtils';
 
+function isAllowedHost(host: string | undefined): boolean {
+  if (!host) return false;
+  let hostname = host;
+  if (host.startsWith('[')) {
+    const end = host.indexOf(']');
+    hostname = end !== -1 ? host.slice(0, end + 1) : host;
+  } else {
+    hostname = host.split(':')[0];
+  }
+  hostname = hostname.toLowerCase();
+
+  if (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '::1' ||
+    hostname === '[::1]' ||
+    hostname === '0.0.0.0' ||
+    hostname === 'omnigit.local'
+  ) {
+    return true;
+  }
+
+  // Allow private LAN IP patterns for local multi-device debugging
+  if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(hostname)) return true;
+  if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname)) return true;
+  if (/^172\.(1[6-9]|2[0-9]|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(hostname)) return true;
+
+  return false;
+}
+
+function isAllowedOrigin(origin: string | undefined): boolean {
+  if (!origin || origin === 'null') return true;
+  try {
+    const parsed = new URL(origin);
+    const hostname = parsed.hostname.toLowerCase();
+    if (
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname === '::1' ||
+      hostname === '0.0.0.0'
+    ) {
+      return true;
+    }
+    if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(hostname)) return true;
+    if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname)) return true;
+    if (/^172\.(1[6-9]|2[0-9]|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(hostname)) return true;
+    if (parsed.protocol === 'vscode-webview:' || parsed.protocol === 'electron:') return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Universal Git & File System API Request Handler
  * Shared between Vite dev middleware and Electron production embedded loopback server.
@@ -18,6 +71,40 @@ export async function handleGitApiRequest(req: IncomingMessage, res: ServerRespo
     return false;
   }
 
+  // 1. Host header validation to prevent DNS Rebinding attacks
+  if (!isAllowedHost(req.headers.host)) {
+    res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ error: 'Access Denied: Invalid Host Header (Security Policy)' }));
+    return true;
+  }
+
+  // 2. Origin & cross-site validation to prevent unauthorized third-party website access
+  const origin = req.headers.origin;
+  if (origin && !isAllowedOrigin(origin)) {
+    res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ error: 'Access Denied: Cross-Origin Request Blocked (Security Policy)' }));
+    return true;
+  }
+
+  const secFetchSite = req.headers['sec-fetch-site'];
+  if (secFetchSite === 'cross-site') {
+    res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ error: 'Access Denied: Cross-Site Interaction Blocked (Security Policy)' }));
+    return true;
+  }
+
+  // Handle CORS preflight safely
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, {
+      'Access-Control-Allow-Origin': origin || 'http://127.0.0.1:5345',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
+      'Access-Control-Max-Age': '86400',
+    });
+    res.end();
+    return true;
+  }
+
   const urlObj = new URL(url, 'http://127.0.0.1:5345');
   const pathname = urlObj.pathname;
   const query = Object.fromEntries(urlObj.searchParams.entries());
@@ -27,7 +114,7 @@ export async function handleGitApiRequest(req: IncomingMessage, res: ServerRespo
       'Content-Type': 'text/event-stream; charset=utf-8',
       'Cache-Control': 'no-cache, no-transform',
       'Connection': 'keep-alive',
-      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Origin': origin || 'http://127.0.0.1:5345',
     });
     res.write('event: connected\ndata: {}\n\n');
 

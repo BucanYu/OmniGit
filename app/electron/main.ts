@@ -113,15 +113,24 @@ function getDistDir(): string {
 
 function serveStatic(distDir: string, req: http.IncomingMessage, res: http.ServerResponse) {
   const parsedUrl = new URL(req.url || '/', 'http://127.0.0.1');
-  let safePath = path.normalize(decodeURIComponent(parsedUrl.pathname)).replace(/^(\.\.[\/\\])+/, '');
-  let filePath = path.join(distDir, safePath);
+  const normalizedPath = path.normalize(decodeURIComponent(parsedUrl.pathname));
+  const resolvedDist = path.resolve(distDir);
+  let filePath = path.resolve(resolvedDist, '.' + normalizedPath);
+
+  // Security guard: ensure resolved path never escapes distDir (prevent path traversal)
+  if (!filePath.startsWith(resolvedDist)) {
+    res.statusCode = 403;
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.end('Access Denied: Path traversal detected');
+    return;
+  }
 
   if (fs.existsSync(filePath) && fs.statSync(filePath).isDirectory()) {
     filePath = path.join(filePath, 'index.html');
   }
 
   if (!fs.existsSync(filePath)) {
-    filePath = path.join(distDir, 'index.html');
+    filePath = path.join(resolvedDist, 'index.html');
   }
 
   if (fs.existsSync(filePath)) {
@@ -142,6 +151,24 @@ function startEmbeddedServer(preferredPort = 5345): Promise<number> {
     currentApiPort = preferredPort;
 
     embeddedServer = http.createServer(async (req, res) => {
+      // Security guard: Host header validation for loopback security against DNS Rebinding
+      const host = req.headers.host || '';
+      const hostname = host.startsWith('[') ? host.slice(0, host.indexOf(']') + 1) : host.split(':')[0];
+      const lowerHost = hostname.toLowerCase();
+      const isLoopbackHost =
+        lowerHost === 'localhost' ||
+        lowerHost === '127.0.0.1' ||
+        lowerHost === '::1' ||
+        lowerHost === '[::1]' ||
+        lowerHost === '0.0.0.0';
+
+      if (!isLoopbackHost) {
+        res.statusCode = 403;
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        res.end(JSON.stringify({ error: 'Access Denied: Invalid Host Header (Security Policy)' }));
+        return;
+      }
+
       const handled = await handleGitApiRequest(req, res);
       if (handled) return;
 
