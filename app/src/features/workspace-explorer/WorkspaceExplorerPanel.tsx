@@ -32,6 +32,7 @@ export function WorkspaceExplorerPanel() {
     toggleExpandDir,
     refreshDir,
     locateFile,
+    isLocating,
   } = useWorkspaceExplorerStore();
 
   const { tabs, activeTabId } = useEditorTabsStore();
@@ -64,7 +65,9 @@ export function WorkspaceExplorerPanel() {
 
     if (!matchedProject) return;
 
-    setActiveProject(matchedProject.id);
+    if (activeProjectId !== matchedProject.id) {
+      setActiveProject(matchedProject.id);
+    }
 
     // 3. Compute relative path strictly against matchedProject.path
     const normProjPath = normalizePath(matchedProject.path);
@@ -118,15 +121,15 @@ export function WorkspaceExplorerPanel() {
           {/* Locate Opened File (Scroll from Source) */}
           <button
             onClick={handleLocateCurrentFile}
-            disabled={!hasActiveFile}
+            disabled={!hasActiveFile || isLocating}
             title={hasActiveFile ? t.workspaceExplorer.locateCurrentFile : t.workspaceExplorer.locateNoActiveFile}
             className={`p-1 rounded transition cursor-pointer ${
-              hasActiveFile
+              hasActiveFile && !isLocating
                 ? 'hover:bg-theme-hover text-theme-muted hover:text-sky-400'
                 : 'text-theme-muted/30 cursor-not-allowed'
             }`}
           >
-            <Crosshair className="w-3.5 h-3.5" />
+            <Crosshair className={`w-3.5 h-3.5 ${isLocating ? 'animate-spin text-sky-400' : ''}`} />
           </button>
           <button
             onClick={handleRefreshAll}

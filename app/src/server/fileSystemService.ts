@@ -134,6 +134,71 @@ export class FileSystemService {
   }
 
   /**
+   * Batch read multiple directory levels in a single fast local call.
+   * Eliminates sequential network waterfall when expanding/locating nested paths.
+   */
+  public readDirectoryBatch(repoPath: string, subDirs: string[]): Record<string, FileTreeNodeItem[]> {
+    const result: Record<string, FileTreeNodeItem[]> = {};
+    const resolvedRepo = path.resolve(repoPath);
+    if (!fs.existsSync(resolvedRepo)) {
+      return result;
+    }
+    const rules = this.loadGitignoreRules(resolvedRepo);
+
+    for (const subDir of subDirs) {
+      const cleanSub = subDir ? subDir.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') : '';
+      const targetDir = cleanSub ? path.resolve(resolvedRepo, cleanSub) : resolvedRepo;
+
+      // Security check: ensure targetDir is within resolvedRepo (prevent path traversal)
+      if (!targetDir.toLowerCase().startsWith(resolvedRepo.toLowerCase())) {
+        continue;
+      }
+      if (!fs.existsSync(targetDir)) {
+        result[cleanSub] = [];
+        continue;
+      }
+
+      try {
+        const entries = fs.readdirSync(targetDir, { withFileTypes: true });
+        const items: FileTreeNodeItem[] = [];
+
+        for (const entry of entries) {
+          const name = entry.name;
+          const fullPath = path.join(targetDir, name);
+          const relPath = path.relative(resolvedRepo, fullPath).replace(/\\/g, '/');
+
+          if (this.isIgnored(name, relPath, rules)) {
+            continue;
+          }
+
+          const isDir = entry.isDirectory();
+          const extension = !isDir ? path.extname(name).toLowerCase() : '';
+
+          items.push({
+            name,
+            path: fullPath,
+            relativePath: relPath,
+            isDirectory: isDir,
+            extension,
+          });
+        }
+
+        items.sort((a, b) => {
+          if (a.isDirectory && !b.isDirectory) return -1;
+          if (!a.isDirectory && b.isDirectory) return 1;
+          return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+        });
+
+        result[cleanSub] = items;
+      } catch {
+        result[cleanSub] = [];
+      }
+    }
+
+    return result;
+  }
+
+  /**
    * Search code text inside repository files with fast recursive scanner
    */
   public searchCode(

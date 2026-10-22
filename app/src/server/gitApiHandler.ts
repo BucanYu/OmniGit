@@ -503,6 +503,44 @@ export async function handleGitApiRequest(req: IncomingMessage, res: ServerRespo
       }
       const items = fileSystemService.readDirectory(repoPath, subDir);
       res.end(JSON.stringify(items));
+    } else if (pathname === '/api/fs/locate-ancestors') {
+      const repoPath = query.repoPath || body.repoPath || '';
+      const rawRel = query.relativePath ? decodeGitPath(query.relativePath) : (body.relativePath || '');
+      if (!repoPath) {
+        res.statusCode = 400;
+        res.end(JSON.stringify({ error: 'Missing repoPath' }));
+        return true;
+      }
+      const cleanRel = rawRel.replace(/\\/g, '/').replace(/^\/+/, '');
+      const segments = cleanRel.split('/').filter(Boolean);
+      segments.pop(); // Remove target file itself
+
+      const ancestors: string[] = [''];
+      let currentSub = '';
+      for (const seg of segments) {
+        currentSub = currentSub ? `${currentSub}/${seg}` : seg;
+        ancestors.push(currentSub);
+      }
+
+      const trees = fileSystemService.readDirectoryBatch(repoPath, ancestors);
+      res.end(JSON.stringify({ ancestors, trees }));
+      return true;
+    } else if (pathname === '/api/fs/tree-batch') {
+      const repoPath = query.repoPath || body.repoPath || '';
+      let dirs: string[] = [];
+      if (Array.isArray(body.dirs)) {
+        dirs = body.dirs;
+      } else if (query.dirs) {
+        dirs = query.dirs.split(',').map((d: string) => decodeGitPath(d.trim()));
+      }
+      if (!repoPath) {
+        res.statusCode = 400;
+        res.end(JSON.stringify({ error: 'Missing repoPath' }));
+        return true;
+      }
+      const trees = fileSystemService.readDirectoryBatch(repoPath, dirs);
+      res.end(JSON.stringify({ trees }));
+      return true;
     } else if (pathname === '/api/fs/read') {
       const repoPath = query.repoPath || '';
       const relativePath = query.relativePath ? decodeGitPath(query.relativePath) : '';

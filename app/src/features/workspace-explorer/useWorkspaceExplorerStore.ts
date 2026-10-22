@@ -15,6 +15,7 @@ interface WorkspaceExplorerState {
   loadingDirs: Set<string>;
   selectedNodePath: string | null;
   locateHighlightTimestamp: number;
+  isLocating: boolean;
 
   toggleExpandDir: (repoPath: string, subDir?: string, autoExpandDepth?: number) => Promise<void>;
   ensureDirExpanded: (repoPath: string, subDir?: string) => Promise<void>;
@@ -42,6 +43,7 @@ export const useWorkspaceExplorerStore = create<WorkspaceExplorerState>((set, ge
   loadingDirs: new Set<string>(),
   selectedNodePath: null,
   locateHighlightTimestamp: 0,
+  isLocating: false,
 
   toggleExpandDir: async (repoPath: string, subDir: string = '', autoExpandDepth: number = 0) => {
     const fullKey = buildDirKey(repoPath, subDir);
@@ -159,26 +161,86 @@ export const useWorkspaceExplorerStore = create<WorkspaceExplorerState>((set, ge
   },
 
   locateFile: async (repoPath: string, relativePath: string, fullPath: string) => {
-    // 1. Ensure project root is expanded
-    await get().ensureDirExpanded(repoPath, '');
+    set({ isLocating: true });
 
-    // 2. Extract intermediate directories
+    // 1. Extract intermediate ancestor directories
     const cleanRel = relativePath.replace(/\\/g, '/').replace(/^\/+/, '');
     const segments = cleanRel.split('/').filter(Boolean);
-    // Remove the file name itself
-    segments.pop();
+    segments.pop(); // Remove target file/folder name itself
 
+    const ancestors: string[] = [''];
     let currentSubDir = '';
     for (const seg of segments) {
       currentSubDir = currentSubDir ? `${currentSubDir}/${seg}` : seg;
-      await get().ensureDirExpanded(repoPath, currentSubDir);
+      ancestors.push(currentSubDir);
     }
 
-    // 3. Select node and trigger locate highlight + scroll into view
-    set({
-      selectedNodePath: fullPath,
-      locateHighlightTimestamp: Date.now(),
-    });
+    try {
+      // 🚀 High-speed fast path: Fetch all ancestor trees in a SINGLE batch API call!
+      // This eliminates the N-roundtrip sequential waterfall and multiple React re-renders.
+      const query = new URLSearchParams({
+        repoPath,
+        relativePath: cleanRel,
+      });
+      const res = await fetch(`/api/fs/locate-ancestors?${query.toString()}`);
+      if (res.ok) {
+        const data = (await res.json()) as {
+          ancestors: string[];
+          trees: Record<string, FileTreeNodeItem[]>;
+        };
+
+        const { expandedDirs, dirChildren } = get();
+        const nextExpanded = new Set(expandedDirs);
+        const nextChildren = { ...dirChildren };
+
+        for (const dir of data.ancestors || ancestors) {
+          nextExpanded.add(buildDirKey(repoPath, dir));
+        }
+
+        for (const [dir, items] of Object.entries(data.trees || {})) {
+          const fullKey = buildDirKey(repoPath, dir);
+          nextChildren[fullKey] = items;
+        }
+
+        // Single atomic state update - 0 intermediate re-renders!
+        set({
+          expandedDirs: nextExpanded,
+          dirChildren: nextChildren,
+          selectedNodePath: fullPath,
+          locateHighlightTimestamp: Date.now(),
+          isLocating: false,
+        });
+        return;
+      }
+    } catch (err) {
+      console.warn('[WorkspaceExplorer] Fast locate-ancestors request failed, falling back:', err);
+    }
+
+    // Fallback path: Parallel Promise.all across any missing ancestor directories
+    try {
+      const missingDirs = ancestors.filter((dir) => {
+        const fullKey = buildDirKey(repoPath, dir);
+        return !get().dirChildren[fullKey];
+      });
+
+      const nextExpanded = new Set(get().expandedDirs);
+      for (const dir of ancestors) {
+        nextExpanded.add(buildDirKey(repoPath, dir));
+      }
+      set({ expandedDirs: nextExpanded });
+
+      if (missingDirs.length > 0) {
+        await Promise.all(missingDirs.map((dir) => get().ensureDirExpanded(repoPath, dir)));
+      }
+
+      set({
+        selectedNodePath: fullPath,
+        locateHighlightTimestamp: Date.now(),
+        isLocating: false,
+      });
+    } catch {
+      set({ isLocating: false });
+    }
   },
 
   selectNode: (nodePath: string) => set({ selectedNodePath: nodePath }),

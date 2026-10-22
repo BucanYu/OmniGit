@@ -152,8 +152,10 @@ export function FileTreeNode({ item, repoPath, repoName, depth }: FileTreeNodePr
   useEffect(() => {
     if (isSelected && locateHighlightTimestamp > 0 && rowRef.current) {
       const scrollTimer = setTimeout(() => {
-        rowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }, 60);
+        requestAnimationFrame(() => {
+          rowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        });
+      }, 40);
       setIsLocatePulsing(true);
       const pulseTimer = setTimeout(() => setIsLocatePulsing(false), 2400);
       return () => {
