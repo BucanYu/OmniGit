@@ -175,6 +175,25 @@ export const useWorkspaceExplorerStore = create<WorkspaceExplorerState>((set, ge
       ancestors.push(currentSubDir);
     }
 
+    // 🚀 Fast path 0: Check in-memory directory cache first!
+    // If all ancestor folders are already loaded in memory (e.g. revisiting a project or folder),
+    // skip the network roundtrip entirely for a true 0ms instant location!
+    const { dirChildren, expandedDirs } = get();
+    const missingDirs = ancestors.filter((dir) => !dirChildren[buildDirKey(repoPath, dir)]);
+    if (missingDirs.length === 0) {
+      const nextExpanded = new Set(expandedDirs);
+      for (const dir of ancestors) {
+        nextExpanded.add(buildDirKey(repoPath, dir));
+      }
+      set({
+        expandedDirs: nextExpanded,
+        selectedNodePath: fullPath,
+        locateHighlightTimestamp: Date.now(),
+        isLocating: false,
+      });
+      return;
+    }
+
     try {
       // 🚀 High-speed fast path: Fetch all ancestor trees in a SINGLE batch API call!
       // This eliminates the N-roundtrip sequential waterfall and multiple React re-renders.

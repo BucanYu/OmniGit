@@ -123,43 +123,46 @@ function getFileIcon(name: string, ext?: string) {
   }
 }
 
-export function FileTreeNode({ item, repoPath, repoName, depth }: FileTreeNodeProps) {
-  const {
-    expandedDirs,
-    dirChildren,
-    loadingDirs,
-    selectedNodePath,
-    locateHighlightTimestamp,
-    selectNode,
-    toggleExpandDir,
-  } = useWorkspaceExplorerStore();
-  const openFileTab = useEditorTabsStore((state) => state.openFileTab);
+const EMPTY_CHILDREN: FileTreeNodeItem[] = [];
 
+export const FileTreeNode = React.memo(function FileTreeNode({ item, repoPath, repoName, depth }: FileTreeNodeProps) {
   const rowRef = useRef<HTMLDivElement>(null);
   const [isLocatePulsing, setIsLocatePulsing] = useState(false);
 
-  const key = buildDirKey(repoPath, item.relativePath);
-  const isExpanded = expandedDirs.has(key);
-  const isLoading = loadingDirs.has(key);
-  const isSelected = Boolean(
-    selectedNodePath &&
-    item.path &&
-    normalizePath(selectedNodePath).toLowerCase() === normalizePath(item.path).toLowerCase()
-  );
-  const children = dirChildren[key] || [];
+  const key = React.useMemo(() => buildDirKey(repoPath, item.relativePath), [repoPath, item.relativePath]);
+  const normPath = React.useMemo(() => (item.path ? normalizePath(item.path).toLowerCase() : ''), [item.path]);
 
-  // Smooth scroll into view and pulse highlight when this node is located
+  // Fine-grained Zustand subscriptions: only re-render if THIS item's specific state changed!
+  const isExpanded = useWorkspaceExplorerStore((state) =>
+    item.isDirectory ? state.expandedDirs.has(key) : false
+  );
+  const isLoading = useWorkspaceExplorerStore((state) =>
+    item.isDirectory ? state.loadingDirs.has(key) : false
+  );
+  const isSelected = useWorkspaceExplorerStore((state) =>
+    Boolean(state.selectedNodePath && normPath && normalizePath(state.selectedNodePath).toLowerCase() === normPath)
+  );
+  const locateHighlightTimestamp = useWorkspaceExplorerStore((state) =>
+    isSelected ? state.locateHighlightTimestamp : 0
+  );
+  const children = useWorkspaceExplorerStore((state) =>
+    item.isDirectory && isExpanded ? state.dirChildren[key] || EMPTY_CHILDREN : EMPTY_CHILDREN
+  );
+
+  const selectNode = useWorkspaceExplorerStore((state) => state.selectNode);
+  const toggleExpandDir = useWorkspaceExplorerStore((state) => state.toggleExpandDir);
+  const openFileTab = useEditorTabsStore((state) => state.openFileTab);
+
+  // Instant scroll into view and pulse highlight when this node is located
   useEffect(() => {
     if (isSelected && locateHighlightTimestamp > 0 && rowRef.current) {
-      const scrollTimer = setTimeout(() => {
-        requestAnimationFrame(() => {
-          rowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        });
-      }, 40);
+      const animId = requestAnimationFrame(() => {
+        rowRef.current?.scrollIntoView({ behavior: 'auto', block: 'center' });
+      });
       setIsLocatePulsing(true);
       const pulseTimer = setTimeout(() => setIsLocatePulsing(false), 2400);
       return () => {
-        clearTimeout(scrollTimer);
+        cancelAnimationFrame(animId);
         clearTimeout(pulseTimer);
       };
     }
@@ -239,4 +242,4 @@ export function FileTreeNode({ item, repoPath, repoName, depth }: FileTreeNodePr
       )}
     </div>
   );
-}
+});

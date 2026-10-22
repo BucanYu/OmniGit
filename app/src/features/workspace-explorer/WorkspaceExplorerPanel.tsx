@@ -1,6 +1,6 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
 import { useAppStore } from '../../store/useAppStore';
-import { useWorkspaceExplorerStore, normalizePath, buildDirKey } from './useWorkspaceExplorerStore';
+import { useWorkspaceExplorerStore, normalizePath, buildDirKey, type FileTreeNodeItem } from './useWorkspaceExplorerStore';
 import { FileTreeNode } from './FileTreeNode';
 import { useEditorTabsStore } from '../code-editor/useEditorTabsStore';
 import { useTranslation } from '../../locales';
@@ -16,6 +16,112 @@ import {
   Crosshair,
 } from 'lucide-react';
 
+const EMPTY_CHILDREN: FileTreeNodeItem[] = [];
+
+interface ProjectRootTreeItemProps {
+  project: {
+    id: string;
+    name: string;
+    path: string;
+    currentBranch?: string;
+  };
+  isActive: boolean;
+  onSelectProject: (id: string) => void;
+  onOpenFolder: (path: string) => void;
+  openFolderTitle: string;
+  emptyDirText: string;
+}
+
+const ProjectRootTreeItem = React.memo(function ProjectRootTreeItem({
+  project,
+  isActive,
+  onSelectProject,
+  onOpenFolder,
+  openFolderTitle,
+  emptyDirText,
+}: ProjectRootTreeItemProps) {
+  const rootKey = useMemo(() => buildDirKey(project.path, ''), [project.path]);
+  const isExpanded = useWorkspaceExplorerStore((state) => state.expandedDirs.has(rootKey));
+  const rootChildren = useWorkspaceExplorerStore((state) =>
+    isExpanded ? state.dirChildren[rootKey] || EMPTY_CHILDREN : EMPTY_CHILDREN
+  );
+  const toggleExpandDir = useWorkspaceExplorerStore((state) => state.toggleExpandDir);
+
+  return (
+    <div className="mb-1">
+      {/* Project Root Row */}
+      <div
+        onClick={() => {
+          onSelectProject(project.id);
+          toggleExpandDir(project.path, '');
+        }}
+        className={`group flex items-center justify-between px-2 py-1.5 cursor-pointer hover:bg-theme-hover font-semibold text-[11px] select-none transition-colors ${
+          isActive ? 'text-sky-400 bg-theme-hover/50' : 'text-theme-main'
+        }`}
+        title={`${project.name} (${project.path})`}
+      >
+        <div className="flex items-center gap-1 min-w-0">
+          <span className="text-theme-muted">
+            {isExpanded ? (
+              <ChevronDown className="w-3.5 h-3.5" />
+            ) : (
+              <ChevronRight className="w-3.5 h-3.5" />
+            )}
+          </span>
+          <FolderOpen className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+          <span className="truncate font-bold tracking-tight text-[12px]">{project.name}</span>
+        </div>
+
+        <div className="flex items-center gap-1 shrink-0">
+          {/* Hover Action: Open folder in system file manager */}
+          <div className="hidden group-hover:flex items-center bg-theme-app/90 px-1 py-0.5 rounded border border-theme-border shadow-xs">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenFolder(project.path);
+              }}
+              title={openFolderTitle}
+              className="p-1 text-theme-muted hover:text-sky-400 hover:bg-theme-hover rounded transition cursor-pointer"
+            >
+              <FolderOpen className="w-3.5 h-3.5 text-sky-400" />
+            </button>
+          </div>
+
+          {/* Branch Pill */}
+          {project.currentBranch && (
+            <div className="flex items-center gap-0.5 text-[10px] font-normal text-theme-muted bg-theme-app/60 px-1.5 py-0.5 rounded border border-theme-border/60 shrink-0">
+              <GitBranch className="w-2.5 h-2.5 text-sky-400 shrink-0" />
+              <span className="truncate max-w-[80px]">{project.currentBranch}</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Project Tree Children */}
+      {isExpanded && (
+        <div>
+          {rootChildren.length === 0 ? (
+            <div className="pl-6 py-1 text-theme-muted text-[11px] italic">
+              {emptyDirText}
+            </div>
+          ) : (
+            rootChildren.map((child) => (
+              <FileTreeNode
+                key={child.path}
+                item={child}
+                repoPath={project.path}
+                repoName={project.name}
+                depth={1}
+              />
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+});
+
 export function WorkspaceExplorerPanel() {
   const {
     projects,
@@ -26,14 +132,10 @@ export function WorkspaceExplorerPanel() {
     openProjectFolder,
   } = useAppStore();
 
-  const {
-    expandedDirs,
-    dirChildren,
-    toggleExpandDir,
-    refreshDir,
-    locateFile,
-    isLocating,
-  } = useWorkspaceExplorerStore();
+  const locateFile = useWorkspaceExplorerStore((state) => state.locateFile);
+  const isLocating = useWorkspaceExplorerStore((state) => state.isLocating);
+  const refreshDir = useWorkspaceExplorerStore((state) => state.refreshDir);
+  const toggleExpandDir = useWorkspaceExplorerStore((state) => state.toggleExpandDir);
 
   const { tabs, activeTabId } = useEditorTabsStore();
   const { t } = useTranslation();
@@ -42,7 +144,7 @@ export function WorkspaceExplorerPanel() {
   const hasActiveFile = Boolean(activeTab && activeTab.filePath);
 
   const handleLocateCurrentFile = async () => {
-    if (!activeTab || !activeTab.filePath) return;
+    if (!activeTab || !activeTab.filePath || isLocating) return;
 
     const normActiveFile = normalizePath(activeTab.filePath).toLowerCase();
 
@@ -65,10 +167,6 @@ export function WorkspaceExplorerPanel() {
 
     if (!matchedProject) return;
 
-    if (activeProjectId !== matchedProject.id) {
-      setActiveProject(matchedProject.id);
-    }
-
     // 3. Compute relative path strictly against matchedProject.path
     const normProjPath = normalizePath(matchedProject.path);
     const normFilePath = normalizePath(activeTab.filePath);
@@ -80,19 +178,27 @@ export function WorkspaceExplorerPanel() {
       relPath = activeTab.relativePath.replace(/\\/g, '/').replace(/^\/+/, '');
     }
 
+    // 4. Run tree locate FIRST so folder expansion, rendering, and node scroll happen instantly with 0ms lag
     await locateFile(matchedProject.path, relPath, activeTab.filePath);
+
+    // 5. Defer active git project switch to background so tree location,
+    // DOM updates, and scroll animations complete with 0 latency and 0 stutter.
+    if (activeProjectId !== matchedProject.id) {
+      setTimeout(() => {
+        setActiveProject(matchedProject.id);
+      }, 120);
+    }
   };
 
-  // Auto-expand the active project or first project on mount if not expanded
+  // Auto-expand the active project or first project only once on initial mount
+  const initialExpandedRef = useRef(false);
   useEffect(() => {
-    if (projects.length > 0) {
+    if (!initialExpandedRef.current && projects.length > 0) {
+      initialExpandedRef.current = true;
       const activeP = projects.find((p) => p.id === activeProjectId) || projects[0];
-      const rootKey = buildDirKey(activeP.path, '');
-      if (!expandedDirs.has(rootKey)) {
-        toggleExpandDir(activeP.path, '');
-      }
+      toggleExpandDir(activeP.path, '');
     }
-  }, [projects, activeProjectId]);
+  }, [projects, activeProjectId, toggleExpandDir]);
 
   const handleRefreshAll = () => {
     for (const p of projects) {
@@ -161,86 +267,17 @@ export function WorkspaceExplorerPanel() {
             </p>
           </div>
         ) : (
-          projects.map((project) => {
-            const rootKey = buildDirKey(project.path, '');
-            const isExpanded = expandedDirs.has(rootKey);
-            const rootChildren = dirChildren[rootKey] || [];
-            const isActive = project.id === activeProjectId;
-
-            return (
-              <div key={project.id} className="mb-1">
-                {/* Project Root Row */}
-                <div
-                  onClick={() => {
-                    setActiveProject(project.id);
-                    toggleExpandDir(project.path, '');
-                  }}
-                  className={`group flex items-center justify-between px-2 py-1.5 cursor-pointer hover:bg-theme-hover font-semibold text-[11px] select-none transition-colors ${
-                    isActive ? 'text-sky-400 bg-theme-hover/50' : 'text-theme-main'
-                  }`}
-                  title={`${project.name} (${project.path})`}
-                >
-                  <div className="flex items-center gap-1 min-w-0">
-                    <span className="text-theme-muted">
-                      {isExpanded ? (
-                        <ChevronDown className="w-3.5 h-3.5" />
-                      ) : (
-                        <ChevronRight className="w-3.5 h-3.5" />
-                      )}
-                    </span>
-                    <FolderOpen className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-                    <span className="truncate font-bold tracking-tight text-[12px]">{project.name}</span>
-                  </div>
-
-                  <div className="flex items-center gap-1 shrink-0">
-                    {/* Hover Action: Open folder in system file manager (consistent with Git module, strictly NO 'x' delete button) */}
-                    <div className="hidden group-hover:flex items-center bg-theme-app/90 px-1 py-0.5 rounded border border-theme-border shadow-xs">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openProjectFolder(project.path);
-                        }}
-                        title={t.workspaceExplorer.openInSystemExplorer(project.path)}
-                        className="p-1 text-theme-muted hover:text-sky-400 hover:bg-theme-hover rounded transition cursor-pointer"
-                      >
-                        <FolderOpen className="w-3.5 h-3.5 text-sky-400" />
-                      </button>
-                    </div>
-
-                    {/* Branch Pill */}
-                    {project.currentBranch && (
-                      <div className="flex items-center gap-0.5 text-[10px] font-normal text-theme-muted bg-theme-app/60 px-1.5 py-0.5 rounded border border-theme-border/60 shrink-0">
-                        <GitBranch className="w-2.5 h-2.5 text-sky-400 shrink-0" />
-                        <span className="truncate max-w-[80px]">{project.currentBranch}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Project Tree Children */}
-                {isExpanded && (
-                  <div>
-                    {rootChildren.length === 0 ? (
-                      <div className="pl-6 py-1 text-theme-muted text-[11px] italic">
-                        {t.workspaceExplorer.emptyDirOrLoading}
-                      </div>
-                    ) : (
-                      rootChildren.map((child) => (
-                        <FileTreeNode
-                          key={child.path}
-                          item={child}
-                          repoPath={project.path}
-                          repoName={project.name}
-                          depth={1}
-                        />
-                      ))
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })
+          projects.map((project) => (
+            <ProjectRootTreeItem
+              key={project.id}
+              project={project}
+              isActive={project.id === activeProjectId}
+              onSelectProject={setActiveProject}
+              onOpenFolder={openProjectFolder}
+              openFolderTitle={t.workspaceExplorer.openInSystemExplorer(project.path)}
+              emptyDirText={t.workspaceExplorer.emptyDirOrLoading}
+            />
+          ))
         )}
       </div>
     </aside>
