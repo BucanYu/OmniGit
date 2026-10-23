@@ -96,19 +96,19 @@ export function EmbeddedFrameView() {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-theme-bg overflow-hidden relative">
+    <div className="flex-1 flex flex-col h-full bg-theme-app overflow-hidden relative">
       {/* 顶部微前端操作条 */}
-      <div className="h-10 border-b border-theme-border bg-theme-sidebar/60 px-4 flex items-center justify-between shrink-0 select-none">
+      <div className="h-10 border-b border-theme-border bg-theme-header px-4 flex items-center justify-between shrink-0 select-none">
         <div className="flex items-center gap-2.5 overflow-hidden">
           {/* 类型徽章 */}
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-theme-hover border border-theme-border text-theme-muted">
-            {type === 'url' ? <Globe className="w-3 h-3 text-sky-400" /> : <FileCode className="w-3 h-3 text-emerald-400" />}
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-theme-card border border-theme-border text-theme-muted">
+            {type === 'url' ? <Globe className="w-3 h-3 text-sky-600 dark:text-sky-400" /> : <FileCode className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />}
             <span>{type === 'url' ? t.dashboard.topBar.urlBadge : t.dashboard.topBar.fileBadge}</span>
           </span>
 
           {/* 团队协同徽章 */}
           {configScope === 'team' && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-sky-500/10 border border-sky-500/30 text-sky-400">
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-sky-500/10 border border-sky-500/30 text-sky-600 dark:text-sky-400">
               <Users className="w-3 h-3" />
               <span>{t.dashboard.topBar.teamBadge}</span>
             </span>
@@ -149,7 +149,7 @@ export function EmbeddedFrameView() {
       </div>
 
       {/* 嵌入沙箱 Iframe 主体 */}
-      <div className="flex-1 relative w-full h-full overflow-hidden bg-white/5">
+      <div className="flex-1 relative w-full h-full overflow-hidden bg-theme-panel">
         {srcUrl ? (
           <iframe
             key={`dash_${refreshKey}_${workspaceId}`}
@@ -172,8 +172,8 @@ export function EmbeddedFrameView() {
 
         {/* Loading 状态骨架屏 */}
         {isLoading && (
-          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-theme-bg/80 backdrop-blur-xs">
-            <RefreshCw className="w-6 h-6 text-sky-400 animate-spin mb-3" />
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-theme-panel/90 backdrop-blur-xs">
+            <RefreshCw className="w-6 h-6 text-sky-500 animate-spin mb-3" />
             <div className="text-xs font-semibold text-theme-main">{t.dashboard.embedded.loadingTitle}</div>
             <div className="text-[11px] text-theme-muted mt-1">{t.dashboard.embedded.loadingDesc}</div>
           </div>
@@ -181,8 +181,8 @@ export function EmbeddedFrameView() {
 
         {/* 失败友好降级卡片 */}
         {hasError && (
-          <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-theme-bg p-6 text-center">
-            <AlertTriangle className="w-10 h-10 text-amber-400 mb-3" />
+          <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-theme-panel p-6 text-center">
+            <AlertTriangle className="w-10 h-10 text-amber-500 mb-3" />
             <h3 className="text-sm font-semibold text-theme-main">{t.dashboard.embedded.loadFailedTitle}</h3>
             <p className="text-xs text-theme-muted max-w-md mt-1.5 leading-relaxed">
               {t.dashboard.embedded.loadFailedDesc}
@@ -193,13 +193,13 @@ export function EmbeddedFrameView() {
             <div className="flex items-center gap-2 mt-5">
               <button
                 onClick={triggerRefresh}
-                className="px-3 py-1.5 rounded-lg bg-theme-hover border border-theme-border text-xs text-theme-main hover:bg-theme-border transition-colors cursor-pointer"
+                className="px-3 py-1.5 rounded-lg bg-theme-card border border-theme-border text-xs text-theme-main hover:bg-theme-hover transition-colors cursor-pointer"
               >
                 {t.dashboard.embedded.retryButton}
               </button>
               <button
                 onClick={openConfigModal}
-                className="px-3 py-1.5 rounded-lg bg-sky-500 text-xs text-white hover:bg-sky-400 font-medium transition-colors cursor-pointer"
+                className="px-3 py-1.5 rounded-lg bg-sky-600 text-xs text-white hover:bg-sky-500 font-medium transition-colors cursor-pointer"
               >
                 {t.dashboard.embedded.configButton}
               </button>

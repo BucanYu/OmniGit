@@ -68,13 +68,13 @@ export function DefaultDashboardView() {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-theme-bg overflow-y-auto select-none p-6 space-y-6">
+    <div className="flex-1 flex flex-col h-full bg-theme-app overflow-y-auto select-none p-6 space-y-6">
       {/* 1. Header Hero Card */}
-      <div className="p-6 rounded-xl border border-theme-border bg-gradient-to-br from-theme-sidebar/80 via-theme-bg to-theme-sidebar/40 shadow-sm">
+      <div className="p-6 rounded-xl border border-theme-border bg-theme-card shadow-xs">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2.5">
-              <span className="p-2 rounded-lg bg-sky-500/10 text-sky-400 border border-sky-500/20">
+              <span className="p-2 rounded-lg bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20">
                 <FolderGit2 className="w-5 h-5" />
               </span>
               <div>
@@ -85,33 +85,33 @@ export function DefaultDashboardView() {
 
             {/* Metrics Capsule Badges */}
             <div className="flex flex-wrap items-center gap-2.5 mt-4 text-xs">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-theme-hover/60 border border-theme-border text-theme-main font-medium">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-theme-hover border border-theme-border text-theme-main font-medium">
                 {t.dashboard.defaultHub.reposCount(totalRepos)}
               </span>
 
               <span
                 className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border font-medium ${
                   totalUncommitted > 0
-                    ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
-                    : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                    ? 'bg-amber-500/10 border-amber-500/30 text-amber-700 dark:text-amber-300'
+                    : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-400'
                 }`}
               >
                 {totalUncommitted > 0 ? (
-                  <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                 ) : (
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                 )}
                 {t.dashboard.defaultHub.uncommittedTotal(totalUncommitted)}
               </span>
 
               {(totalIncoming > 0 || totalOutgoing > 0) && (
-                <span className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-theme-hover/60 border border-theme-border text-theme-muted">
-                  <span className="flex items-center text-sky-400">
+                <span className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-theme-hover border border-theme-border text-theme-muted">
+                  <span className="flex items-center text-sky-600 dark:text-sky-400">
                     <ArrowDownLeft className="w-3.5 h-3.5" />
                     <span>{totalIncoming}</span>
                   </span>
                   <span className="text-theme-border">•</span>
-                  <span className="flex items-center text-emerald-400">
+                  <span className="flex items-center text-emerald-600 dark:text-emerald-400">
                     <ArrowUpRight className="w-3.5 h-3.5" />
                     <span>{totalOutgoing}</span>
                   </span>
@@ -119,8 +119,8 @@ export function DefaultDashboardView() {
               )}
 
               {runningServicesCount > 0 && (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-emerald-300">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-400">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                   <span>{runningServicesCount} 个服务运行中</span>
                 </span>
               )}
@@ -132,7 +132,7 @@ export function DefaultDashboardView() {
             <button
               onClick={handleSyncAll}
               disabled={isSyncing}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-theme-border bg-theme-sidebar text-xs text-theme-main hover:bg-theme-hover transition-colors cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-theme-border bg-theme-card text-xs text-theme-main hover:bg-theme-hover transition-colors cursor-pointer"
             >
               <RotateCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
               <span>{isSyncing ? t.dashboard.defaultHub.syncing : t.dashboard.defaultHub.syncAll}</span>
@@ -140,7 +140,7 @@ export function DefaultDashboardView() {
 
             <button
               onClick={openConfigModal}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-sky-500 hover:bg-sky-400 text-white text-xs font-medium transition-colors cursor-pointer shadow-sm shadow-sky-500/20"
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-medium transition-colors cursor-pointer shadow-xs"
             >
               <Settings className="w-3.5 h-3.5" />
               <span>{t.dashboard.defaultHub.configureDashboard}</span>
@@ -157,10 +157,10 @@ export function DefaultDashboardView() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <button
             onClick={() => setWorkbenchMode('git')}
-            className="flex items-center justify-between p-3.5 rounded-lg border border-theme-border bg-theme-sidebar/40 hover:bg-theme-hover hover:border-theme-border/80 transition-all text-left group cursor-pointer"
+            className="flex items-center justify-between p-3.5 rounded-lg border border-theme-border bg-theme-card hover:bg-theme-hover hover:border-theme-border/80 transition-all text-left group cursor-pointer shadow-xs"
           >
             <div className="flex items-center gap-3">
-              <span className="p-2 rounded-lg bg-sky-500/10 text-sky-400 group-hover:bg-sky-500/20 transition-colors">
+              <span className="p-2 rounded-lg bg-sky-500/10 text-sky-600 dark:text-sky-400 group-hover:bg-sky-500/20 transition-colors">
                 <GitCommit className="w-4 h-4" />
               </span>
               <div>
@@ -173,10 +173,10 @@ export function DefaultDashboardView() {
 
           <button
             onClick={() => setWorkbenchMode('explorer')}
-            className="flex items-center justify-between p-3.5 rounded-lg border border-theme-border bg-theme-sidebar/40 hover:bg-theme-hover hover:border-theme-border/80 transition-all text-left group cursor-pointer"
+            className="flex items-center justify-between p-3.5 rounded-lg border border-theme-border bg-theme-card hover:bg-theme-hover hover:border-theme-border/80 transition-all text-left group cursor-pointer shadow-xs"
           >
             <div className="flex items-center gap-3">
-              <span className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400 group-hover:bg-emerald-500/20 transition-colors">
+              <span className="p-2 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 group-hover:bg-emerald-500/20 transition-colors">
                 <Files className="w-4 h-4" />
               </span>
               <div>
@@ -189,10 +189,10 @@ export function DefaultDashboardView() {
 
           <button
             onClick={() => setWorkbenchMode('services')}
-            className="flex items-center justify-between p-3.5 rounded-lg border border-theme-border bg-theme-sidebar/40 hover:bg-theme-hover hover:border-theme-border/80 transition-all text-left group cursor-pointer"
+            className="flex items-center justify-between p-3.5 rounded-lg border border-theme-border bg-theme-card hover:bg-theme-hover hover:border-theme-border/80 transition-all text-left group cursor-pointer shadow-xs"
           >
             <div className="flex items-center gap-3">
-              <span className="p-2 rounded-lg bg-purple-500/10 text-purple-400 group-hover:bg-purple-500/20 transition-colors">
+              <span className="p-2 rounded-lg bg-purple-500/10 text-purple-600 dark:text-purple-400 group-hover:bg-purple-500/20 transition-colors">
                 <Server className="w-4 h-4" />
               </span>
               <div>
@@ -205,10 +205,10 @@ export function DefaultDashboardView() {
 
           <button
             onClick={toggleTerminal}
-            className="flex items-center justify-between p-3.5 rounded-lg border border-theme-border bg-theme-sidebar/40 hover:bg-theme-hover hover:border-theme-border/80 transition-all text-left group cursor-pointer"
+            className="flex items-center justify-between p-3.5 rounded-lg border border-theme-border bg-theme-card hover:bg-theme-hover hover:border-theme-border/80 transition-all text-left group cursor-pointer shadow-xs"
           >
             <div className="flex items-center gap-3">
-              <span className="p-2 rounded-lg bg-amber-500/10 text-amber-400 group-hover:bg-amber-500/20 transition-colors">
+              <span className="p-2 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 group-hover:bg-amber-500/20 transition-colors">
                 <Terminal className="w-4 h-4" />
               </span>
               <div>
@@ -232,7 +232,7 @@ export function DefaultDashboardView() {
             return (
               <div
                 key={repo.id}
-                className="p-4 rounded-xl border border-theme-border bg-theme-sidebar/30 hover:border-theme-border/80 transition-all flex flex-col justify-between"
+                className="p-4 rounded-xl border border-theme-border bg-theme-card hover:border-theme-border/80 transition-all flex flex-col justify-between shadow-xs"
               >
                 <div>
                   <div className="flex items-start justify-between gap-2">
@@ -242,18 +242,18 @@ export function DefaultDashboardView() {
                     <span
                       className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium shrink-0 ${
                         isDirty
-                          ? 'bg-amber-500/10 border border-amber-500/30 text-amber-300'
-                          : 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-300'
+                          ? 'bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-300'
+                          : 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-400'
                       }`}
                     >
                       {isDirty ? (
                         <>
-                          <AlertCircle className="w-3 h-3 text-amber-400" />
+                          <AlertCircle className="w-3 h-3 text-amber-600 dark:text-amber-400" />
                           <span>{t.dashboard.defaultHub.dirtyState(repo.uncommittedCount || 0)}</span>
                         </>
                       ) : (
                         <>
-                          <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                          <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
                           <span>{t.dashboard.defaultHub.cleanState}</span>
                         </>
                       )}
@@ -262,7 +262,7 @@ export function DefaultDashboardView() {
 
                   {/* Branch Pill */}
                   <div className="flex items-center gap-2 mt-2.5">
-                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-theme-hover text-sky-400 text-[11px] font-mono border border-theme-border/80">
+                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-theme-hover text-sky-600 dark:text-sky-400 text-[11px] font-mono border border-theme-border">
                       <GitBranch className="w-3 h-3" />
                       <span className="truncate max-w-[140px]">{repo.currentBranch || 'HEAD'}</span>
                     </span>
@@ -270,13 +270,13 @@ export function DefaultDashboardView() {
                     {(repo.incoming > 0 || repo.outgoing > 0) && (
                       <span className="inline-flex items-center gap-1 text-[11px] text-theme-muted font-mono">
                         {repo.incoming > 0 && (
-                          <span className="text-sky-400 flex items-center">
+                          <span className="text-sky-600 dark:text-sky-400 flex items-center">
                             <ArrowDownLeft className="w-3 h-3" />
                             {repo.incoming}
                           </span>
                         )}
                         {repo.outgoing > 0 && (
-                          <span className="text-emerald-400 flex items-center">
+                          <span className="text-emerald-600 dark:text-emerald-400 flex items-center">
                             <ArrowUpRight className="w-3 h-3" />
                             {repo.outgoing}
                           </span>
@@ -292,7 +292,7 @@ export function DefaultDashboardView() {
                   </span>
                   <button
                     onClick={() => handleJumpToRepoCommit(repo.id)}
-                    className="text-[11px] text-sky-400 hover:text-sky-300 font-medium flex items-center gap-0.5 cursor-pointer"
+                    className="text-[11px] text-sky-600 dark:text-sky-400 hover:text-sky-500 font-medium flex items-center gap-0.5 cursor-pointer"
                   >
                     <span>{t.dashboard.defaultHub.jumpToGit}</span>
                     <ChevronRight className="w-3 h-3" />
@@ -307,7 +307,7 @@ export function DefaultDashboardView() {
       {/* 4. "Customize Portal" Onboarding Hero */}
       <div className="p-5 rounded-xl border border-sky-500/20 bg-sky-500/5 mt-2">
         <div className="flex items-start gap-3.5">
-          <span className="p-2.5 rounded-xl bg-sky-500/10 text-sky-400 border border-sky-500/20 shrink-0 mt-0.5">
+          <span className="p-2.5 rounded-xl bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20 shrink-0 mt-0.5">
             <Sparkles className="w-5 h-5" />
           </span>
           <div className="flex-1">
@@ -317,10 +317,10 @@ export function DefaultDashboardView() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 mt-4">
               <div
                 onClick={openConfigModal}
-                className="p-3 rounded-lg border border-theme-border bg-theme-bg/60 hover:border-sky-500/50 hover:bg-theme-hover transition-all cursor-pointer group"
+                className="p-3 rounded-lg border border-theme-border bg-theme-card hover:border-sky-500/50 hover:bg-theme-hover transition-all cursor-pointer group shadow-xs"
               >
-                <div className="flex items-center gap-2 text-xs font-semibold text-theme-main group-hover:text-sky-400">
-                  <Globe className="w-3.5 h-3.5 text-sky-400" />
+                <div className="flex items-center gap-2 text-xs font-semibold text-theme-main group-hover:text-sky-600 dark:group-hover:text-sky-400">
+                  <Globe className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
                   <span>{t.dashboard.defaultHub.presetLocalDev}</span>
                 </div>
                 <p className="text-[10px] text-theme-muted mt-1">{t.dashboard.defaultHub.presetLocalDevDesc}</p>
@@ -328,10 +328,10 @@ export function DefaultDashboardView() {
 
               <div
                 onClick={openConfigModal}
-                className="p-3 rounded-lg border border-theme-border bg-theme-bg/60 hover:border-sky-500/50 hover:bg-theme-hover transition-all cursor-pointer group"
+                className="p-3 rounded-lg border border-theme-border bg-theme-card hover:border-sky-500/50 hover:bg-theme-hover transition-all cursor-pointer group shadow-xs"
               >
-                <div className="flex items-center gap-2 text-xs font-semibold text-theme-main group-hover:text-emerald-400">
-                  <BookOpen className="w-3.5 h-3.5 text-emerald-400" />
+                <div className="flex items-center gap-2 text-xs font-semibold text-theme-main group-hover:text-emerald-600 dark:group-hover:text-emerald-400">
+                  <BookOpen className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                   <span>{t.dashboard.defaultHub.presetDocs}</span>
                 </div>
                 <p className="text-[10px] text-theme-muted mt-1">{t.dashboard.defaultHub.presetDocsDesc}</p>
@@ -339,10 +339,10 @@ export function DefaultDashboardView() {
 
               <div
                 onClick={openConfigModal}
-                className="p-3 rounded-lg border border-theme-border bg-theme-bg/60 hover:border-sky-500/50 hover:bg-theme-hover transition-all cursor-pointer group"
+                className="p-3 rounded-lg border border-theme-border bg-theme-card hover:border-sky-500/50 hover:bg-theme-hover transition-all cursor-pointer group shadow-xs"
               >
-                <div className="flex items-center gap-2 text-xs font-semibold text-theme-main group-hover:text-purple-400">
-                  <FileCode className="w-3.5 h-3.5 text-purple-400" />
+                <div className="flex items-center gap-2 text-xs font-semibold text-theme-main group-hover:text-purple-600 dark:group-hover:text-purple-400">
+                  <FileCode className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
                   <span>{t.dashboard.defaultHub.presetSpa}</span>
                 </div>
                 <p className="text-[10px] text-theme-muted mt-1">{t.dashboard.defaultHub.presetSpaDesc}</p>
@@ -350,10 +350,10 @@ export function DefaultDashboardView() {
 
               <div
                 onClick={openConfigModal}
-                className="p-3 rounded-lg border border-theme-border bg-theme-bg/60 hover:border-sky-500/50 hover:bg-theme-hover transition-all cursor-pointer group"
+                className="p-3 rounded-lg border border-theme-border bg-theme-card hover:border-sky-500/50 hover:bg-theme-hover transition-all cursor-pointer group shadow-xs"
               >
-                <div className="flex items-center gap-2 text-xs font-semibold text-theme-main group-hover:text-amber-400">
-                  <Kanban className="w-3.5 h-3.5 text-amber-400" />
+                <div className="flex items-center gap-2 text-xs font-semibold text-theme-main group-hover:text-amber-600 dark:group-hover:text-amber-400">
+                  <Kanban className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                   <span>{t.dashboard.defaultHub.presetKanban}</span>
                 </div>
                 <p className="text-[10px] text-theme-muted mt-1">{t.dashboard.defaultHub.presetKanbanDesc}</p>

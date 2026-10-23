@@ -139,24 +139,24 @@ export function DashboardConfigModal() {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs select-none">
-      <div className="bg-theme-bg border border-theme-border rounded-xl shadow-2xl w-[620px] max-w-[95vw] max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 select-none">
+      <div className="bg-theme-panel border border-theme-border rounded-xl shadow-2xl w-[620px] max-w-[95vw] max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-theme-border bg-theme-sidebar/50">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-theme-border bg-theme-header shrink-0">
           <div>
             <h2 className="text-base font-semibold text-theme-main">{t.dashboard.modal.title}</h2>
             <p className="text-xs text-theme-muted mt-0.5">{t.dashboard.modal.desc}</p>
           </div>
           <button
             onClick={closeConfigModal}
-            className="p-1 rounded-md text-theme-muted hover:text-theme-main hover:bg-theme-hover transition-colors"
+            className="p-1 rounded-md text-theme-muted hover:text-theme-main hover:bg-theme-hover transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSave} className="flex-1 overflow-y-auto px-6 py-5 space-y-5 text-xs">
+        <form onSubmit={handleSave} className="flex-1 overflow-y-auto px-6 py-5 space-y-5 text-xs bg-theme-panel">
           {/* 1. Type Switcher */}
           <div>
             <label className="block font-medium text-theme-main mb-2">{t.dashboard.modal.typeLabel}</label>
@@ -164,10 +164,10 @@ export function DashboardConfigModal() {
               <button
                 type="button"
                 onClick={() => setType('url')}
-                className={`flex items-center gap-2.5 p-3 rounded-lg border text-left transition-all ${
+                className={`flex items-center gap-2.5 p-3 rounded-lg border text-left transition-all cursor-pointer ${
                   type === 'url'
-                    ? 'border-sky-500 bg-sky-500/10 text-sky-400 font-medium'
-                    : 'border-theme-border bg-theme-sidebar/30 text-theme-muted hover:border-theme-hover'
+                    ? 'border-sky-500 bg-sky-500/10 text-sky-600 dark:text-sky-400 font-semibold ring-1 ring-sky-500/30'
+                    : 'border-theme-border bg-theme-card text-theme-muted hover:border-theme-border/80 hover:bg-theme-hover hover:text-theme-main'
                 }`}
               >
                 <Globe className="w-4 h-4 shrink-0" />
@@ -177,10 +177,10 @@ export function DashboardConfigModal() {
               <button
                 type="button"
                 onClick={() => setType('file')}
-                className={`flex items-center gap-2.5 p-3 rounded-lg border text-left transition-all ${
+                className={`flex items-center gap-2.5 p-3 rounded-lg border text-left transition-all cursor-pointer ${
                   type === 'file'
-                    ? 'border-sky-500 bg-sky-500/10 text-sky-400 font-medium'
-                    : 'border-theme-border bg-theme-sidebar/30 text-theme-muted hover:border-theme-hover'
+                    ? 'border-sky-500 bg-sky-500/10 text-sky-600 dark:text-sky-400 font-semibold ring-1 ring-sky-500/30'
+                    : 'border-theme-border bg-theme-card text-theme-muted hover:border-theme-border/80 hover:bg-theme-hover hover:text-theme-main'
                 }`}
               >
                 <FileCode className="w-4 h-4 shrink-0" />
@@ -199,7 +199,7 @@ export function DashboardConfigModal() {
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 placeholder={t.dashboard.modal.urlPlaceholder}
-                className="w-full px-3 py-2 bg-theme-sidebar border border-theme-border rounded-lg text-theme-main placeholder-theme-muted/50 focus:outline-none focus:border-sky-500 transition-colors"
+                className="w-full px-3 py-2 bg-theme-input border border-theme-border rounded-lg text-theme-main placeholder-theme-muted/50 focus:outline-none focus:border-sky-500 transition-colors"
               />
             </div>
           ) : (
@@ -212,12 +212,12 @@ export function DashboardConfigModal() {
                   value={filePath}
                   onChange={(e) => setFilePath(e.target.value)}
                   placeholder={t.dashboard.modal.filePlaceholder}
-                  className="flex-1 px-3 py-2 bg-theme-sidebar border border-theme-border rounded-lg text-theme-main placeholder-theme-muted/50 focus:outline-none focus:border-sky-500 transition-colors font-mono text-[11px]"
+                  className="flex-1 px-3 py-2 bg-theme-input border border-theme-border rounded-lg text-theme-main placeholder-theme-muted/50 focus:outline-none focus:border-sky-500 transition-colors font-mono text-[11px]"
                 />
                 <button
                   type="button"
                   onClick={handleSelectLocalFile}
-                  className="px-3 py-2 rounded-lg border border-theme-border bg-theme-hover text-theme-main hover:bg-theme-hover/80 flex items-center gap-1.5 transition-colors shrink-0"
+                  className="px-3 py-2 rounded-lg border border-theme-border bg-theme-card text-theme-main hover:bg-theme-hover flex items-center gap-1.5 transition-colors shrink-0 cursor-pointer"
                 >
                   <FolderOpen className="w-3.5 h-3.5" />
                   <span>{t.dashboard.modal.browseFile}</span>
@@ -234,12 +234,12 @@ export function DashboardConfigModal() {
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder={t.dashboard.modal.pageTitlePlaceholder}
-              className="w-full px-3 py-2 bg-theme-sidebar border border-theme-border rounded-lg text-theme-main placeholder-theme-muted/50 focus:outline-none focus:border-sky-500 transition-colors"
+              className="w-full px-3 py-2 bg-theme-input border border-theme-border rounded-lg text-theme-main placeholder-theme-muted/50 focus:outline-none focus:border-sky-500 transition-colors"
             />
           </div>
 
           {/* 4. Auto-Reload Options */}
-          <div className="p-3 rounded-lg border border-theme-border/60 bg-theme-sidebar/20 space-y-3">
+          <div className="p-3.5 rounded-lg border border-theme-border bg-theme-card space-y-3">
             <div className="flex items-center justify-between">
               <label htmlFor="chk-autoreload" className="font-medium text-theme-main cursor-pointer">
                 {t.dashboard.modal.autoReloadLabel}
@@ -249,11 +249,11 @@ export function DashboardConfigModal() {
                 type="checkbox"
                 checked={autoReload}
                 onChange={(e) => setAutoReload(e.target.checked)}
-                className="w-4 h-4 rounded text-sky-500 focus:ring-0 cursor-pointer"
+                className="w-4 h-4 rounded text-sky-600 dark:text-sky-500 focus:ring-0 cursor-pointer"
               />
             </div>
             {autoReload && (
-              <div className="flex items-center gap-2 pt-1 border-t border-theme-border/40">
+              <div className="flex items-center gap-2 pt-2 border-t border-theme-border">
                 <span className="text-theme-muted">{t.dashboard.modal.intervalLabel}:</span>
                 <input
                   type="number"
@@ -261,7 +261,7 @@ export function DashboardConfigModal() {
                   max="3600"
                   value={reloadIntervalSeconds}
                   onChange={(e) => setReloadIntervalSeconds(Number(e.target.value) || 60)}
-                  className="w-20 px-2 py-1 bg-theme-sidebar border border-theme-border rounded text-center text-theme-main"
+                  className="w-20 px-2 py-1 bg-theme-input border border-theme-border rounded text-center text-theme-main"
                 />
                 <span className="text-theme-muted">{t.dashboard.modal.secondsUnit}</span>
               </div>
@@ -269,20 +269,20 @@ export function DashboardConfigModal() {
           </div>
 
           {/* 5. Security & Bridge Toggle */}
-          <div className="p-3 rounded-lg border border-theme-border/60 bg-theme-sidebar/20 space-y-2">
+          <div className="p-3.5 rounded-lg border border-theme-border bg-theme-card space-y-2">
             <div className="flex items-center justify-between">
               <span className="font-medium text-theme-main">{t.dashboard.modal.enableBridgeLabel}</span>
               <input
                 type="checkbox"
                 checked={enableBridge}
                 onChange={(e) => setEnableBridge(e.target.checked)}
-                className="w-4 h-4 rounded text-sky-500 focus:ring-0 cursor-pointer"
+                className="w-4 h-4 rounded text-sky-600 dark:text-sky-500 focus:ring-0 cursor-pointer"
               />
             </div>
             <p className="text-[11px] text-theme-muted leading-relaxed">{t.dashboard.modal.enableBridgeDesc}</p>
             {type === 'url' && !url.includes('localhost') && !url.includes('127.0.0.1') && (
-              <div className="flex items-start gap-2 p-2 rounded bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[11px] leading-relaxed mt-2">
-                <ShieldAlert className="w-4 h-4 shrink-0 text-amber-400 mt-0.5" />
+              <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-300 text-[11px] leading-relaxed mt-2">
+                <ShieldAlert className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
                 <span>{t.dashboard.modal.securityWarning}</span>
               </div>
             )}
@@ -295,14 +295,14 @@ export function DashboardConfigModal() {
               <button
                 type="button"
                 onClick={() => setScope('local')}
-                className={`p-3 rounded-lg border text-left transition-all ${
+                className={`p-3 rounded-lg border text-left transition-all cursor-pointer ${
                   scope === 'local'
-                    ? 'border-sky-500 bg-sky-500/10 text-sky-400'
-                    : 'border-theme-border bg-theme-sidebar/30 text-theme-muted hover:border-theme-hover'
+                    ? 'border-sky-500 bg-sky-500/10 text-sky-600 dark:text-sky-400 font-medium ring-1 ring-sky-500/30'
+                    : 'border-theme-border bg-theme-card text-theme-muted hover:border-theme-border/80 hover:bg-theme-hover hover:text-theme-main'
                 }`}
               >
-                <div className="flex items-center gap-1.5 font-medium mb-1">
-                  <Laptop className="w-3.5 h-3.5" />
+                <div className="flex items-center gap-1.5 font-medium mb-1 text-theme-main">
+                  <Laptop className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
                   <span>{t.dashboard.modal.scopeLocal}</span>
                 </div>
                 <div className="text-[10px] text-theme-muted">{t.dashboard.modal.scopeLocalDesc}</div>
@@ -311,14 +311,14 @@ export function DashboardConfigModal() {
               <button
                 type="button"
                 onClick={() => setScope('team')}
-                className={`p-3 rounded-lg border text-left transition-all ${
+                className={`p-3 rounded-lg border text-left transition-all cursor-pointer ${
                   scope === 'team'
-                    ? 'border-sky-500 bg-sky-500/10 text-sky-400'
-                    : 'border-theme-border bg-theme-sidebar/30 text-theme-muted hover:border-theme-hover'
+                    ? 'border-sky-500 bg-sky-500/10 text-sky-600 dark:text-sky-400 font-medium ring-1 ring-sky-500/30'
+                    : 'border-theme-border bg-theme-card text-theme-muted hover:border-theme-border/80 hover:bg-theme-hover hover:text-theme-main'
                 }`}
               >
-                <div className="flex items-center gap-1.5 font-medium mb-1">
-                  <Users className="w-3.5 h-3.5" />
+                <div className="flex items-center gap-1.5 font-medium mb-1 text-theme-main">
+                  <Users className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
                   <span>{t.dashboard.modal.scopeTeam}</span>
                 </div>
                 <div className="text-[10px] text-theme-muted">{t.dashboard.modal.scopeTeamDesc}</div>
@@ -328,14 +328,14 @@ export function DashboardConfigModal() {
         </form>
 
         {/* Footer Actions */}
-        <div className="flex items-center justify-between px-6 py-4 border-t border-theme-border bg-theme-sidebar/50">
+        <div className="flex items-center justify-between px-6 py-3.5 border-t border-theme-border bg-theme-header shrink-0">
           <div>
             {activeConfig?.enabled && (
               <button
                 type="button"
                 onClick={handleResetToDefault}
                 disabled={isSaving}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-theme-border text-theme-muted hover:text-amber-400 hover:border-amber-400/40 transition-colors cursor-pointer text-xs"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-theme-border bg-theme-card text-theme-muted hover:text-amber-600 dark:hover:text-amber-400 hover:border-amber-500/40 transition-colors cursor-pointer text-xs"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>{t.dashboard.modal.resetToDefault}</span>
@@ -347,7 +347,7 @@ export function DashboardConfigModal() {
             <button
               type="button"
               onClick={handleTestOpen}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-theme-border text-theme-main hover:bg-theme-hover transition-colors text-xs"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-theme-border bg-theme-card text-theme-main hover:bg-theme-hover transition-colors text-xs cursor-pointer"
             >
               <ExternalLink className="w-3.5 h-3.5" />
               <span>{t.dashboard.modal.testButton}</span>
@@ -357,7 +357,7 @@ export function DashboardConfigModal() {
               type="button"
               onClick={closeConfigModal}
               disabled={isSaving}
-              className="px-3 py-1.5 rounded-lg border border-theme-border text-theme-muted hover:text-theme-main hover:bg-theme-hover transition-colors text-xs"
+              className="px-3 py-1.5 rounded-lg border border-theme-border bg-theme-card text-theme-muted hover:text-theme-main hover:bg-theme-hover transition-colors text-xs cursor-pointer"
             >
               {t.dashboard.modal.cancel}
             </button>
@@ -366,7 +366,7 @@ export function DashboardConfigModal() {
               type="button"
               onClick={handleSave}
               disabled={isSaving}
-              className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-white font-medium transition-colors cursor-pointer text-xs shadow-sm shadow-sky-500/20 disabled:opacity-50"
+              className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-medium transition-colors cursor-pointer text-xs shadow-xs disabled:opacity-50"
             >
               {isSaving ? <RotateCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
               <span>{t.dashboard.modal.saveApply}</span>
