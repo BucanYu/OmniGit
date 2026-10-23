@@ -357,4 +357,41 @@ export const gitSnapshotService = {
     }
     return { savedWorkspaces: [], recentProjects: [], workspaceProjectPaths: {} };
   },
+
+  // 48. Services Disk Backup (Dual-tier persistence guarantee across reboots, port changes & ID shifts)
+  saveServicesBackup(data: { servicesByProject?: Record<string, any[]> }): boolean {
+    try {
+      const settings = loadSettings();
+      if (!fs.existsSync(settings.cacheDir)) {
+        fs.mkdirSync(settings.cacheDir, { recursive: true });
+      }
+      const backupPath = path.join(settings.cacheDir, 'services_backup.json');
+      let existing: Record<string, any[]> = {};
+      if (fs.existsSync(backupPath)) {
+        try {
+          existing = JSON.parse(fs.readFileSync(backupPath, 'utf8'));
+        } catch {}
+      }
+      const merged = { ...existing, ...(data.servicesByProject || {}) };
+      fs.writeFileSync(backupPath, JSON.stringify(merged, null, 2), 'utf8');
+      return true;
+    } catch (e) {
+      console.error('[gitSnapshotService] Failed to save services backup:', e);
+      return false;
+    }
+  },
+
+  getServicesBackup(): Record<string, any[]> {
+    try {
+      const settings = loadSettings();
+      const backupPath = path.join(settings.cacheDir, 'services_backup.json');
+      if (fs.existsSync(backupPath)) {
+        const raw = fs.readFileSync(backupPath, 'utf8');
+        return JSON.parse(raw);
+      }
+    } catch (e) {
+      console.error('[gitSnapshotService] Failed to read services backup:', e);
+    }
+    return {};
+  },
 };

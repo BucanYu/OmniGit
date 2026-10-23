@@ -3116,6 +3116,15 @@ export const gitService = {
     return gitSnapshotService.getWorkspacesBackup();
   },
 
+  // 48. Services Disk Backup (Dual-tier persistence guarantee across reboots & ID shifts)
+  saveServicesBackup(data: { servicesByProject?: Record<string, any[]> }): boolean {
+    return gitSnapshotService.saveServicesBackup(data);
+  },
+
+  getServicesBackup(): Record<string, any[]> {
+    return gitSnapshotService.getServicesBackup();
+  },
+
   // Clone a remote Git repository with real-time progress and logs streaming (No arbitrary wall-clock timeout)
   cloneRepoStream(
     remoteUrl: string,

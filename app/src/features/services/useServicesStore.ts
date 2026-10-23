@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { ServiceConfig, ServiceRuntimeState, DiscoveredScriptGroup } from './types';
 import { useAppStore } from '../../store/useAppStore';
+import { normalizePath } from '../../store/storeHelpers';
 
 interface ServicesState {
   configsByProject: Record<string, ServiceConfig[]>;
@@ -11,41 +12,41 @@ interface ServicesState {
   editingService: ServiceConfig | null;
 
   // Actions
-  loadProjectServices: (projectId: string) => ServiceConfig[];
-  getServices: (projectId: string) => ServiceConfig[];
+  loadProjectServices: (projectIdOrPath: string, explicitPath?: string) => ServiceConfig[];
+  getServices: (projectIdOrPath: string) => ServiceConfig[];
   getRuntime: (serviceId: string) => ServiceRuntimeState;
   setActiveServiceId: (serviceId: string | null) => void;
   openAddModal: () => void;
   openEditModal: (service: ServiceConfig) => void;
   closeConfigModal: () => void;
 
-  scanProjectScripts: (projectId: string) => Promise<DiscoveredScriptGroup[]>;
-  importDiscoveredScripts: (projectId: string, groups: DiscoveredScriptGroup[]) => ServiceConfig[];
+  scanProjectScripts: (projectIdOrPath: string) => Promise<DiscoveredScriptGroup[]>;
+  importDiscoveredScripts: (projectIdOrPath: string, groups: DiscoveredScriptGroup[]) => ServiceConfig[];
 
   addService: (
-    projectId: string,
+    projectIdOrPath: string,
     data: Omit<ServiceConfig, 'id' | 'createdAt' | 'updatedAt'>
   ) => ServiceConfig;
   updateService: (
-    projectId: string,
+    projectIdOrPath: string,
     serviceId: string,
     updates: Partial<Omit<ServiceConfig, 'id' | 'createdAt'>>
   ) => void;
-  renameService: (projectId: string, serviceId: string, newName: string) => void;
-  reorderServices: (projectId: string, fromIndex: number, toIndex: number) => void;
-  deleteService: (projectId: string, serviceId: string) => Promise<void>;
+  renameService: (projectIdOrPath: string, serviceId: string, newName: string) => void;
+  reorderServices: (projectIdOrPath: string, fromIndex: number, toIndex: number) => void;
+  deleteService: (projectIdOrPath: string, serviceId: string) => Promise<void>;
 
-  startService: (projectId: string, serviceId: string) => Promise<boolean>;
+  startService: (projectIdOrPath: string, serviceId: string) => Promise<boolean>;
   stopService: (serviceId: string) => Promise<boolean>;
-  restartService: (projectId: string, serviceId: string) => Promise<boolean>;
-  startAllServices: (projectId: string) => Promise<void>;
-  stopAllServices: (projectId: string) => Promise<void>;
+  restartService: (projectIdOrPath: string, serviceId: string) => Promise<boolean>;
+  startAllServices: (projectIdOrPath: string) => Promise<void>;
+  stopAllServices: (projectIdOrPath: string) => Promise<void>;
 
   clearLogs: (serviceId: string) => void;
   setAutoScroll: (serviceId: string, enabled: boolean) => void;
   toggleAutoScroll: (serviceId: string) => void;
-  hasRunningServices: (projectId?: string) => boolean;
-  getRunningCount: (projectId?: string) => number;
+  hasRunningServices: (projectIdOrPath?: string) => boolean;
+  getRunningCount: (projectIdOrPath?: string) => number;
   appendLog: (serviceId: string, text: string) => void;
   handleProcessExit: (serviceId: string, exitCode: number, signal?: string) => void;
 }
@@ -126,8 +127,195 @@ const DEFAULT_RUNTIME_STATE: ServiceRuntimeState = {
   logs: [],
 };
 
-function getStorageKey(projectId: string): string {
+export function normalizeProjectPath(p: string): string {
+  if (!p) return '';
+  return normalizePath(p);
+}
+
+function getPathStorageKey(normPath: string): string {
+  return `omnigit_services_path_${normPath}`;
+}
+
+function getLegacyStorageKey(projectId: string): string {
   return `omnigit_services_${projectId}`;
+}
+
+function resolveProject(projectIdOrPath?: string, explicitPath?: string): {
+  projectId: string;
+  projectPath: string;
+  normPath: string;
+} {
+  const projects = useAppStore.getState().projects;
+  const activeProjectId = useAppStore.getState().activeProjectId;
+
+  // 1. Explicit path given
+  if (explicitPath) {
+    const norm = normalizeProjectPath(explicitPath);
+    const matched = projects.find((p) => normalizeProjectPath(p.path) === norm);
+    return {
+      projectId: matched?.id || (projectIdOrPath && !projectIdOrPath.includes('/') && !projectIdOrPath.includes('\\') ? projectIdOrPath : ''),
+      projectPath: explicitPath,
+      normPath: norm,
+    };
+  }
+
+  // 2. Identify by projectIdOrPath
+  if (projectIdOrPath) {
+    const byId = projects.find((p) => p.id === projectIdOrPath);
+    if (byId) {
+      return {
+        projectId: byId.id,
+        projectPath: byId.path,
+        normPath: normalizeProjectPath(byId.path),
+      };
+    }
+
+    const normInput = normalizeProjectPath(projectIdOrPath);
+    const byPath = projects.find((p) => normalizeProjectPath(p.path) === normInput);
+    if (byPath) {
+      return {
+        projectId: byPath.id,
+        projectPath: byPath.path,
+        normPath: normalizeProjectPath(byPath.path),
+      };
+    }
+
+    if (projectIdOrPath.includes('/') || projectIdOrPath.includes('\\')) {
+      return {
+        projectId: '',
+        projectPath: projectIdOrPath,
+        normPath: normInput,
+      };
+    }
+
+    return {
+      projectId: projectIdOrPath,
+      projectPath: '',
+      normPath: '',
+    };
+  }
+
+  // 3. Fallback to active project
+  const activeProject = projects.find((p) => p.id === activeProjectId);
+  if (activeProject) {
+    return {
+      projectId: activeProject.id,
+      projectPath: activeProject.path,
+      normPath: normalizeProjectPath(activeProject.path),
+    };
+  }
+
+  return { projectId: '', projectPath: '', normPath: '' };
+}
+
+async function persistServicesToDisk(normPath: string, services: ServiceConfig[]): Promise<boolean> {
+  if (!normPath) return false;
+  if (typeof window !== 'undefined' && (window as any).electronAPI?.services?.saveBackup) {
+    try {
+      return await (window as any).electronAPI.services.saveBackup({
+        servicesByProject: { [normPath]: services },
+      });
+    } catch (e) {
+      console.warn('[useServicesStore] Save backup via IPC failed:', e);
+    }
+  }
+
+  try {
+    const res = await fetch('/api/services/configs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        servicesByProject: { [normPath]: services },
+      }),
+    });
+    return res.ok;
+  } catch (e) {
+    return false;
+  }
+}
+
+async function fetchDiskBackup(): Promise<Record<string, ServiceConfig[]>> {
+  if (typeof window !== 'undefined' && (window as any).electronAPI?.services?.getBackup) {
+    try {
+      const res = await (window as any).electronAPI.services.getBackup();
+      if (res && typeof res === 'object') return res;
+    } catch (e) {
+      console.warn('[useServicesStore] Read backup via IPC failed:', e);
+    }
+  }
+
+  try {
+    const res = await fetch('/api/services/configs');
+    if (res.ok) {
+      const data = await res.json();
+      if (data && typeof data === 'object') return data;
+    }
+  } catch (e) {}
+  return {};
+}
+
+function findAndAdoptLegacyServices(normPath: string, projectPath: string): ServiceConfig[] | null {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const legacyKeys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (
+        key &&
+        key.startsWith('omnigit_services_') &&
+        !key.startsWith('omnigit_services_path_') &&
+        key !== 'omnigit_services_left_width'
+      ) {
+        legacyKeys.push(key);
+      }
+    }
+
+    if (legacyKeys.length === 0) return null;
+
+    for (const key of legacyKeys) {
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) continue;
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed) || parsed.length === 0) continue;
+
+        const matchesProject = parsed.some((s: ServiceConfig) => {
+          const cmd = (s.winCommand || s.unixCommand || '').toLowerCase();
+          const name = (s.name || '').toLowerCase();
+          if (normPath.includes('land-quality-sys') || normPath.includes('farmland')) {
+            if (
+              cmd.includes('start-backend') ||
+              cmd.includes('start-web') ||
+              name === 'backend' ||
+              name === 'web'
+            ) {
+              return true;
+            }
+          }
+          const folderName = normPath.split('/').pop() || '';
+          if (folderName && (cmd.includes(folderName) || (s.cwd && s.cwd.includes(folderName)))) {
+            return true;
+          }
+          return false;
+        });
+
+        if (matchesProject) {
+          console.info(`[useServicesStore] Auto-adopting legacy services from ${key} for project ${normPath}`);
+          return parsed;
+        }
+
+        if (legacyKeys.length === 1) {
+          console.info(`[useServicesStore] Auto-adopting single orphaned legacy services from ${key} for project ${normPath}`);
+          return parsed;
+        }
+      } catch {}
+    }
+  } catch (e) {
+    console.warn('[useServicesStore] Failed scanning legacy keys:', e);
+  }
+
+  return null;
 }
 
 export const useServicesStore = create<ServicesState>((set, get) => ({
@@ -138,37 +326,141 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
   isConfigModalOpen: false,
   editingService: null,
 
-  loadProjectServices: (projectId: string) => {
-    if (!projectId) return [];
-    const cached = get().configsByProject[projectId];
-    if (cached) return cached;
+  loadProjectServices: (projectIdOrPath: string, explicitPath?: string) => {
+    if (!projectIdOrPath && !explicitPath) return [];
+
+    const { projectId, projectPath, normPath } = resolveProject(projectIdOrPath, explicitPath);
+
+    // Tier 1: Check in-memory store
+    if (normPath && get().configsByProject[normPath]?.length > 0) {
+      return get().configsByProject[normPath];
+    }
+    if (projectId && get().configsByProject[projectId]?.length > 0) {
+      return get().configsByProject[projectId];
+    }
 
     let loaded: ServiceConfig[] = [];
-    if (typeof window !== 'undefined') {
+
+    // Tier 2: Check localStorage primary path key
+    if (typeof window !== 'undefined' && normPath) {
       try {
-        const raw = localStorage.getItem(getStorageKey(projectId));
+        const raw = localStorage.getItem(getPathStorageKey(normPath));
         if (raw) {
-          loaded = JSON.parse(raw);
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            loaded = parsed;
+          }
         }
       } catch (err) {
-        console.warn('[useServicesStore] Failed to load services from localStorage:', err);
+        console.warn('[useServicesStore] Failed reading path key from localStorage:', err);
       }
     }
 
-    set((state) => ({
-      configsByProject: {
-        ...state.configsByProject,
-        [projectId]: loaded,
-      },
-      activeServiceId: state.activeServiceId || (loaded.length > 0 ? loaded[0].id : null),
-    }));
+    // Tier 3: Check localStorage legacy project ID key
+    if (loaded.length === 0 && typeof window !== 'undefined' && projectId) {
+      try {
+        const raw = localStorage.getItem(getLegacyStorageKey(projectId));
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            loaded = parsed;
+          }
+        }
+      } catch (err) {
+        console.warn('[useServicesStore] Failed reading legacy key from localStorage:', err);
+      }
+    }
 
-    return loaded;
+    // Tier 4: Scan and adopt legacy keys (synchronous, 0ms latency)
+    if (loaded.length === 0 && normPath) {
+      const adopted = findAndAdoptLegacyServices(normPath, projectPath);
+      if (adopted && adopted.length > 0) {
+        loaded = adopted;
+      }
+    }
+
+    // If loaded synchronously, cache and dual-write
+    if (loaded.length > 0) {
+      const nextConfigs: Record<string, ServiceConfig[]> = { ...get().configsByProject };
+      if (normPath) nextConfigs[normPath] = loaded;
+      if (projectId) nextConfigs[projectId] = loaded;
+
+      set((state) => ({
+        configsByProject: nextConfigs,
+        activeServiceId: state.activeServiceId || loaded[0].id,
+      }));
+
+      // Dual-write to localStorage for future instant boots
+      if (typeof window !== 'undefined') {
+        try {
+          if (normPath) localStorage.setItem(getPathStorageKey(normPath), JSON.stringify(loaded));
+          if (projectId) localStorage.setItem(getLegacyStorageKey(projectId), JSON.stringify(loaded));
+        } catch {}
+      }
+
+      // Persist to disk backup
+      if (normPath) {
+        persistServicesToDisk(normPath, loaded);
+      }
+
+      return loaded;
+    }
+
+    // Tier 5: Async check from disk backup (services_backup.json)
+    if (normPath) {
+      fetchDiskBackup().then((backup) => {
+        if (!backup || typeof backup !== 'object') return;
+        let matched: ServiceConfig[] | null = null;
+        for (const [key, configs] of Object.entries(backup)) {
+          if (normalizeProjectPath(key) === normPath && Array.isArray(configs) && configs.length > 0) {
+            matched = configs;
+            break;
+          }
+        }
+        if (matched && matched.length > 0) {
+          console.info(`[useServicesStore] Successfully recovered services from disk backup for ${normPath}`);
+          const nextConfigs: Record<string, ServiceConfig[]> = { ...get().configsByProject };
+          nextConfigs[normPath] = matched;
+          if (projectId) nextConfigs[projectId] = matched;
+
+          set((state) => ({
+            configsByProject: nextConfigs,
+            activeServiceId: state.activeServiceId || matched![0].id,
+          }));
+
+          if (typeof window !== 'undefined') {
+            try {
+              localStorage.setItem(getPathStorageKey(normPath), JSON.stringify(matched));
+              if (projectId) localStorage.setItem(getLegacyStorageKey(projectId), JSON.stringify(matched));
+            } catch {}
+          }
+        }
+      });
+    }
+
+    // Set empty in state for now
+    const nextConfigs: Record<string, ServiceConfig[]> = { ...get().configsByProject };
+    if (normPath) nextConfigs[normPath] = [];
+    if (projectId) nextConfigs[projectId] = [];
+    set({ configsByProject: nextConfigs });
+
+    return [];
   },
 
-  getServices: (projectId: string) => {
-    if (!projectId) return [];
-    return get().configsByProject[projectId] || [];
+  getServices: (projectIdOrPath: string) => {
+    if (!projectIdOrPath) return [];
+    const { projectId, normPath } = resolveProject(projectIdOrPath);
+    const configs = get().configsByProject;
+    if (normPath && configs[normPath]?.length > 0) {
+      return configs[normPath];
+    }
+    if (projectId && configs[projectId]?.length > 0) {
+      return configs[projectId];
+    }
+    if (configs[projectIdOrPath]?.length > 0) {
+      return configs[projectIdOrPath];
+    }
+    return [];
   },
 
   getRuntime: (serviceId: string) => {
@@ -191,10 +483,9 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
     set({ isConfigModalOpen: false, editingService: null });
   },
 
-  scanProjectScripts: async (projectId: string) => {
-    const appProjects = useAppStore.getState().projects;
-    const currentProj = appProjects.find((p) => p.id === projectId);
-    const projectRoot = currentProj?.path || '';
+  scanProjectScripts: async (projectIdOrPath: string) => {
+    const { projectPath } = resolveProject(projectIdOrPath);
+    const projectRoot = projectPath || '';
     if (!projectRoot) return [];
 
     if ((window as any).electronAPI?.services?.scanScripts) {
@@ -215,9 +506,10 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
     return [];
   },
 
-  importDiscoveredScripts: (projectId: string, groups: DiscoveredScriptGroup[]) => {
-    if (!projectId || !groups || groups.length === 0) return [];
-    const currentList = get().getServices(projectId);
+  importDiscoveredScripts: (projectIdOrPath: string, groups: DiscoveredScriptGroup[]) => {
+    if (!projectIdOrPath || !groups || groups.length === 0) return [];
+    const { projectId, normPath } = resolveProject(projectIdOrPath);
+    const currentList = get().getServices(normPath || projectId || projectIdOrPath);
     const existingCommands = new Set(
       currentList.map((s) => (s.winCommand || s.unixCommand || '').toLowerCase().trim())
     );
@@ -252,14 +544,23 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
 
     if (createdList.length > 0) {
       const updatedList = [...currentList, ...createdList];
+      const nextConfigs = { ...get().configsByProject };
+      if (normPath) nextConfigs[normPath] = updatedList;
+      if (projectId) nextConfigs[projectId] = updatedList;
+      if (projectIdOrPath) nextConfigs[projectIdOrPath] = updatedList;
+
       if (typeof window !== 'undefined') {
-        localStorage.setItem(getStorageKey(projectId), JSON.stringify(updatedList));
+        try {
+          if (normPath) localStorage.setItem(getPathStorageKey(normPath), JSON.stringify(updatedList));
+          if (projectId) localStorage.setItem(getLegacyStorageKey(projectId), JSON.stringify(updatedList));
+        } catch {}
       }
+      if (normPath) {
+        persistServicesToDisk(normPath, updatedList);
+      }
+
       set((state) => ({
-        configsByProject: {
-          ...state.configsByProject,
-          [projectId]: updatedList,
-        },
+        configsByProject: nextConfigs,
         activeServiceId: state.activeServiceId || updatedList[0].id,
       }));
     }
@@ -267,7 +568,8 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
     return createdList;
   },
 
-  addService: (projectId, data) => {
+  addService: (projectIdOrPath, data) => {
+    const { projectId, normPath } = resolveProject(projectIdOrPath);
     const id = `srv_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const now = Date.now();
     const newService: ServiceConfig = {
@@ -277,54 +579,72 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
       updatedAt: now,
     };
 
-    const currentList = get().getServices(projectId);
+    const currentList = get().getServices(normPath || projectId || projectIdOrPath);
     const updatedList = [...currentList, newService];
 
+    const nextConfigs = { ...get().configsByProject };
+    if (normPath) nextConfigs[normPath] = updatedList;
+    if (projectId) nextConfigs[projectId] = updatedList;
+    if (projectIdOrPath) nextConfigs[projectIdOrPath] = updatedList;
+
     if (typeof window !== 'undefined') {
-      localStorage.setItem(getStorageKey(projectId), JSON.stringify(updatedList));
+      try {
+        if (normPath) localStorage.setItem(getPathStorageKey(normPath), JSON.stringify(updatedList));
+        if (projectId) localStorage.setItem(getLegacyStorageKey(projectId), JSON.stringify(updatedList));
+      } catch {}
+    }
+    if (normPath) {
+      persistServicesToDisk(normPath, updatedList);
     }
 
-    set((state) => ({
-      configsByProject: {
-        ...state.configsByProject,
-        [projectId]: updatedList,
-      },
+    set({
+      configsByProject: nextConfigs,
       activeServiceId: id,
       isConfigModalOpen: false,
       editingService: null,
-    }));
+    });
 
     return newService;
   },
 
-  updateService: (projectId, serviceId, updates) => {
-    const currentList = get().getServices(projectId);
+  updateService: (projectIdOrPath, serviceId, updates) => {
+    const { projectId, normPath } = resolveProject(projectIdOrPath);
+    const currentList = get().getServices(normPath || projectId || projectIdOrPath);
     const updatedList = currentList.map((item) =>
       item.id === serviceId ? { ...item, ...updates, updatedAt: Date.now() } : item
     );
 
+    const nextConfigs = { ...get().configsByProject };
+    if (normPath) nextConfigs[normPath] = updatedList;
+    if (projectId) nextConfigs[projectId] = updatedList;
+    if (projectIdOrPath) nextConfigs[projectIdOrPath] = updatedList;
+
     if (typeof window !== 'undefined') {
-      localStorage.setItem(getStorageKey(projectId), JSON.stringify(updatedList));
+      try {
+        if (normPath) localStorage.setItem(getPathStorageKey(normPath), JSON.stringify(updatedList));
+        if (projectId) localStorage.setItem(getLegacyStorageKey(projectId), JSON.stringify(updatedList));
+      } catch {}
+    }
+    if (normPath) {
+      persistServicesToDisk(normPath, updatedList);
     }
 
-    set((state) => ({
-      configsByProject: {
-        ...state.configsByProject,
-        [projectId]: updatedList,
-      },
+    set({
+      configsByProject: nextConfigs,
       isConfigModalOpen: false,
       editingService: null,
-    }));
+    });
   },
 
-  renameService: (projectId, serviceId, newName) => {
+  renameService: (projectIdOrPath, serviceId, newName) => {
     const trimmed = newName.trim();
     if (!trimmed) return;
-    get().updateService(projectId, serviceId, { name: trimmed });
+    get().updateService(projectIdOrPath, serviceId, { name: trimmed });
   },
 
-  reorderServices: (projectId, fromIndex, toIndex) => {
-    const currentList = get().getServices(projectId);
+  reorderServices: (projectIdOrPath, fromIndex, toIndex) => {
+    const { projectId, normPath } = resolveProject(projectIdOrPath);
+    const currentList = get().getServices(normPath || projectId || projectIdOrPath);
     if (
       fromIndex < 0 ||
       fromIndex >= currentList.length ||
@@ -339,34 +659,49 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
     const [moved] = reordered.splice(fromIndex, 1);
     reordered.splice(toIndex, 0, moved);
 
+    const nextConfigs = { ...get().configsByProject };
+    if (normPath) nextConfigs[normPath] = reordered;
+    if (projectId) nextConfigs[projectId] = reordered;
+    if (projectIdOrPath) nextConfigs[projectIdOrPath] = reordered;
+
     if (typeof window !== 'undefined') {
       try {
-        localStorage.setItem(getStorageKey(projectId), JSON.stringify(reordered));
+        if (normPath) localStorage.setItem(getPathStorageKey(normPath), JSON.stringify(reordered));
+        if (projectId) localStorage.setItem(getLegacyStorageKey(projectId), JSON.stringify(reordered));
       } catch (e) {
         console.warn('[useServicesStore] Failed to save reordered services to localStorage', e);
       }
     }
+    if (normPath) {
+      persistServicesToDisk(normPath, reordered);
+    }
 
-    set((state) => ({
-      configsByProject: {
-        ...state.configsByProject,
-        [projectId]: reordered,
-      },
-    }));
+    set({ configsByProject: nextConfigs });
   },
 
-  deleteService: async (projectId, serviceId) => {
-    // If currently running, stop it first
+  deleteService: async (projectIdOrPath, serviceId) => {
+    const { projectId, normPath } = resolveProject(projectIdOrPath);
     const runtime = get().getRuntime(serviceId);
     if (runtime.status === 'running' || runtime.status === 'starting') {
       await get().stopService(serviceId);
     }
 
-    const currentList = get().getServices(projectId);
+    const currentList = get().getServices(normPath || projectId || projectIdOrPath);
     const updatedList = currentList.filter((item) => item.id !== serviceId);
 
+    const nextConfigs = { ...get().configsByProject };
+    if (normPath) nextConfigs[normPath] = updatedList;
+    if (projectId) nextConfigs[projectId] = updatedList;
+    if (projectIdOrPath) nextConfigs[projectIdOrPath] = updatedList;
+
     if (typeof window !== 'undefined') {
-      localStorage.setItem(getStorageKey(projectId), JSON.stringify(updatedList));
+      try {
+        if (normPath) localStorage.setItem(getPathStorageKey(normPath), JSON.stringify(updatedList));
+        if (projectId) localStorage.setItem(getLegacyStorageKey(projectId), JSON.stringify(updatedList));
+      } catch {}
+    }
+    if (normPath) {
+      persistServicesToDisk(normPath, updatedList);
     }
 
     set((state) => {
@@ -381,18 +716,16 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
       delete nextRuntime[serviceId];
 
       return {
-        configsByProject: {
-          ...state.configsByProject,
-          [projectId]: updatedList,
-        },
+        configsByProject: nextConfigs,
         activeServiceId: nextActiveId,
         runtimeStates: nextRuntime,
       };
     });
   },
 
-  startService: async (projectId, serviceId) => {
-    const services = get().getServices(projectId);
+  startService: async (projectIdOrPath, serviceId) => {
+    const { projectId: resolvedId, projectPath, normPath } = resolveProject(projectIdOrPath);
+    const services = get().getServices(normPath || resolvedId || projectIdOrPath);
     const service = services.find((s) => s.id === serviceId);
     if (!service) return false;
 
@@ -421,10 +754,7 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
     }
 
     // Determine working directory
-    const appProjects = useAppStore.getState().projects;
-    const currentProj = appProjects.find((p) => p.id === projectId);
-    const projectRoot = currentProj?.path || '';
-
+    const projectRoot = projectPath || '';
     let resolvedCwd = projectRoot;
     if (service.cwd && service.cwd.trim()) {
       const customCwd = service.cwd.trim();
@@ -484,7 +814,7 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
         const res = await (window as any).electronAPI.services.start({
           serviceId,
           serviceName: service.name,
-          projectId,
+          projectId: resolvedId || normPath || projectIdOrPath,
           command,
           stopCommand: stopCommand || undefined,
           cwd: resolvedCwd,
@@ -542,7 +872,7 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
           body: JSON.stringify({
             serviceId,
             serviceName: service.name,
-            projectId,
+            projectId: resolvedId || normPath || projectIdOrPath,
             command,
             stopCommand: stopCommand || undefined,
             cwd: resolvedCwd,
@@ -597,7 +927,6 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
   },
 
   stopService: async (serviceId: string) => {
-    // 1. Immediately set status to 'stopping' to give instant user feedback (< 16ms)
     set((state) => ({
       runtimeStates: {
         ...state.runtimeStates,
@@ -643,26 +972,26 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
     return true;
   },
 
-  restartService: async (projectId: string, serviceId: string) => {
+  restartService: async (projectIdOrPath: string, serviceId: string) => {
     get().setAutoScroll(serviceId, true);
     await get().stopService(serviceId);
     await new Promise((r) => setTimeout(r, 200));
-    return await get().startService(projectId, serviceId);
+    return await get().startService(projectIdOrPath, serviceId);
   },
 
-  startAllServices: async (projectId: string) => {
-    const list = get().getServices(projectId);
+  startAllServices: async (projectIdOrPath: string) => {
+    const list = get().getServices(projectIdOrPath);
     for (const item of list) {
       get().setAutoScroll(item.id, true);
       const runtime = get().getRuntime(item.id);
       if (runtime.status !== 'running' && runtime.status !== 'starting') {
-        await get().startService(projectId, item.id);
+        await get().startService(projectIdOrPath, item.id);
       }
     }
   },
 
-  stopAllServices: async (projectId: string) => {
-    const list = get().getServices(projectId);
+  stopAllServices: async (projectIdOrPath: string) => {
+    const list = get().getServices(projectIdOrPath);
     const runningItems = list.filter((item) => {
       const r = get().getRuntime(item.id);
       return r.status === 'running' || r.status === 'starting';
@@ -670,7 +999,6 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
 
     if (runningItems.length === 0) return;
 
-    // Immediately mark all as stopping for instant UI feedback
     set((state) => {
       const nextRuntimes = { ...state.runtimeStates };
       for (const item of runningItems) {
@@ -712,27 +1040,27 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
     get().setAutoScroll(serviceId, !current);
   },
 
-  hasRunningServices: (projectId?: string) => {
+  hasRunningServices: (projectIdOrPath?: string) => {
     const state = get();
     for (const [id, runtime] of Object.entries(state.runtimeStates)) {
       if (runtime.status === 'running' || runtime.status === 'starting') {
-        if (!projectId) return true;
-        const services = state.configsByProject[projectId] || [];
+        if (!projectIdOrPath) return true;
+        const services = get().getServices(projectIdOrPath);
         if (services.some((s) => s.id === id)) return true;
       }
     }
     return false;
   },
 
-  getRunningCount: (projectId?: string) => {
+  getRunningCount: (projectIdOrPath?: string) => {
     const state = get();
     let count = 0;
     for (const [id, runtime] of Object.entries(state.runtimeStates)) {
       if (runtime.status === 'running' || runtime.status === 'starting') {
-        if (!projectId) {
+        if (!projectIdOrPath) {
           count++;
         } else {
-          const services = state.configsByProject[projectId] || [];
+          const services = get().getServices(projectIdOrPath);
           if (services.some((s) => s.id === id)) count++;
         }
       }

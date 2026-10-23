@@ -683,6 +683,15 @@ export async function handleGitApiRequest(req: IncomingMessage, res: ServerRespo
       const projectPath = query.projectPath || body.projectPath || '';
       const scripts = nodeServiceProcessManager.scanProjectScripts(projectPath);
       res.end(JSON.stringify(scripts));
+    } else if (pathname === '/api/services/configs') {
+      if (req.method === 'POST') {
+        const success = gitService.saveServicesBackup(body);
+        res.end(JSON.stringify({ success }));
+      } else {
+        const configs = gitService.getServicesBackup();
+        res.end(JSON.stringify(configs));
+      }
+      return true;
     } else {
       res.statusCode = 404;
       res.end(JSON.stringify({ error: 'Endpoint not found' }));

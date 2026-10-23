@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { ServiceConfig } from './types';
-import { useServicesStore } from './useServicesStore';
+import { useServicesStore, normalizeProjectPath } from './useServicesStore';
 import { useAppStore } from '../../store/useAppStore';
 import { ServiceCard } from './ServiceCard';
 import { ServiceLogViewer } from './ServiceLogViewer';
@@ -26,13 +26,27 @@ export const ServicesDashboard: React.FC = () => {
   const activeProjectId = useAppStore((state) => state.activeProjectId);
 
   const projectId = activeProjectId || '';
+  const currentProject = projects.find((p) => p.id === activeProjectId);
+  const projectPath = currentProject?.path || '';
+  const normPath = projectPath ? normalizeProjectPath(projectPath) : '';
+  const targetKey = normPath || projectId;
 
   // Fine-grained ServicesStore selectors: decouple services dashboard from high-frequency log updates
-  const services = useServicesStore((state) => state.configsByProject[projectId] || EMPTY_SERVICES);
+  const services = useServicesStore(
+    (state) =>
+      (normPath && state.configsByProject[normPath]?.length ? state.configsByProject[normPath] : null) ||
+      (projectId && state.configsByProject[projectId]?.length ? state.configsByProject[projectId] : null) ||
+      (targetKey && state.configsByProject[targetKey]?.length ? state.configsByProject[targetKey] : null) ||
+      EMPTY_SERVICES
+  );
   const activeServiceId = useServicesStore((state) => state.activeServiceId);
   const runningCount = useServicesStore((state) => {
     let count = 0;
-    const projectServices = state.configsByProject[projectId] || [];
+    const projectServices =
+      (normPath && state.configsByProject[normPath]) ||
+      (projectId && state.configsByProject[projectId]) ||
+      (targetKey && state.configsByProject[targetKey]) ||
+      EMPTY_SERVICES;
     const sIds = new Set(projectServices.map((s) => s.id));
     for (const [id, runtime] of Object.entries(state.runtimeStates)) {
       if (sIds.has(id) && (runtime.status === 'running' || runtime.status === 'starting')) {
@@ -52,7 +66,6 @@ export const ServicesDashboard: React.FC = () => {
   const importDiscoveredScripts = useServicesStore((state) => state.importDiscoveredScripts);
   const reorderServices = useServicesStore((state) => state.reorderServices);
 
-  const currentProject = projects.find((p) => p.id === activeProjectId);
   const [isScanning, setIsScanning] = useState(false);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
@@ -74,20 +87,20 @@ export const ServicesDashboard: React.FC = () => {
   };
 
   useEffect(() => {
-    if (projectId) {
-      loadProjectServices(projectId);
+    if (targetKey || projectPath) {
+      loadProjectServices(targetKey, projectPath);
     }
-  }, [projectId, loadProjectServices]);
+  }, [targetKey, projectPath, loadProjectServices]);
 
   const activeService = services.find((s) => s.id === activeServiceId) || (services.length > 0 ? services[0] : null);
 
   const handleScanAndImport = async () => {
-    if (!projectId) return;
+    if (!targetKey) return;
     setIsScanning(true);
     try {
-      const discovered = await scanProjectScripts(projectId);
+      const discovered = await scanProjectScripts(targetKey);
       if (discovered && discovered.length > 0) {
-        importDiscoveredScripts(projectId, discovered);
+        importDiscoveredScripts(targetKey, discovered);
       } else {
         openAddModal();
       }
@@ -154,7 +167,7 @@ export const ServicesDashboard: React.FC = () => {
 
             {/* Start All */}
             <button
-              onClick={() => startAllServices(projectId)}
+              onClick={() => startAllServices(targetKey)}
               disabled={services.length === 0}
               className="p-1.5 rounded-lg text-theme-muted hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-500/10 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
               title={t.services.startAll}
@@ -164,7 +177,7 @@ export const ServicesDashboard: React.FC = () => {
 
             {/* Stop All */}
             <button
-              onClick={() => stopAllServices(projectId)}
+              onClick={() => stopAllServices(targetKey)}
               disabled={!hasRunning}
               className="p-1.5 rounded-lg text-theme-muted hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
               title={t.services.stopAll}
@@ -220,7 +233,7 @@ export const ServicesDashboard: React.FC = () => {
                 key={item.id}
                 service={item}
                 index={index}
-                projectId={projectId}
+                projectId={targetKey}
                 isActive={activeService?.id === item.id}
                 onSelect={() => setActiveServiceId(item.id)}
                 isDragging={draggedIndex === index}
@@ -245,7 +258,7 @@ export const ServicesDashboard: React.FC = () => {
                 onDrop={(e) => {
                   e.preventDefault();
                   if (draggedIndex !== null && draggedIndex !== index) {
-                    reorderServices(projectId, draggedIndex, index);
+                    reorderServices(targetKey, draggedIndex, index);
                   }
                   setDraggedIndex(null);
                   setDragOverIndex(null);
@@ -273,12 +286,12 @@ export const ServicesDashboard: React.FC = () => {
       {/* Right Panel: Service Log & Console */}
       <ServiceLogViewer
         service={activeService}
-        projectId={projectId}
+        projectId={targetKey}
       />
 
       {/* Config Modal (Add / Edit) */}
       <ServiceConfigModal
-        projectId={projectId}
+        projectId={targetKey}
         projectPath={currentProject.path}
       />
     </div>

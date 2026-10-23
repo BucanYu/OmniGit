@@ -125,6 +125,10 @@ const electronAPI = {
           cwd?: string;
         }>
       >,
+    getBackup: () =>
+      ipcRenderer.invoke('services:get-backup') as Promise<Record<string, any[]>>,
+    saveBackup: (data: { servicesByProject?: Record<string, any[]> }) =>
+      ipcRenderer.invoke('services:save-backup', data) as Promise<boolean>,
     onLog: (callback: (payload: { serviceId: string; data: string; stream: 'stdout' | 'stderr' }) => void) => {
       const handler = (_event: any, payload: { serviceId: string; data: string; stream: 'stdout' | 'stderr' }) =>
         callback(payload);

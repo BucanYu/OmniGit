@@ -5,6 +5,7 @@ import {
   ServiceRunConfig,
   ActiveProcessRecord,
 } from '../src/server/nodeServiceProcessManager';
+import { gitSnapshotService } from '../src/server/gitSnapshotService';
 
 export type { ServiceRunConfig, ActiveProcessRecord };
 
@@ -53,5 +54,13 @@ export function setupServiceIpcHandlers() {
 
   ipcMain.handle('services:scan-scripts', (_event, projectPath: string) => {
     return nodeServiceProcessManager.scanProjectScripts(projectPath);
+  });
+
+  ipcMain.handle('services:get-backup', () => {
+    return gitSnapshotService.getServicesBackup();
+  });
+
+  ipcMain.handle('services:save-backup', (_event, data: { servicesByProject?: Record<string, any[]> }) => {
+    return gitSnapshotService.saveServicesBackup(data);
   });
 }
