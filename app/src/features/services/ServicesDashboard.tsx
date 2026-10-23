@@ -31,21 +31,15 @@ export const ServicesDashboard: React.FC = () => {
   const normPath = projectPath ? normalizeProjectPath(projectPath) : '';
   const targetKey = normPath || projectId;
 
-  // Fine-grained ServicesStore selectors: decouple services dashboard from high-frequency log updates
+  // Strictly isolate services by normPath to prevent ANY cross-project collision or bleeding
   const services = useServicesStore(
-    (state) =>
-      (normPath && state.configsByProject[normPath]?.length ? state.configsByProject[normPath] : null) ||
-      (projectId && state.configsByProject[projectId]?.length ? state.configsByProject[projectId] : null) ||
-      (targetKey && state.configsByProject[targetKey]?.length ? state.configsByProject[targetKey] : null) ||
-      EMPTY_SERVICES
+    (state) => (normPath ? state.configsByProject[normPath] : (projectId ? state.configsByProject[projectId] : null)) || EMPTY_SERVICES
   );
   const activeServiceId = useServicesStore((state) => state.activeServiceId);
   const runningCount = useServicesStore((state) => {
     let count = 0;
     const projectServices =
-      (normPath && state.configsByProject[normPath]) ||
-      (projectId && state.configsByProject[projectId]) ||
-      (targetKey && state.configsByProject[targetKey]) ||
+      (normPath ? state.configsByProject[normPath] : (projectId ? state.configsByProject[projectId] : null)) ||
       EMPTY_SERVICES;
     const sIds = new Set(projectServices.map((s) => s.id));
     for (const [id, runtime] of Object.entries(state.runtimeStates)) {
