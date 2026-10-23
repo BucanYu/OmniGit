@@ -8,7 +8,7 @@
 
 [![GitHub release](https://img.shields.io/github/v/release/BucanYu/OmniGit?style=flat-square&color=0284c7)](https://github.com/BucanYu/OmniGit/releases)
 [![Total Downloads](https://img.shields.io/github/downloads/BucanYu/OmniGit/total?style=flat-square&color=10b981&label=Total%20Downloads)](https://somsubhra.github.io/github-release-stats/?username=BucanYu&repository=OmniGit)
-[![Latest Release Downloads](https://img.shields.io/github/downloads/BucanYu/OmniGit/latest/total?style=flat-square&color=0ea5e9&label=v0.5.0%20Downloads)](https://github.com/BucanYu/OmniGit/releases/latest)
+[![Latest Release Downloads](https://img.shields.io/github/downloads/BucanYu/OmniGit/v0.5.0/total?style=flat-square&color=0ea5e9&label=v0.5.0%20Downloads)](https://github.com/BucanYu/OmniGit/releases/latest)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Web-blue?style=flat-square)](https://github.com/BucanYu/OmniGit/releases)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 [![GitHub Stars](https://img.shields.io/github/stars/BucanYu/OmniGit?style=flat-square&color=eab308)](https://github.com/BucanYu/OmniGit/stargazers)
@@ -17,7 +17,7 @@
 
 ### 📦 软件下载与安装 (Downloads & Releases)
 
-> 🚀 **最新正式版：v0.5.0** | 📈 **实时数据：[![Total Downloads](https://img.shields.io/github/downloads/BucanYu/OmniGit/total?style=flat-square&color=10b981&label=全版本累计下载)](https://somsubhra.github.io/github-release-stats/?username=BucanYu&repository=OmniGit) [![Latest Downloads](https://img.shields.io/github/downloads/BucanYu/OmniGit/latest/total?style=flat-square&color=0ea5e9&label=v0.5.0%20下载量)](https://github.com/BucanYu/OmniGit/releases/latest)** | 🔍 **[查看各版本下载量动态明细大屏 ↗](https://somsubhra.github.io/github-release-stats/?username=BucanYu&repository=OmniGit)**
+> 🚀 **最新正式版：v0.5.0** | 📈 **实时数据：[![Total Downloads](https://img.shields.io/github/downloads/BucanYu/OmniGit/total?style=flat-square&color=10b981&label=全版本累计下载)](https://somsubhra.github.io/github-release-stats/?username=BucanYu&repository=OmniGit) [![Latest Downloads](https://img.shields.io/github/downloads/BucanYu/OmniGit/v0.5.0/total?style=flat-square&color=0ea5e9&label=v0.5.0%20下载量)](https://github.com/BucanYu/OmniGit/releases/latest)** | 🔍 **[查看各版本下载量动态明细大屏 ↗](https://somsubhra.github.io/github-release-stats/?username=BucanYu&repository=OmniGit)**
 
 #### 🪟 Windows 平台
 | 安装包类型 | 下载通道 (GitHub Releases) | 特性说明 | 免提权 |
