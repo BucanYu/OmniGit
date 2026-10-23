@@ -204,6 +204,43 @@ async function main() {
     });
     await sleep(500);
 
+    // 6. Workspace Dashboard Mode
+    console.log('8. Capturing Workspace Dashboard Mode (09_workspace_dashboard.png)...');
+    await send('Runtime.evaluate', {
+      expression: `
+        (async function() {
+          const wb = window.__workbenchStore ? window.__workbenchStore.getState() : null;
+          if (wb) wb.setWorkbenchMode('dashboard');
+        })()
+      `,
+    });
+    await sleep(2000);
+    await takeScreenshot('09_workspace_dashboard.png');
+
+    // 7. Dashboard Config Modal
+    console.log('9. Capturing Dashboard Config Modal (10_dashboard_config_modal.png)...');
+    await send('Runtime.evaluate', {
+      expression: `
+        (async function() {
+          const ds = window.__dashboardStore ? window.__dashboardStore.getState() : null;
+          if (ds) ds.openConfigModal();
+        })()
+      `,
+    });
+    await sleep(1500);
+    await takeScreenshot('10_dashboard_config_modal.png');
+
+    // Close config modal
+    await send('Runtime.evaluate', {
+      expression: `
+        (async function() {
+          const ds = window.__dashboardStore ? window.__dashboardStore.getState() : null;
+          if (ds) ds.closeConfigModal();
+        })()
+      `,
+    });
+    await sleep(500);
+
     console.log('✓ All feature screenshots successfully updated!');
   } finally {
     ws.close();
