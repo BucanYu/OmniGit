@@ -6,6 +6,7 @@ import { useTranslation } from '../../locales';
 import { useGlobalSearchStore } from '../global-search/useGlobalSearchStore';
 import { useServicesStore } from '../services/useServicesStore';
 import {
+  LayoutDashboard,
   GitCommit,
   Files,
   Terminal,
@@ -34,6 +35,22 @@ export function ActivityBar() {
     <div className="w-[42px] bg-theme-sidebar border-r border-theme-border flex flex-col items-center justify-between py-2 shrink-0 select-none z-20">
       {/* Top Modes */}
       <div className="flex flex-col items-center gap-2 w-full">
+        {/* 0. Workspace Dashboard Mode */}
+        <button
+          onClick={() => setWorkbenchMode('dashboard')}
+          className={`relative p-2 rounded-lg transition-colors cursor-pointer group ${
+            workbenchMode === 'dashboard'
+              ? 'text-sky-400 bg-theme-hover shadow-sm'
+              : 'text-theme-muted hover:text-theme-main hover:bg-theme-hover/60'
+          }`}
+          title={t.activityBar.dashboard}
+        >
+          {workbenchMode === 'dashboard' && (
+            <div className="absolute left-0 top-1.5 bottom-1.5 w-[3px] bg-sky-500 rounded-r" />
+          )}
+          <LayoutDashboard className="w-5 h-5 stroke-[1.8]" />
+        </button>
+
         {/* 1. Git Workbench Mode */}
         <button
           onClick={() => setWorkbenchMode('git')}

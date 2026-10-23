@@ -9,7 +9,7 @@ const path = require('path');
 function runScript(scriptPath) {
   return new Promise((resolve) => {
     const t0 = performance.now();
-    const child = spawn('node', [scriptPath], {
+    const child = spawn(process.execPath, ['--experimental-websocket', scriptPath], {
       stdio: 'inherit',
       cwd: path.resolve(__dirname, '..', '..'),
     });

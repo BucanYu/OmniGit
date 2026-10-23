@@ -212,6 +212,18 @@ export interface WorkspaceRepoItem {
   branch?: string;
 }
 
+export interface WorkspaceDashboardConfig {
+  enabled: boolean;                      // 是否启用自定义自研首页
+  type: 'url' | 'file';                  // 嵌入类型：Web 链接 或 本地文件
+  url?: string;                          // Web 链接
+  filePath?: string;                     // 本地 HTML 路径（支持绝对路径或相对工作空间路径）
+  title?: string;                        // 自定义页面显示标题
+  openMode?: 'embedded' | 'external';    // 嵌入渲染 或 外部默认浏览器
+  autoReload?: boolean;                  // 是否启用定时刷新
+  reloadIntervalSeconds?: number;        // 定时刷新周期（默认 60 秒）
+  enableBridge?: boolean;                // 【安全配置】是否启用宿主微前端受控通信联动
+}
+
 export interface WorkspaceGroupItem {
   id: string;
   name: string;
@@ -220,6 +232,7 @@ export interface WorkspaceGroupItem {
   lastOpened: number;
   badgeColor?: string;
   lastActiveProjectPath?: string;
+  dashboard?: WorkspaceDashboardConfig;
 }
 
 export interface RecentProjectItem {

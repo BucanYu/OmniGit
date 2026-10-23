@@ -6,7 +6,7 @@ const scriptsDir = __dirname;
 const rootDir = path.resolve(scriptsDir, '..');
 const makensisExe = path.join(scriptsDir, 'tools', 'nsis', 'makensis.exe');
 const installerNsi = path.join(scriptsDir, 'installer.nsi');
-const productVersion = process.argv[2] || '0.5.0';
+const productVersion = process.argv[2] || '0.6.0';
 
 if (!fs.existsSync(makensisExe)) {
   console.error(`[ERROR] makensis.exe not found at: ${makensisExe}`);

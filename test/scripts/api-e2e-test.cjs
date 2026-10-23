@@ -4,6 +4,7 @@
  */
 
 const http = require('http');
+const path = require('path');
 
 const PORT = 5345;
 const BASE_URL = `http://127.0.0.1:${PORT}`;
@@ -117,6 +118,50 @@ test('File System Security: Tree traversal outside repo root is blocked', async 
   const text = await res.text();
   assert(res.status !== 200 || text.includes('Access denied') || text.includes('error'), 'Expected error or access denied');
   console.log(`    ✓ Security check passed: Unauthorized tree path traversal blocked`);
+});
+
+// -------------------------------------------------------------
+// Test 7: Workspace Dashboard Static Mount & <base> Tag Injection
+// -------------------------------------------------------------
+test('Workspace Dashboard: /api/workspace/dashboard-serve mounts and injects <base> tag', async () => {
+  const publicDir = path.resolve(__dirname, '../../app/public');
+  const mountRes = await request('/api/workspace/dashboard-mount', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      workspaceId: 'test_ws_dash',
+      targetDir: publicDir,
+    }),
+  });
+  assert(mountRes.status === 200, `Expected mount status 200, got ${mountRes.status}`);
+
+  const htmlRes = await request('/api/workspace/dashboard-serve/test_ws_dash/test-dashboard.html');
+  assert(htmlRes.status === 200, `Expected html status 200, got ${htmlRes.status}`);
+  const htmlText = await htmlRes.text();
+  assert(htmlText.includes('<base href="/api/workspace/dashboard-serve/test_ws_dash/">'), 'Expected injected <base> tag');
+  console.log(`    ✓ Status: 200, Injected <base> verified, Latency: ${htmlRes.duration.toFixed(2)}ms`);
+});
+
+// -------------------------------------------------------------
+// Test 8: Dashboard Security - Anti-Traversal Sandbox Block
+// -------------------------------------------------------------
+test('Workspace Dashboard Security: Traversal outside mounted root is blocked with 403', async () => {
+  const badRes = await request('/api/workspace/dashboard-serve/test_ws_dash/..%2f..%2fWindows/System32/calc.exe');
+  assert(badRes.status === 403, `Expected status 403 Forbidden, got ${badRes.status}`);
+  const text = await badRes.text();
+  assert(text.includes('403') || text.includes('Path traversal'), 'Expected traversal block message');
+  console.log(`    ✓ Security check passed: Traversal request blocked with 403 Forbidden`);
+});
+
+// -------------------------------------------------------------
+// Test 9: Dashboard Security - Untrusted Cross-Origin CSRF Block
+// -------------------------------------------------------------
+test('Workspace Dashboard Security: Untrusted external origin is blocked with 403', async () => {
+  const evilRes = await request('/api/workspace/dashboard-serve/test_ws_dash/test-dashboard.html', {
+    headers: { Origin: 'http://evil-hacker.com' },
+  });
+  assert(evilRes.status === 403, `Expected status 403 Forbidden, got ${evilRes.status}`);
+  console.log(`    ✓ Security check passed: Untrusted cross-origin request rejected with 403`);
 });
 
 // -------------------------------------------------------------

@@ -671,22 +671,22 @@ async function runBrowserE2E() {
     await sleep(400);
 
     // -----------------------------------------------------------------
-    // Step 5F: Version Constant & UI Verification (0.5.0)
+    // Step 5F: Version Constant & UI Verification (0.6.0)
     // -----------------------------------------------------------------
-    console.log('    ▶ Validating OmniGit Version Bump to 0.5.0...');
+    console.log('    ▶ Validating OmniGit Version Bump to 0.6.0...');
     const versionCheckResult = await cdp.evaluate(`
       (function() {
         const bodyText = document.body.innerText || '';
-        const hasVersion = bodyText.includes('v0.5.0') || bodyText.includes('0.5.0');
+        const hasVersion = bodyText.includes('v0.6.0') || bodyText.includes('0.6.0');
         return {
           success: true,
           hasVersion,
         };
       })()
     `);
-    console.log('    ✓ Version 0.5.0 check result:', versionCheckResult);
+    console.log('    ✓ Version 0.6.0 check result:', versionCheckResult);
     if (!versionCheckResult.success || !versionCheckResult.hasVersion) {
-      throw new Error(`Version 0.5.0 check failed: ${JSON.stringify(versionCheckResult)}`);
+      throw new Error(`Version 0.6.0 check failed: ${JSON.stringify(versionCheckResult)}`);
     }
 
     // -----------------------------------------------------------------
@@ -758,7 +758,7 @@ async function runBrowserE2E() {
         const matchingTabs = tabs.filter(t => t.filePath.toLowerCase().replace(/\\\\/g, '/').includes('package.json'));
         
         // Check DOM tab count
-        const domTabHeaders = Array.from(document.querySelectorAll('.select-none span.truncate')).filter(el => el.textContent === 'package.json');
+        const domTabHeaders = Array.from(document.querySelectorAll('[data-testid="editor-tab-title"]')).filter(el => el.textContent === 'package.json');
 
         return {
           success: true,
@@ -888,6 +888,64 @@ async function runBrowserE2E() {
       })()
     `);
     await sleep(200);
+
+    // -----------------------------------------------------------------
+    // Step 5J: Workspace Dashboard Mode Verification (Alt + 0)
+    // -----------------------------------------------------------------
+    console.log('[7/7] Validating Workspace Dashboard Mode (Alt + 0)...');
+    const dashboardCheck = await cdp.evaluate(`
+      (async function() {
+        if (!window.__workbenchStore || !window.__dashboardStore) {
+          return { success: false, reason: 'store_missing' };
+        }
+        // Switch to dashboard mode
+        window.__workbenchStore.getState().setWorkbenchMode('dashboard');
+        await new Promise((r) => setTimeout(r, 600));
+
+        const mode = window.__workbenchStore.getState().workbenchMode;
+        const hasDashboardContainer = Boolean(document.querySelector('h1') || document.querySelector('iframe'));
+
+        // Test opening config modal
+        window.__dashboardStore.getState().openConfigModal();
+        await new Promise((r) => setTimeout(r, 300));
+        const modalOpen = window.__dashboardStore.getState().isConfigModalOpen;
+
+        // Close config modal
+        window.__dashboardStore.getState().closeConfigModal();
+        await new Promise((r) => setTimeout(r, 200));
+        const modalClosed = !window.__dashboardStore.getState().isConfigModalOpen;
+
+        return {
+          success: mode === 'dashboard' && hasDashboardContainer && modalOpen && modalClosed,
+          mode,
+          hasDashboardContainer,
+          modalOpen,
+          modalClosed,
+        };
+      })()
+    `);
+    console.log('    ✓ Workspace Dashboard verification result:', dashboardCheck);
+    if (!dashboardCheck.success) {
+      throw new Error(`Workspace Dashboard verification failed: ${JSON.stringify(dashboardCheck)}`);
+    }
+
+    // Capture Workspace Dashboard Screenshot
+    console.log('    ▶ Capturing Workspace Dashboard screenshot...');
+    const screenshotDashboard = await cdp.send('Page.captureScreenshot', { format: 'png' });
+    const screenshotDashboardPath = path.join(REPORTS_DIR, '09_workspace_dashboard.png');
+    fs.writeFileSync(screenshotDashboardPath, Buffer.from(screenshotDashboard.data, 'base64'));
+    console.log(`    ✓ Workspace Dashboard screenshot saved: ${screenshotDashboardPath}`);
+    await sleep(400);
+
+    // Switch back to Git workbench mode
+    await cdp.evaluate(`
+      (function() {
+        if (window.__workbenchStore) {
+          window.__workbenchStore.getState().setWorkbenchMode('git');
+        }
+      })()
+    `);
+    await sleep(300);
 
     // Verify console errors & network failures
     const fatalErrors = cdp.consoleErrors.filter((e) => !e.includes('favicon') && !e.includes('DevTools'));

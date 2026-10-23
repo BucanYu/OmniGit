@@ -24,6 +24,8 @@ import { GlobalSearchModal } from './features/global-search/GlobalSearchModal';
 import { useGlobalSearchStore } from './features/global-search/useGlobalSearchStore';
 import { ServicesDashboard } from './features/services/ServicesDashboard';
 import { useServicesStore } from './features/services/useServicesStore';
+import { WorkspaceDashboard } from './features/workspace-dashboard/WorkspaceDashboard';
+import { useDashboardStore } from './features/workspace-dashboard/useDashboardStore';
 
 export default function App() {
   const { t } = useTranslation();
@@ -72,6 +74,7 @@ export default function App() {
     (window as any).__terminalStore = useTerminalStore;
     (window as any).__globalSearchStore = useGlobalSearchStore;
     (window as any).__servicesStore = useServicesStore;
+    (window as any).__dashboardStore = useDashboardStore;
     initApp();
   }, [initApp]);
 
@@ -166,12 +169,18 @@ export default function App() {
       } else if (isCmdOrCtrl && (e.key === ',' || e.key === '，')) {
         e.preventDefault();
         setIsSettingsModalOpen(true);
-      } else if (e.altKey && e.key === '1') {
+      } else if (e.altKey && (e.key === '0' || e.code === 'Digit0')) {
+        e.preventDefault();
+        setWorkbenchMode('dashboard');
+      } else if (e.altKey && (e.key === '1' || e.code === 'Digit1')) {
         e.preventDefault();
         setWorkbenchMode('git');
-      } else if (e.altKey && e.key === '2') {
+      } else if (e.altKey && (e.key === '2' || e.code === 'Digit2')) {
         e.preventDefault();
         setWorkbenchMode('explorer');
+      } else if (e.altKey && (e.key === '3' || e.code === 'Digit3')) {
+        e.preventDefault();
+        setWorkbenchMode('services');
       } else if (isCmdOrCtrl && (e.key === '`' || e.key === '~' || e.code === 'Backquote')) {
         e.preventDefault();
         if (e.shiftKey) {
@@ -211,7 +220,16 @@ export default function App() {
         {/* Activity Bar on Leftmost Edge */}
         <ActivityBar />
 
-        {workbenchMode === 'git' ? (
+        {/* 2.0 Workspace Dashboard (Keep-Alive via CSS) */}
+        <div
+          className={`flex-1 overflow-hidden ${
+            workbenchMode === 'dashboard' ? 'flex' : 'hidden'
+          }`}
+        >
+          <WorkspaceDashboard />
+        </div>
+
+        {workbenchMode === 'git' && (
           <>
             {/* 2.1 Leftmost Sidebar: Multi-repository Projects */}
             <Sidebar />
@@ -246,9 +264,11 @@ export default function App() {
               </>
             )}
           </>
-        ) : workbenchMode === 'services' ? (
-          <ServicesDashboard />
-        ) : (
+        )}
+
+        {workbenchMode === 'services' && <ServicesDashboard />}
+
+        {workbenchMode === 'explorer' && (
           <>
             {/* Multi-Root Workspace Explorer */}
             <WorkspaceExplorerPanel />

@@ -1058,6 +1058,7 @@ export interface LocaleDictionary {
     };
   };
   activityBar: {
+    dashboard: string;
     gitWorkbench: string;
     search: string;
     workspaceExplorer: string;
@@ -1273,6 +1274,88 @@ export interface LocaleDictionary {
       stopAndExit: string;
       cancel: string;
       orphanCleanedNotification: (count: number) => string;
+    };
+  };
+  dashboard: {
+    modeTitle: string;
+    topBar: {
+      urlBadge: string;
+      fileBadge: string;
+      reload: string;
+      openExternal: string;
+      settings: string;
+      teamBadge: string;
+    };
+    defaultHub: {
+      title: string;
+      desc: string;
+      reposCount: (count: number) => string;
+      uncommittedTotal: (count: number) => string;
+      pendingPushPull: (push: number, pull: number) => string;
+      syncAll: string;
+      syncing: string;
+      configureDashboard: string;
+      quickActions: string;
+      openGitWorkbench: string;
+      openExplorer: string;
+      openServices: string;
+      openTerminal: string;
+      healthMatrix: string;
+      cleanState: string;
+      dirtyState: (count: number) => string;
+      jumpToGit: string;
+      customizeBannerTitle: string;
+      customizeBannerDesc: string;
+      presetsTitle: string;
+      presetLocalDev: string;
+      presetLocalDevDesc: string;
+      presetDocs: string;
+      presetDocsDesc: string;
+      presetSpa: string;
+      presetSpaDesc: string;
+      presetKanban: string;
+      presetKanbanDesc: string;
+    };
+    modal: {
+      title: string;
+      desc: string;
+      typeLabel: string;
+      typeUrl: string;
+      typeFile: string;
+      urlLabel: string;
+      urlPlaceholder: string;
+      fileLabel: string;
+      filePlaceholder: string;
+      browseFile: string;
+      pageTitleLabel: string;
+      pageTitlePlaceholder: string;
+      autoReloadLabel: string;
+      intervalLabel: string;
+      secondsUnit: string;
+      enableBridgeLabel: string;
+      enableBridgeDesc: string;
+      securityWarning: string;
+      scopeLabel: string;
+      scopeLocal: string;
+      scopeLocalDesc: string;
+      scopeTeam: string;
+      scopeTeamDesc: string;
+      testButton: string;
+      testing: string;
+      resetToDefault: string;
+      saveApply: string;
+      cancel: string;
+      saveSuccessToast: string;
+      resetSuccessToast: string;
+    };
+    embedded: {
+      loadingTitle: string;
+      loadingDesc: string;
+      loadFailedTitle: string;
+      loadFailedDesc: string;
+      troubleshootTip: string;
+      retryButton: string;
+      configButton: string;
     };
   };
 }

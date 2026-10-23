@@ -379,6 +379,7 @@ function getDisambiguationLabel(tab: EditorTabItem, allTabs: EditorTabItem[]): s
                 <div className="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden select-none">
                   {/* 1. File Name: High priority, always displayed first, protected from shrinking when normal length */}
                   <span
+                    data-testid="editor-tab-title"
                     className={`text-[12px] truncate leading-none ${
                       isActive ? 'text-theme-main font-medium' : 'text-theme-main/90'
                     }`}

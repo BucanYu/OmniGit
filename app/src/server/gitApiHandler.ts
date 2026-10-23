@@ -6,6 +6,7 @@ import { fileSystemService } from './fileSystemService';
 import { fileEncodingService } from './fileEncodingService';
 import { nodeServiceProcessManager } from './nodeServiceProcessManager';
 import { decodeGitPath } from '../utils/gitPathUtils';
+import { handleDashboardServeRequest } from './dashboardServeHandler';
 
 function isAllowedHost(host: string | undefined): boolean {
   if (!host) return false;
@@ -67,7 +68,12 @@ function isAllowedOrigin(origin: string | undefined): boolean {
  */
 export async function handleGitApiRequest(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
   const url = req.url || '';
-  if (!url.startsWith('/api/git') && !url.startsWith('/api/fs') && !url.startsWith('/api/services')) {
+  if (
+    !url.startsWith('/api/git') &&
+    !url.startsWith('/api/fs') &&
+    !url.startsWith('/api/services') &&
+    !url.startsWith('/api/workspace/dashboard')
+  ) {
     return false;
   }
 
@@ -108,6 +114,10 @@ export async function handleGitApiRequest(req: IncomingMessage, res: ServerRespo
   const urlObj = new URL(url, 'http://127.0.0.1:5345');
   const pathname = urlObj.pathname;
   const query = Object.fromEntries(urlObj.searchParams.entries());
+
+  if (pathname.startsWith('/api/workspace/dashboard')) {
+    return await handleDashboardServeRequest(req, res, urlObj);
+  }
 
   if (pathname === '/api/services/stream') {
     res.writeHead(200, {
