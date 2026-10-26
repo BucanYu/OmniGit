@@ -11,6 +11,12 @@ interface ServicesState {
   isConfigModalOpen: boolean;
   editingService: ServiceConfig | null;
 
+  // Selected project within services module
+  servicesSelectedProjectId: string | null;
+  lastSyncedGitProjectId: string | null;
+  setServicesSelectedProjectId: (projectId: string) => void;
+  syncWithGitActiveProject: (gitProjectId: string) => void;
+
   // Actions
   loadProjectServices: (projectIdOrPath: string, explicitPath?: string) => ServiceConfig[];
   getServices: (projectIdOrPath: string) => ServiceConfig[];
@@ -484,6 +490,32 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
   autoScrollByService: {},
   isConfigModalOpen: false,
   editingService: null,
+
+  servicesSelectedProjectId: null,
+  lastSyncedGitProjectId: null,
+
+  setServicesSelectedProjectId: (projectId: string) => {
+    set({ servicesSelectedProjectId: projectId, activeServiceId: null });
+  },
+
+  syncWithGitActiveProject: (gitProjectId: string) => {
+    if (!gitProjectId) return;
+    const { lastSyncedGitProjectId, servicesSelectedProjectId } = get();
+    // If git project changed: reset services view to the newly selected git project!
+    if (gitProjectId !== lastSyncedGitProjectId) {
+      set({
+        servicesSelectedProjectId: gitProjectId,
+        lastSyncedGitProjectId: gitProjectId,
+        activeServiceId: null,
+      });
+    } else if (!servicesSelectedProjectId) {
+      // First time initialization
+      set({
+        servicesSelectedProjectId: gitProjectId,
+        lastSyncedGitProjectId: gitProjectId,
+      });
+    }
+  },
 
   loadProjectServices: (projectIdOrPath: string, explicitPath?: string) => {
     if (!projectIdOrPath && !explicitPath) return [];

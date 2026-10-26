@@ -1233,6 +1233,11 @@ export interface LocaleDictionary {
     commandLabel: string;
     currentPlatformBadge: string;
     runningCountBadge: (count: number) => string;
+    switchProject: string;
+    switchProjectTooltip: string;
+    projectSelectorTitle: string;
+    searchProjectsPlaceholder: string;
+    runningServicesCount: (count: number) => string;
     status: {
       stopped: string;
       starting: string;

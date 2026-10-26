@@ -29,8 +29,10 @@ async function main() {
   const scriptsDir = __dirname;
   const apiTestScript = path.join(scriptsDir, 'api-e2e-test.cjs');
   const browserTestScript = path.join(scriptsDir, 'cdp-browser-test.cjs');
+  const servicesSwitcherTestScript = path.join(scriptsDir, 'test-services-project-switcher-e2e.cjs');
+  const builtinDocOpenTestScript = path.join(scriptsDir, 'test-builtin-doc-open-e2e.cjs');
 
-  console.log('>>> [Phase 1/2] Executing API & Performance SLA Tests...');
+  console.log('>>> [Phase 1/4] Executing API & Performance SLA Tests...');
   const apiResult = await runScript(apiTestScript);
 
   if (apiResult.code !== 0) {
@@ -40,7 +42,7 @@ async function main() {
 
   console.log(`\n✓ Phase 1 Completed Successfully in ${apiResult.duration.toFixed(0)}ms\n`);
 
-  console.log('>>> [Phase 2/2] Executing Headless Chrome CDP Browser E2E Tests...');
+  console.log('>>> [Phase 2/4] Executing Headless Chrome CDP Browser E2E Tests...');
   const browserResult = await runScript(browserTestScript);
 
   if (browserResult.code !== 0) {
@@ -49,6 +51,26 @@ async function main() {
   }
 
   console.log(`\n✓ Phase 2 Completed Successfully in ${browserResult.duration.toFixed(0)}ms\n`);
+
+  console.log('>>> [Phase 3/4] Executing Services In-Module Project Switcher E2E Tests...');
+  const servicesResult = await runScript(servicesSwitcherTestScript);
+
+  if (servicesResult.code !== 0) {
+    console.error(`\n✖ Phase 3 Failed with exit code ${servicesResult.code} (${servicesResult.duration.toFixed(0)}ms)`);
+    process.exit(servicesResult.code);
+  }
+
+  console.log(`\n✓ Phase 3 Completed Successfully in ${servicesResult.duration.toFixed(0)}ms\n`);
+
+  console.log('>>> [Phase 4/4] Executing Built-in Doc Open in Editor E2E Tests...');
+  const docOpenResult = await runScript(builtinDocOpenTestScript);
+
+  if (docOpenResult.code !== 0) {
+    console.error(`\n✖ Phase 4 Failed with exit code ${docOpenResult.code} (${docOpenResult.duration.toFixed(0)}ms)`);
+    process.exit(docOpenResult.code);
+  }
+
+  console.log(`\n✓ Phase 4 Completed Successfully in ${docOpenResult.duration.toFixed(0)}ms\n`);
 
   console.log('######################################################################');
   console.log('       ALL VERIFICATION GATES PASSED (100% SUCCESS)');

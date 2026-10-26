@@ -1233,6 +1233,11 @@ export const zhCN: LocaleDictionary = {
     commandLabel: '启动命令',
     currentPlatformBadge: '当前系统适配命令',
     runningCountBadge: (count: number) => `${count} 运行中`,
+    switchProject: '切换服务项目',
+    switchProjectTooltip: '切换查看工作空间内不同项目的启动脚本与微服务',
+    projectSelectorTitle: '切换项目服务',
+    searchProjectsPlaceholder: '搜索项目仓库...',
+    runningServicesCount: (count: number) => `${count} 运行中`,
     status: {
       stopped: '已停止',
       starting: '正在启动...',

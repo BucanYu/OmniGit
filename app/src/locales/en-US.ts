@@ -1233,6 +1233,11 @@ export const enUS: LocaleDictionary = {
     commandLabel: 'Command',
     currentPlatformBadge: 'Active Platform Command',
     runningCountBadge: (count: number) => `${count} running`,
+    switchProject: 'Switch Project',
+    switchProjectTooltip: 'Switch project to view start scripts and microservices',
+    projectSelectorTitle: 'Switch Project Services',
+    searchProjectsPlaceholder: 'Search projects...',
+    runningServicesCount: (count: number) => `${count} running`,
     status: {
       stopped: 'Stopped',
       starting: 'Starting...',

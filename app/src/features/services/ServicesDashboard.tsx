@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import type { ServiceConfig } from './types';
 import { useServicesStore, normalizeProjectPath } from './useServicesStore';
 import { useAppStore } from '../../store/useAppStore';
 import { ServiceCard } from './ServiceCard';
 import { ServiceLogViewer } from './ServiceLogViewer';
 import { ServiceConfigModal } from './ServiceConfigModal';
+import { ServicesProjectSelector } from './ServicesProjectSelector';
 import { ResizeDivider } from '../../components/ui/ResizeDivider';
 import { useTranslation } from '../../locales';
 import {
@@ -23,24 +24,61 @@ export const ServicesDashboard: React.FC = () => {
   const { t } = useTranslation();
   // Fine-grained AppStore selectors: decouple services dashboard from git status/logs
   const projects = useAppStore((state) => state.projects);
-  const activeProjectId = useAppStore((state) => state.activeProjectId);
+  const gitActiveProjectId = useAppStore((state) => state.activeProjectId);
 
-  const projectId = activeProjectId || '';
-  const currentProject = projects.find((p) => p.id === activeProjectId);
+  const servicesSelectedProjectId = useServicesStore((state) => state.servicesSelectedProjectId);
+  const syncWithGitActiveProject = useServicesStore((state) => state.syncWithGitActiveProject);
+  const setServicesSelectedProjectId = useServicesStore((state) => state.setServicesSelectedProjectId);
+  const configsByProject = useServicesStore((state) => state.configsByProject);
+  const runtimeStates = useServicesStore((state) => state.runtimeStates);
+
+  // Sync with Git active project:
+  // If git project changed: automatically resets services to the newly selected git project.
+  // If git project has NOT changed: preserves user's manual project selection in services.
+  useEffect(() => {
+    if (gitActiveProjectId) {
+      syncWithGitActiveProject(gitActiveProjectId);
+    }
+  }, [gitActiveProjectId, syncWithGitActiveProject]);
+
+  const effectiveProjectId = servicesSelectedProjectId || gitActiveProjectId || projects[0]?.id || '';
+  const currentProject = projects.find((p) => p.id === effectiveProjectId) || projects[0];
   const projectPath = currentProject?.path || '';
   const normPath = projectPath ? normalizeProjectPath(projectPath) : '';
-  const targetKey = normPath || projectId;
+  const targetKey = normPath || currentProject?.id || '';
+
+  const getProjectRunningCount = useCallback(
+    (pId: string, pPath: string) => {
+      const norm = pPath ? normalizeProjectPath(pPath) : '';
+      const cfgs = (norm ? configsByProject[norm] : null) || configsByProject[pId] || [];
+      let count = 0;
+      for (const s of cfgs) {
+        const st = runtimeStates[s.id]?.status;
+        if (st === 'running' || st === 'starting') count++;
+      }
+      return count;
+    },
+    [configsByProject, runtimeStates]
+  );
 
   // Strictly isolate services by normPath to prevent ANY cross-project collision or bleeding
   const services = useServicesStore(
-    (state) => (normPath ? state.configsByProject[normPath] : (projectId ? state.configsByProject[projectId] : null)) || EMPTY_SERVICES
+    (state) =>
+      (normPath
+        ? state.configsByProject[normPath]
+        : effectiveProjectId
+        ? state.configsByProject[effectiveProjectId]
+        : null) || EMPTY_SERVICES
   );
   const activeServiceId = useServicesStore((state) => state.activeServiceId);
   const runningCount = useServicesStore((state) => {
     let count = 0;
     const projectServices =
-      (normPath ? state.configsByProject[normPath] : (projectId ? state.configsByProject[projectId] : null)) ||
-      EMPTY_SERVICES;
+      (normPath
+        ? state.configsByProject[normPath]
+        : effectiveProjectId
+        ? state.configsByProject[effectiveProjectId]
+        : null) || EMPTY_SERVICES;
     const sIds = new Set(projectServices.map((s) => s.id));
     for (const [id, runtime] of Object.entries(state.runtimeStates)) {
       if (sIds.has(id) && (runtime.status === 'running' || runtime.status === 'starting')) {
@@ -141,9 +179,12 @@ export const ServicesDashboard: React.FC = () => {
                   </span>
                 )}
               </div>
-              <p className="text-[10px] text-theme-muted truncate" title={currentProject.name}>
-                {currentProject.name}
-              </p>
+              <ServicesProjectSelector
+                currentProject={currentProject}
+                projects={projects}
+                onSelectProject={setServicesSelectedProjectId}
+                getProjectRunningCount={getProjectRunningCount}
+              />
             </div>
           </div>
 
