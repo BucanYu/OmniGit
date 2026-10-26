@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type WorkbenchMode = 'dashboard' | 'git' | 'explorer' | 'services';
+export type WorkbenchMode = 'dashboard' | 'git' | 'explorer' | 'services' | 'data-tools';
 
 interface WorkbenchState {
   workbenchMode: WorkbenchMode;

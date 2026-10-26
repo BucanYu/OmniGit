@@ -13,6 +13,7 @@ import {
   Settings,
   Search,
   Server,
+  Braces,
 } from 'lucide-react';
 
 export function ActivityBar() {
@@ -102,7 +103,24 @@ export function ActivityBar() {
           )}
         </button>
 
-        {/* 4. Global Code Search (Find in Files) */}
+        {/* 4. Data Formatter & Structure Inspector Mode (Alt + 4) */}
+        <button
+          onClick={() => setWorkbenchMode('data-tools')}
+          data-testid="activity-bar-data-tools-btn"
+          className={`relative p-2 rounded-lg transition-colors cursor-pointer group ${
+            workbenchMode === 'data-tools'
+              ? 'text-sky-400 bg-theme-hover shadow-sm'
+              : 'text-theme-muted hover:text-theme-main hover:bg-theme-hover/60'
+          }`}
+          title={t.activityBar.dataTools || '数据格式化与结构透视 (Alt + 4)'}
+        >
+          {workbenchMode === 'data-tools' && (
+            <div className="absolute left-0 top-1.5 bottom-1.5 w-[3px] bg-sky-500 rounded-r" />
+          )}
+          <Braces className="w-5 h-5 stroke-[1.8]" />
+        </button>
+
+        {/* 5. Global Code Search (Find in Files) */}
         <button
           onClick={() => useGlobalSearchStore.getState().openSearchModal()}
           className="relative p-2 rounded-lg transition-colors cursor-pointer group text-theme-muted hover:text-theme-main hover:bg-theme-hover/60"

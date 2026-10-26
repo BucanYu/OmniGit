@@ -26,6 +26,8 @@ import { ServicesDashboard } from './features/services/ServicesDashboard';
 import { useServicesStore } from './features/services/useServicesStore';
 import { WorkspaceDashboard } from './features/workspace-dashboard/WorkspaceDashboard';
 import { useDashboardStore } from './features/workspace-dashboard/useDashboardStore';
+import { DataToolsWorkbench } from './features/data-tools/DataToolsWorkbench';
+import { useDataToolsStore } from './features/data-tools/useDataToolsStore';
 
 export default function App() {
   const { t } = useTranslation();
@@ -75,6 +77,7 @@ export default function App() {
     (window as any).__globalSearchStore = useGlobalSearchStore;
     (window as any).__servicesStore = useServicesStore;
     (window as any).__dashboardStore = useDashboardStore;
+    (window as any).__dataToolsStore = useDataToolsStore;
     initApp();
   }, [initApp]);
 
@@ -181,6 +184,9 @@ export default function App() {
       } else if (e.altKey && (e.key === '3' || e.code === 'Digit3')) {
         e.preventDefault();
         setWorkbenchMode('services');
+      } else if (e.altKey && (e.key === '4' || e.code === 'Digit4')) {
+        e.preventDefault();
+        setWorkbenchMode('data-tools');
       } else if (isCmdOrCtrl && (e.key === '`' || e.key === '~' || e.code === 'Backquote')) {
         e.preventDefault();
         if (e.shiftKey) {
@@ -267,6 +273,14 @@ export default function App() {
         )}
 
         {workbenchMode === 'services' && <ServicesDashboard />}
+
+        <div
+          className={`flex-1 overflow-hidden ${
+            workbenchMode === 'data-tools' ? 'flex' : 'hidden'
+          }`}
+        >
+          <DataToolsWorkbench />
+        </div>
 
         {workbenchMode === 'explorer' && (
           <>

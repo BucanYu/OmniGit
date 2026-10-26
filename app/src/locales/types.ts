@@ -1063,6 +1063,7 @@ export interface LocaleDictionary {
     search: string;
     workspaceExplorer: string;
     services: string;
+    dataTools: string;
     terminal: string;
     settings: string;
   };
@@ -1402,6 +1403,40 @@ export interface LocaleDictionary {
       retryButton: string;
       configButton: string;
     };
+  };
+  dataTools: {
+    modeTitle: string;
+    beautify: string;
+    beautifyTooltip: string;
+    minify: string;
+    minifyTooltip: string;
+    repair: string;
+    repairTooltip: string;
+    sortKeysTooltip: string;
+    indentTooltip: string;
+    generateTypes: string;
+    generateTypesTooltip: string;
+    samples: string;
+    samplesTooltip: string;
+    loadSampleTitle: string;
+    copyTooltip: string;
+    copiedToast: string;
+    clearTooltip: string;
+    viewSplit: string;
+    viewEditor: string;
+    viewTree: string;
+    viewTable: string;
+    noTreeData: string;
+    noTreeDataDesc: string;
+    searchTreePlaceholder: string;
+    expandAll: string;
+    collapseAll: string;
+    noTableData: string;
+    noTableDataDesc: string;
+    tableRowsCount: (count: number) => string;
+    typeGeneratorModalTitle: string;
+    typeGeneratorModalDesc: string;
+    copyCode: string;
   };
 }
 
