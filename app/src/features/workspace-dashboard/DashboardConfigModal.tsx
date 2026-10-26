@@ -11,6 +11,7 @@ import {
   RotateCw,
   Save,
   RotateCcw,
+  Sparkles,
 } from 'lucide-react';
 import { useTranslation } from '../../locales';
 import { useDashboardStore } from './useDashboardStore';
@@ -20,12 +21,8 @@ import type { WorkspaceDashboardConfig } from './types';
 export function DashboardConfigModal() {
   const { t } = useTranslation();
   const {
-    isConfigModalOpen,
-    closeConfigModal,
-    activeConfig,
-    configScope,
-    saveConfig,
-    disableCustomDashboard,
+    isConfigModalOpen, closeConfigModal, activeConfig, configScope,
+    saveConfig, disableCustomDashboard, presetConfig, openGuideModal,
   } = useDashboardStore();
 
   const { workspaceId, savedWorkspaces, setNotification } = useAppStore();
@@ -44,7 +41,16 @@ export function DashboardConfigModal() {
 
   useEffect(() => {
     if (isConfigModalOpen) {
-      if (activeConfig) {
+      if (presetConfig) {
+        setType(presetConfig.type || 'url');
+        setUrl(presetConfig.url || '');
+        setFilePath(presetConfig.filePath || '');
+        setTitle(presetConfig.title || '');
+        setAutoReload(Boolean(presetConfig.autoReload));
+        setReloadIntervalSeconds(presetConfig.reloadIntervalSeconds || 60);
+        setEnableBridge(presetConfig.enableBridge ?? true);
+        setScope('local');
+      } else if (activeConfig) {
         setType(activeConfig.type || 'url');
         setUrl(activeConfig.url || '');
         setFilePath(activeConfig.filePath || '');
@@ -64,7 +70,7 @@ export function DashboardConfigModal() {
         setScope('local');
       }
     }
-  }, [isConfigModalOpen, activeConfig, configScope]);
+  }, [isConfigModalOpen, presetConfig, activeConfig, configScope]);
 
   if (!isConfigModalOpen) return null;
 
@@ -144,7 +150,17 @@ export function DashboardConfigModal() {
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-theme-border bg-theme-header shrink-0">
           <div>
-            <h2 className="text-base font-semibold text-theme-main">{t.dashboard.modal.title}</h2>
+            <div className="flex items-center gap-2.5">
+              <h2 className="text-base font-semibold text-theme-main">{t.dashboard.modal.title}</h2>
+              <button
+                type="button"
+                onClick={openGuideModal}
+                className="text-xs text-sky-600 dark:text-sky-400 hover:underline flex items-center gap-1 cursor-pointer font-medium"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>{t.dashboard.guideModal.navButton}</span>
+              </button>
+            </div>
             <p className="text-xs text-theme-muted mt-0.5">{t.dashboard.modal.desc}</p>
           </div>
           <button

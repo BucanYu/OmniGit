@@ -14,6 +14,14 @@ interface DashboardState {
   openConfigModal: () => void;
   closeConfigModal: () => void;
 
+  isGuideModalOpen: boolean;
+  openGuideModal: () => void;
+  closeGuideModal: () => void;
+
+  presetConfig: Partial<WorkspaceDashboardConfig> | null;
+  openConfigModalWithPreset: (preset: Partial<WorkspaceDashboardConfig>) => void;
+  clearPresetConfig: () => void;
+
   activeConfig: WorkspaceDashboardConfig | null;
   configScope: 'local' | 'team';
   sessionToken: string;
@@ -33,8 +41,16 @@ interface DashboardState {
 
 export const useDashboardStore = create<DashboardState>((set, get) => ({
   isConfigModalOpen: false,
-  openConfigModal: () => set({ isConfigModalOpen: true }),
-  closeConfigModal: () => set({ isConfigModalOpen: false }),
+  openConfigModal: () => set({ isConfigModalOpen: true, presetConfig: null }),
+  closeConfigModal: () => set({ isConfigModalOpen: false, presetConfig: null }),
+
+  isGuideModalOpen: false,
+  openGuideModal: () => set({ isGuideModalOpen: true }),
+  closeGuideModal: () => set({ isGuideModalOpen: false }),
+
+  presetConfig: null,
+  openConfigModalWithPreset: (preset) => set({ isConfigModalOpen: true, presetConfig: preset }),
+  clearPresetConfig: () => set({ presetConfig: null }),
 
   activeConfig: null,
   configScope: 'local',

@@ -38,7 +38,7 @@ export function DefaultDashboardView() {
 
   const { setWorkbenchMode } = useWorkbenchStore();
   const { toggleTerminal } = useTerminalStore();
-  const { openConfigModal } = useDashboardStore();
+  const { openConfigModal, openGuideModal, openConfigModalWithPreset } = useDashboardStore();
   const runningServicesCount = useServicesStore((state) => state.getRunningCount());
 
   const [isSyncing, setIsSyncing] = useState(false);
@@ -311,53 +311,76 @@ export function DefaultDashboardView() {
             <Sparkles className="w-5 h-5" />
           </span>
           <div className="flex-1">
-            <h3 className="text-sm font-bold text-theme-main">{t.dashboard.defaultHub.customizeBannerTitle}</h3>
-            <p className="text-xs text-theme-muted mt-1 leading-relaxed">{t.dashboard.defaultHub.customizeBannerDesc}</p>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-bold text-theme-main">{t.dashboard.defaultHub.customizeBannerTitle}</h3>
+                <p className="text-xs text-theme-muted mt-0.5 leading-relaxed">{t.dashboard.defaultHub.customizeBannerDesc}</p>
+              </div>
+              <button
+                type="button"
+                onClick={openGuideModal}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-sky-500/30 bg-sky-500/10 hover:bg-sky-500/20 text-sky-600 dark:text-sky-400 font-medium text-xs transition-colors cursor-pointer shrink-0 shadow-2xs"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>{t.dashboard.defaultHub.viewGuide}</span>
+              </button>
+            </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 mt-4">
-              <div
-                onClick={openConfigModal}
-                className="p-3 rounded-lg border border-theme-border bg-theme-card hover:border-sky-500/50 hover:bg-theme-hover transition-all cursor-pointer group shadow-xs"
-              >
-                <div className="flex items-center gap-2 text-xs font-semibold text-theme-main group-hover:text-sky-600 dark:group-hover:text-sky-400">
-                  <Globe className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
-                  <span>{t.dashboard.defaultHub.presetLocalDev}</span>
-                </div>
-                <p className="text-[10px] text-theme-muted mt-1">{t.dashboard.defaultHub.presetLocalDevDesc}</p>
-              </div>
-
-              <div
-                onClick={openConfigModal}
-                className="p-3 rounded-lg border border-theme-border bg-theme-card hover:border-sky-500/50 hover:bg-theme-hover transition-all cursor-pointer group shadow-xs"
-              >
-                <div className="flex items-center gap-2 text-xs font-semibold text-theme-main group-hover:text-emerald-600 dark:group-hover:text-emerald-400">
-                  <BookOpen className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                  <span>{t.dashboard.defaultHub.presetDocs}</span>
-                </div>
-                <p className="text-[10px] text-theme-muted mt-1">{t.dashboard.defaultHub.presetDocsDesc}</p>
-              </div>
-
-              <div
-                onClick={openConfigModal}
-                className="p-3 rounded-lg border border-theme-border bg-theme-card hover:border-sky-500/50 hover:bg-theme-hover transition-all cursor-pointer group shadow-xs"
-              >
-                <div className="flex items-center gap-2 text-xs font-semibold text-theme-main group-hover:text-purple-600 dark:group-hover:text-purple-400">
-                  <FileCode className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-                  <span>{t.dashboard.defaultHub.presetSpa}</span>
-                </div>
-                <p className="text-[10px] text-theme-muted mt-1">{t.dashboard.defaultHub.presetSpaDesc}</p>
-              </div>
-
-              <div
-                onClick={openConfigModal}
-                className="p-3 rounded-lg border border-theme-border bg-theme-card hover:border-sky-500/50 hover:bg-theme-hover transition-all cursor-pointer group shadow-xs"
-              >
-                <div className="flex items-center gap-2 text-xs font-semibold text-theme-main group-hover:text-amber-600 dark:group-hover:text-amber-400">
-                  <Kanban className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                  <span>{t.dashboard.defaultHub.presetKanban}</span>
-                </div>
-                <p className="text-[10px] text-theme-muted mt-1">{t.dashboard.defaultHub.presetKanbanDesc}</p>
-              </div>
+              {[
+                {
+                  icon: Globe,
+                  color: 'text-sky-600 dark:text-sky-400',
+                  hoverBorder: 'hover:border-sky-500/50',
+                  title: t.dashboard.defaultHub.presetLocalDev,
+                  desc: t.dashboard.defaultHub.presetLocalDevDesc,
+                  preset: { enabled: true, type: 'url' as const, url: 'http://localhost:3000', title: '本地开发实时预览', enableBridge: true },
+                },
+                {
+                  icon: BookOpen,
+                  color: 'text-emerald-600 dark:text-emerald-400',
+                  hoverBorder: 'hover:border-emerald-500/50',
+                  title: t.dashboard.defaultHub.presetDocs,
+                  desc: t.dashboard.defaultHub.presetDocsDesc,
+                  preset: { enabled: true, type: 'url' as const, url: 'http://localhost:5173', title: '自研技术规范文档', enableBridge: true },
+                },
+                {
+                  icon: FileCode,
+                  color: 'text-purple-600 dark:text-purple-400',
+                  hoverBorder: 'hover:border-purple-500/50',
+                  title: t.dashboard.defaultHub.presetSpa,
+                  desc: t.dashboard.defaultHub.presetSpaDesc,
+                  preset: { enabled: true, type: 'file' as const, filePath: './dist/index.html', title: '自研单页应用门户', enableBridge: true },
+                },
+                {
+                  icon: Kanban,
+                  color: 'text-amber-600 dark:text-amber-400',
+                  hoverBorder: 'hover:border-amber-500/50',
+                  title: t.dashboard.defaultHub.presetKanban,
+                  desc: t.dashboard.defaultHub.presetKanbanDesc,
+                  preset: { enabled: true, type: 'url' as const, url: '', title: '团队敏捷项目看板', enableBridge: true },
+                },
+              ].map((item, idx) => {
+                const Icon = item.icon;
+                return (
+                  <div
+                    key={idx}
+                    onClick={() => openConfigModalWithPreset(item.preset)}
+                    className={`p-3 rounded-lg border border-theme-border bg-theme-card ${item.hoverBorder} hover:bg-theme-hover transition-all cursor-pointer group shadow-xs`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-xs font-semibold text-theme-main">
+                        <Icon className={`w-3.5 h-3.5 ${item.color}`} />
+                        <span>{item.title}</span>
+                      </div>
+                      <span className={`text-[10px] ${item.color} opacity-0 group-hover:opacity-100 transition-opacity font-medium`}>
+                        {t.dashboard.defaultHub.applyPreset} →
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-theme-muted mt-1">{item.desc}</p>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>

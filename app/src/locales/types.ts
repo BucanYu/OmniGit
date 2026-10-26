@@ -1315,6 +1315,30 @@ export interface LocaleDictionary {
       presetSpaDesc: string;
       presetKanban: string;
       presetKanbanDesc: string;
+      viewGuide: string;
+      applyPreset: string;
+    };
+    guideModal: {
+      title: string;
+      desc: string;
+      navButton: string;
+      tabScenarios: string;
+      tabBridge: string;
+      tabAiPrompt: string;
+      tabTeamConfig: string;
+      copyPromptButton: string;
+      copiedPromptToast: string;
+      copySdkButton: string;
+      copiedSdkToast: string;
+      openDocInEditor: string;
+      applyPresetAndConfigure: string;
+      close: string;
+      aiPromptCardTitle: string;
+      aiPromptCardDesc: string;
+      bridgeCardTitle: string;
+      bridgeCardDesc: string;
+      teamCardTitle: string;
+      teamCardDesc: string;
     };
     modal: {
       title: string;

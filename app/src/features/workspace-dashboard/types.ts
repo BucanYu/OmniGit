@@ -30,7 +30,9 @@ export interface DashboardGuestMessage<T = any> {
 }
 
 export interface DashboardNavigatePayload {
-  mode: 'git' | 'explorer' | 'services';
+  mode: 'git' | 'explorer' | 'services' | 'dashboard';
+  projectId?: string;
+  repoName?: string;
 }
 
 export interface DashboardOpenFilePayload {

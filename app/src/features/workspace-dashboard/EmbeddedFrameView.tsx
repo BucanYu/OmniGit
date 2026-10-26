@@ -76,6 +76,24 @@ export function EmbeddedFrameView() {
     return () => clearInterval(timer);
   }, [activeConfig?.autoReload, activeConfig?.reloadIntervalSeconds, triggerRefresh]);
 
+  // 3. 宿主状态主动广播（当主题色切换时，向微前端门户广播 state-update 以实现自适应换肤）
+  const currentTheme = useAppStore((state) => state.theme);
+  useEffect(() => {
+    if (!activeConfig?.enableBridge || !iframeRef.current?.contentWindow) return;
+    try {
+      iframeRef.current.contentWindow.postMessage(
+        {
+          source: 'omnigit-host',
+          type: 'omnigit:state-update',
+          payload: {
+            theme: currentTheme,
+          },
+        },
+        expectedOrigin || '*'
+      );
+    } catch {}
+  }, [currentTheme, activeConfig?.enableBridge, expectedOrigin]);
+
   // 3. 页面刷新与加载状态监听
   useEffect(() => {
     setIsLoading(true);

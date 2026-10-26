@@ -177,6 +177,29 @@
 
 ---
 
+### 10. 🌐 工作空间自研研发门户与微前端大盘 (Workspace Custom Dashboard)
+![工作空间全景大盘与自研研发门户](docs/images/09_workspace_dashboard.png)
+
+- **快捷键 <kbd>Alt + 0</kbd> 一键直达**：
+  - 默认全景态势大盘：聚合多仓库分支胶囊、未提交改动数、未拉/未推指示器、微服务状态与自研门户模版向导；
+  - 视图 Keep-Alive 保活机制：在 Git 工作台、源码编辑器与自研首页之间无缝切换，子应用页面状态不丢失、不重载；
+- **四大典型应用场景开箱即用**：
+  - **本地实时预览端口**：嵌入运行中的 Next.js / Vite / Vue CLI 前端服务（如 `http://localhost:3000` 或 `5173`），沉浸式预览热更新；
+  - **自研技术规范与 API 文档站点**：集成 VitePress、Docusaurus、Swagger UI 或 Storybook，边查接口规范边开发；
+  - **本地单页构建产物挂载**：直接挂载 `./dist/index.html` 编译产物，内置静态托管服务并智能动态注入 `<base>` 标签，彻底避免 SPA 相对路径 404 白屏；
+  - **团队敏捷项目看板**：无缝嵌入 Jira、TAPD、飞书项目、GitLab Issues 等团队看板；
+- **零信任受控双向交互桥接 (`OmniGitBridge`)**：
+  - 基于 `postMessage` 与单次会话随机 Token 强验真握手，杜绝任何命令注入与系统级提权风险；
+  - 支持从自研页面直接跳转至 OmniGit 核心面板（`git`、`explorer`、`services`），支持传参直接激活指定仓库；
+  - 支持在内置 Monaco 编辑器中定位打开相对路径代码文件；
+  - 支持监听宿主明暗主题实时切换自适应；
+- **团队协同配置共享 (`.omnigit/dashboard.json`)**：
+  - 在工作空间根目录生成团队级配置并提交至 Git，全员拉取代码后自动统一研发首页；
+- **详细接入开发指南与 AI 提示词**：
+  - 完整协议规范、极简客户端 SDK 与 AI 提示词模板请参阅 👉 **[工作空间自研研发门户与系统联动交互完整开发指南](docs/CUSTOM_DASHBOARD_GUIDE.md)**。
+
+---
+
 ## 📊 主流开发与 Git 客户端全方位横向对比
 
 | 核心维度 | **OmniGit** | SourceTree | GitKraken | Fork | VS Code 原生 |
@@ -200,8 +223,10 @@
 
 | 快捷键 | 作用范围 | 功能说明 |
 | :--- | :--- | :--- |
+| <kbd>Alt + 0</kbd> | 全局 | 快速切换至 **工作空间研发首页 / 全景大盘** 视图 |
 | <kbd>Alt + 1</kbd> | 全局 | 快速切换至 **Git 核心工作台** 视图 |
 | <kbd>Alt + 2</kbd> | 全局 | 快速切换至 **工作区源码资源管理器** 视图 |
+| <kbd>Alt + 3</kbd> | 全局 | 快速切换至 **微服务启动编排面板** 视图 |
 | <kbd>Ctrl + K</kbd> | Git 视图 | 快速聚焦提交说明输入框，准备提交改动 |
 | <kbd>Ctrl + Shift + K</kbd> | Git 视图 | 唤起精细化挑选推送弹窗 (Selective Push) |
 | <kbd>Ctrl + Enter</kbd> | 提交面板 | 快速执行提交当前选中的文件 |

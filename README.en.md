@@ -176,6 +176,29 @@ With modern software architecture evolving into microservices and monorepos, dev
 
 ---
 
+### 10. 🌐 Workspace Custom Developer Portal & Microfrontend Host (Workspace Dashboard)
+![Workspace Custom Portal & Dashboard](docs/images/09_workspace_dashboard.png)
+
+- **Shortcut <kbd>Alt + 0</kbd> Instant Access**:
+  - Default Health Hub: Aggregates multi-repo branch pills, uncommitted diff counts, pending push/pull badges, and microservice statuses;
+  - View Keep-Alive: Switch seamlessly between Git workbench, Monaco editor, and custom portal without losing iframe state or triggering reloads;
+- **4 Out-of-the-Box Core Scenarios**:
+  - **Local Dev Live Preview**: Embed active Next.js / Vite / Vue CLI dev servers (e.g. `http://localhost:3000` or `5173`) with full HMR;
+  - **Tech Specs & API Docs**: Integrate VitePress, Docusaurus, Swagger UI, or Storybook right alongside code editing;
+  - **Static SPA Build Mount**: Mount local `./dist/index.html` static builds directly without extra web servers; includes automatic `<base>` tag injection to eliminate 404 blank screens;
+  - **Team Agile Project Board**: Seamlessly embed Jira, TAPD, Feishu Project, or GitLab Issues;
+- **Zero-Trust Controlled Bi-directional Bridge (`OmniGitBridge`)**:
+  - Safe postMessage handshake with single-use session tokens, strictly blocking command injection and RCE vulnerabilities;
+  - Navigate directly to OmniGit views (`git`, `explorer`, `services`) with automatic target repo activation;
+  - Open source files in the built-in Monaco editor with path traversal protection;
+  - Synchronize dark and light themes dynamically in real time;
+- **Team-Wide Shared Config (`.omnigit/dashboard.json`)**:
+  - Commit the configuration to Git so all team members automatically share the same workspace portal upon `git pull`;
+- **Comprehensive Developer Guide & AI Prompt**:
+  - See the full specification, minimal SDK, and AI prompt template in 👉 **[Custom Workspace Portal & OmniGitBridge Interaction Guide](docs/CUSTOM_DASHBOARD_GUIDE.md)**.
+
+---
+
 ## 📊 Comparison with Popular Tools
 
 | Dimension | **OmniGit** | SourceTree | GitKraken | Fork | Native VS Code |
@@ -199,8 +222,10 @@ With modern software architecture evolving into microservices and monorepos, dev
 
 | Shortcut | Context | Action |
 | :--- | :--- | :--- |
+| <kbd>Alt + 0</kbd> | Global | Switch to **Workspace Dashboard & Custom Portal** view |
 | <kbd>Alt + 1</kbd> | Global | Switch to **Git Core Workbench** view |
 | <kbd>Alt + 2</kbd> | Global | Switch to **Workspace Explorer & Editor** view |
+| <kbd>Alt + 3</kbd> | Global | Switch to **Microservices Orchestrator** view |
 | <kbd>Ctrl + K</kbd> | Git View | Focus commit message box |
 | <kbd>Ctrl + Shift + K</kbd> | Git View | Open Selective Push modal |
 | <kbd>Ctrl + Enter</kbd> | Commit Box | Commit selected changes |

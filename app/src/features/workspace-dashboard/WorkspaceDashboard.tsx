@@ -4,6 +4,7 @@ import { useAppStore } from '../../store/useAppStore';
 import { EmbeddedFrameView } from './EmbeddedFrameView';
 import { DefaultDashboardView } from './DefaultDashboardView';
 import { DashboardConfigModal } from './DashboardConfigModal';
+import { PortalDevGuideModal } from './PortalDevGuideModal';
 
 export function WorkspaceDashboard() {
   const { activeConfig, loadWorkspaceConfig } = useDashboardStore();
@@ -27,6 +28,7 @@ export function WorkspaceDashboard() {
     <div className="flex-1 flex flex-col h-full w-full overflow-hidden relative">
       {isCustomConfigured ? <EmbeddedFrameView /> : <DefaultDashboardView />}
       <DashboardConfigModal />
+      <PortalDevGuideModal />
     </div>
   );
 }

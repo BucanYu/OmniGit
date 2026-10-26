@@ -51,7 +51,25 @@ export function setupOmniGitBridge(options: BridgeOptions): () => void {
       case 'omnigit:navigate': {
         const payload = data.payload as DashboardNavigatePayload;
         const targetMode = payload?.mode;
-        if (targetMode === 'git' || targetMode === 'explorer' || targetMode === 'services') {
+
+        // 若指定了目标仓库名称或 ID，自动同步激活该工程项目
+        if (payload?.projectId) {
+          useAppStore.getState().setActiveProject(payload.projectId);
+        } else if (payload?.repoName) {
+          const matched = useAppStore
+            .getState()
+            .projects.find((p) => p.name === payload.repoName || p.id === payload.repoName);
+          if (matched) {
+            useAppStore.getState().setActiveProject(matched.id);
+          }
+        }
+
+        if (
+          targetMode === 'git' ||
+          targetMode === 'explorer' ||
+          targetMode === 'services' ||
+          targetMode === 'dashboard'
+        ) {
           useWorkbenchStore.getState().setWorkbenchMode(targetMode);
         }
         break;
