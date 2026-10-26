@@ -1322,6 +1322,22 @@ export interface LocaleDictionary {
       presetKanbanDesc: string;
       viewGuide: string;
       applyPreset: string;
+      filterAll: string;
+      filterDirty: string;
+      filterClean: string;
+      searchPlaceholder: string;
+      noMatchingRepos: string;
+      clearFilter: string;
+      copyPathTooltip: string;
+      copiedPathToast: string;
+      openInExplorer: string;
+      openInServices: string;
+      viewGrid: string;
+      viewList: string;
+      quickActionGitSubtitle: (count: number) => string;
+      quickActionExplorerSubtitle: string;
+      quickActionServicesSubtitle: (count: number) => string;
+      quickActionTerminalSubtitle: string;
     };
     guideModal: {
       title: string;
