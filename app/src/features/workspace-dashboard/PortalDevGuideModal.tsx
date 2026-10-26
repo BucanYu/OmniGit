@@ -1,19 +1,7 @@
 import React, { useState } from 'react';
 import {
-  X,
-  Sparkles,
-  BookOpen,
-  Globe,
-  FileCode,
-  Kanban,
-  Copy,
-  Check,
-  ShieldCheck,
-  Code2,
-  Users,
-  FileText,
-  ArrowRight,
-  ExternalLink,
+  X, Sparkles, BookOpen, Globe, FileCode, Kanban, Copy, Check,
+  ShieldCheck, Code2, Users, FileText, ArrowRight, ExternalLink,
 } from 'lucide-react';
 import { useTranslation } from '../../locales';
 import { useDashboardStore } from './useDashboardStore';
@@ -38,49 +26,57 @@ export function PortalDevGuideModal() {
   const currentWs = savedWorkspaces.find((w) => w.id === workspaceId);
   const rootPath = currentWs?.rootPath || '';
 
-  const handleCopyPrompt = async () => {
+  const handleCopy = async (text: string, isPrompt: boolean) => {
     try {
-      await navigator.clipboard.writeText(AI_PROMPT_TEMPLATE);
-      setCopiedPrompt(true);
+      await navigator.clipboard.writeText(text);
+      if (isPrompt) {
+        setCopiedPrompt(true);
+        setTimeout(() => setCopiedPrompt(false), 2000);
+      } else {
+        setCopiedSdk(true);
+        setTimeout(() => setCopiedSdk(false), 2000);
+      }
       setNotification({
         id: Date.now(),
-        title: t.dashboard.guideModal.copiedPromptToast,
+        title: isPrompt ? t.dashboard.guideModal.copiedPromptToast : t.dashboard.guideModal.copiedSdkToast,
         type: 'success',
       });
-      setTimeout(() => setCopiedPrompt(false), 2000);
-    } catch {
-      console.warn('Clipboard write failed');
-    }
-  };
-
-  const handleCopySdk = async () => {
-    try {
-      await navigator.clipboard.writeText(SDK_CODE_SNIPPET);
-      setCopiedSdk(true);
-      setNotification({
-        id: Date.now(),
-        title: t.dashboard.guideModal.copiedSdkToast,
-        type: 'success',
-      });
-      setTimeout(() => setCopiedSdk(false), 2000);
     } catch {
       console.warn('Clipboard write failed');
     }
   };
 
   const handleOpenDocInEditor = async () => {
-    const docRelPath = 'docs/CUSTOM_DASHBOARD_GUIDE.md';
-    const normRoot = rootPath.replace(/\\/g, '/').replace(/\/$/, '');
-    const fullTarget = `${normRoot}/${docRelPath}`;
+    try {
+      const res = await fetch('/api/app/builtin-doc?name=CUSTOM_DASHBOARD_GUIDE.md');
+      const data = await res.json();
+      if (data && data.success && data.filePath) {
+        await useEditorTabsStore.getState().openFileTab({
+          filePath: data.filePath,
+          repoPath: data.repoPath || '',
+          relativePath: data.relativePath || 'docs/CUSTOM_DASHBOARD_GUIDE.md',
+          repoName: 'OmniGit',
+        });
+        useWorkbenchStore.getState().setWorkbenchMode('explorer');
+        useDashboardStore.getState().closeGuideModal();
+        return;
+      }
+    } catch (err) {
+      console.warn('[PortalDevGuideModal] Failed to fetch built-in doc path:', err);
+    }
 
-    await openFileTab({
+    // Fail-safe fallback if network request fails
+    const docRelPath = 'docs/CUSTOM_DASHBOARD_GUIDE.md';
+    const normRoot = rootPath ? rootPath.replace(/\\/g, '/').replace(/\/$/, '') : '';
+    const fullTarget = normRoot ? `${normRoot}/${docRelPath}` : docRelPath;
+    await useEditorTabsStore.getState().openFileTab({
       filePath: fullTarget,
       repoPath: rootPath,
       relativePath: docRelPath,
-      repoName: currentWs?.name || 'Workspace',
+      repoName: 'OmniGit',
     });
-    setWorkbenchMode('explorer');
-    closeGuideModal();
+    useWorkbenchStore.getState().setWorkbenchMode('explorer');
+    useDashboardStore.getState().closeGuideModal();
   };
 
   const handleApplyPreset = (preset: { type: 'url' | 'file'; url?: string; filePath?: string; title: string }) => {
@@ -283,7 +279,7 @@ export function PortalDevGuideModal() {
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="font-medium text-theme-muted text-[11px]">客户端轻量接入 SDK 示例代码</span>
                   <button
-                    onClick={handleCopySdk}
+                    onClick={() => handleCopy(SDK_CODE_SNIPPET, false)}
                     className="flex items-center gap-1 text-[11px] text-sky-600 dark:text-sky-400 hover:underline cursor-pointer"
                   >
                     {copiedSdk ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
@@ -313,7 +309,7 @@ export function PortalDevGuideModal() {
               <div className="flex items-center justify-between pt-1">
                 <span className="text-[11px] font-medium text-theme-muted">完整提示词内容 (Prompt Content)</span>
                 <button
-                  onClick={handleCopyPrompt}
+                  onClick={() => handleCopy(AI_PROMPT_TEMPLATE, true)}
                   className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-medium text-xs transition-colors cursor-pointer shadow-xs"
                 >
                   {copiedPrompt ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
@@ -366,6 +362,7 @@ export function PortalDevGuideModal() {
         {/* Footer Actions */}
         <div className="flex items-center justify-between px-6 py-3.5 border-t border-theme-border bg-theme-header shrink-0">
           <button
+            data-testid="guide-open-editor-btn"
             type="button"
             onClick={handleOpenDocInEditor}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-theme-border bg-theme-card hover:bg-theme-hover text-theme-main transition-colors text-xs cursor-pointer"

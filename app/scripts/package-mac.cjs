@@ -200,6 +200,13 @@ async function packageArch(arch) {
   copyRecursive(distDir, path.join(bundleApp, 'dist'));
   copyRecursive(distElectronDir, path.join(bundleApp, 'dist-electron'));
 
+  // Bundle built-in application documentation into resources/app/docs
+  const sourceDocsDir = path.join(appDir, '..', 'docs');
+  if (fs.existsSync(sourceDocsDir)) {
+    console.log('Bundling application documentation into resources/app/docs...');
+    copyRecursive(sourceDocsDir, path.join(bundleApp, 'docs'));
+  }
+
   // Bundle required production node_modules for Electron main and server processes
   const targetNodeModules = path.join(bundleApp, 'node_modules');
   fs.mkdirSync(targetNodeModules, { recursive: true });

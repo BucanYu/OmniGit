@@ -91,6 +91,13 @@ fs.mkdirSync(targetApp, { recursive: true });
 copyRecursive(distDir, path.join(targetApp, 'dist'));
 copyRecursive(distElectronDir, path.join(targetApp, 'dist-electron'));
 
+// Bundle built-in application documentation into resources/app/docs
+const sourceDocsDir = path.join(appDir, '..', 'docs');
+if (fs.existsSync(sourceDocsDir)) {
+  console.log('Bundling application documentation into resources/app/docs...');
+  copyRecursive(sourceDocsDir, path.join(targetApp, 'docs'));
+}
+
 // Bundle required production node_modules for Electron main and server processes
 console.log('Bundling runtime production dependencies into resources/app/node_modules...');
 const targetNodeModules = path.join(targetApp, 'node_modules');

@@ -7,6 +7,7 @@ import { fileEncodingService } from './fileEncodingService';
 import { nodeServiceProcessManager } from './nodeServiceProcessManager';
 import { decodeGitPath } from '../utils/gitPathUtils';
 import { handleDashboardServeRequest } from './dashboardServeHandler';
+import { handleBuiltinDocRequest } from './builtinDocsHandler';
 
 function isAllowedHost(host: string | undefined): boolean {
   if (!host) return false;
@@ -72,7 +73,8 @@ export async function handleGitApiRequest(req: IncomingMessage, res: ServerRespo
     !url.startsWith('/api/git') &&
     !url.startsWith('/api/fs') &&
     !url.startsWith('/api/services') &&
-    !url.startsWith('/api/workspace/dashboard')
+    !url.startsWith('/api/workspace/dashboard') &&
+    !url.startsWith('/api/app')
   ) {
     return false;
   }
@@ -117,6 +119,10 @@ export async function handleGitApiRequest(req: IncomingMessage, res: ServerRespo
 
   if (pathname.startsWith('/api/workspace/dashboard')) {
     return await handleDashboardServeRequest(req, res, urlObj);
+  }
+
+  if (pathname.startsWith('/api/app/builtin-doc')) {
+    return handleBuiltinDocRequest(req, res, query);
   }
 
   if (pathname === '/api/services/stream') {

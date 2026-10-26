@@ -5,11 +5,11 @@
   "type": "module",
   "main": "dist-electron/electron/main.js",
   "scripts": {
-    "predev": "node scripts/setup-monaco.cjs",
+    "predev": "node scripts/setup-monaco.cjs && node scripts/setup-docs.cjs",
     "dev": "vite",
     "check:hooks": "node scripts/check-hooks.cjs",
     "typecheck": "node scripts/check-hooks.cjs && tsc -p tsconfig.app.json --noEmit && tsc -p electron/tsconfig.json --noEmit",
-    "prebuild": "node scripts/check-hooks.cjs && node scripts/setup-monaco.cjs",
+    "prebuild": "node scripts/check-hooks.cjs && node scripts/setup-monaco.cjs && node scripts/setup-docs.cjs",
     "build": "tsc -p tsconfig.app.json --noEmit && vite build",
     "preview": "vite preview",
     "test:e2e": "electron scripts/test-e2e-workspace.cjs",
