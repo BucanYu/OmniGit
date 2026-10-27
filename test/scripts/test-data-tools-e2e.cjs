@@ -17,7 +17,7 @@ const os = require('os');
 
 const CHROME_PATH = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 const DEBUG_PORT = 9580;
-const APP_URL = 'http://127.0.0.1:5345/?ws=ws_1789365574398';
+const APP_URL = process.env.OMNIGIT_E2E_URL || 'http://127.0.0.1:5345/?ws=ws_1789365574398';
 const DOCS_IMAGES_DIR = path.resolve(__dirname, '..', '..', 'docs', 'images');
 const REPORTS_DIR = path.resolve(__dirname, '..', 'reports');
 const ARTIFACT_DIR = 'C:\\Users\\admin\\.gemini\\antigravity\\brain\\0b7df8f7-0e22-4090-836d-20effda6ee85';

@@ -11,7 +11,7 @@ const os = require('os');
 
 const CHROME_PATH = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 const DEBUG_PORT = 9581;
-const APP_URL = 'http://127.0.0.1:5345/';
+const APP_URL = process.env.OMNIGIT_E2E_URL || 'http://127.0.0.1:5345/';
 const REPORTS_DIR = path.resolve(__dirname, '..', 'reports');
 const TEMP_USER_DATA = path.join(os.tmpdir(), `omnigit_yaml_test_${Date.now()}`);
 
@@ -214,13 +214,63 @@ async function main() {
     })()`);
     report('Dropdown -> outside click closes', menuClosed === true);
 
+    // === Part 4: per-format document isolation (no cross-tab leakage) ===
+    const switchToJson = await evaluate(`(function(){
+      const dt = window.__dataToolsStore;
+      dt.getState().setFormat('json');
+      const s = dt.getState();
+      let parsesAsJson = false;
+      try { JSON.parse(s.formattedContent); parsesAsJson = true; } catch {}
+      return {
+        activeFormat: s.activeFormat,
+        parsesAsJson,
+        isValid: s.stats.isValid,
+        hasTree: Boolean(s.treeRoot),
+        startsWithBrace: s.formattedContent.trimStart().startsWith('{')
+      };
+    })()`);
+    report('Isolation -> JSON tab shows its own JSON doc', switchToJson.parsesAsJson === true && switchToJson.startsWithBrace === true, switchToJson);
+    report('Isolation -> JSON tab valid & tree rendered', switchToJson.isValid === true && switchToJson.hasTree === true);
+
+    const backToYaml = await evaluate(`(function(){
+      const dt = window.__dataToolsStore;
+      dt.getState().setFormat('yaml');
+      const s = dt.getState();
+      return {
+        activeFormat: s.activeFormat,
+        preserved: s.formattedContent.replace(/\\s+$/,'') === ${JSON.stringify(SAMPLE_YAML.replace(/\s+$/, ''))},
+        hasTree: Boolean(s.treeRoot),
+        isValid: s.stats.isValid
+      };
+    })()`);
+    report('Isolation -> YAML doc preserved after tab round-trip', backToYaml.preserved === true && backToYaml.activeFormat === 'yaml', backToYaml);
+    report('Isolation -> YAML tree rebuilt on return', backToYaml.hasTree === true && backToYaml.isValid === true);
+
+    // Clearing one tab must not wipe another tab's document
+    const clearIsolation = await evaluate(`(function(){
+      const dt = window.__dataToolsStore;
+      dt.getState().setContent('');
+      const yamlEmpty = dt.getState().formattedContent === '';
+      dt.getState().setFormat('json');
+      const jsonStillThere = dt.getState().formattedContent.trim().length > 0;
+      dt.getState().setFormat('yaml');
+      const yamlStillEmpty = dt.getState().formattedContent === '';
+      return { yamlEmpty, jsonStillThere, yamlStillEmpty };
+    })()`);
+    report('Isolation -> clearing YAML keeps JSON doc intact', clearIsolation.yamlEmpty && clearIsolation.jsonStillThere, clearIsolation);
+    report('Isolation -> cleared YAML stays empty (not re-seeded)', clearIsolation.yamlStillEmpty === true);
+
+    // Restore a sample for subsequent checks
+    await evaluate(`(function(){ window.__dataToolsStore.getState().loadSample('yaml'); })()`);
+    await sleep(300);
+
     // Load YAML sample via menu flow (loadSample direct call)
     const loadSampleState = await evaluate(`(function(){
       const s = window.__dataToolsStore.getState();
       s.loadSample('yaml');
       return new Promise((resolve) => setTimeout(() => {
         const st = window.__dataToolsStore.getState();
-        resolve({ hasContent: st.rawContent.length > 0, hasTree: Boolean(st.treeRoot) });
+        resolve({ hasContent: st.formattedContent.length > 0, hasTree: Boolean(st.treeRoot) });
       }, 400));
     })()`);
     report('loadSample(yaml) -> content + tree', loadSampleState.hasContent && loadSampleState.hasTree, loadSampleState);
