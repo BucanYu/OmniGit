@@ -122,8 +122,21 @@ function report(name, ok, detail) {
         await tick();
         const c4 = dt.getState().formattedContent;
 
+        // indent-width pass: 4 spaces must also be idempotent (regression: YAML truncation)
+        dt.getState().setIndentSize(4);
+        await tick();
+        dt.getState().formatCurrent();
+        await tick();
+        const i4a = dt.getState().formattedContent;
+        dt.getState().formatCurrent();
+        await tick();
+        const i4b = dt.getState().formattedContent;
+        dt.getState().setIndentSize(2);
+        await tick();
+
         return {
           c0, c1, c2, m, c3, c4,
+          i4a, i4b,
           idempotent: c1 === c2,
           roundtrip: c3 === c1,
           minifyChanged: m !== c1,
@@ -158,6 +171,11 @@ function report(name, ok, detail) {
       report(`${fmt}: minify -> beautify restores`, r.roundtrip === true);
       report(`${fmt}: no syntax error after beautify`, r.validAfterBeautify === true, r.errorMessage);
       report(`${fmt}: tab round-trip keeps document`, r.tabStable === true);
+      report(
+        `${fmt}: 4-space indent beautify is idempotent (no truncation)`,
+        r.i4a === r.i4b && r.i4a.length > 0,
+        { len1: r.i4a.length, len2: r.i4b.length }
+      );
       if (TREE_FORMATS.includes(fmt)) {
         report(`${fmt}: structure tree rendered`, r.hasTree === true && r.domTree === true);
       }
