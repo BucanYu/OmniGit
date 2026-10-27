@@ -6,6 +6,7 @@ import { formatXml, minifyXml } from './formatters/xmlFormatter';
 import { formatSql, minifySql } from './formatters/sqlFormatter';
 import { parseJwt } from './formatters/jwtFormatter';
 import { parseUrlQuery } from './formatters/urlFormatter';
+import { normalizeBase64, decodeBase64 } from './formatters/base64Formatter';
 
 const DEFAULT_SAMPLE_JSON = JSON.stringify(
   {
@@ -144,6 +145,26 @@ function analyzeContent(
     if (y !== null && typeof y === 'object') {
       parsed = y;
       tree = buildJsonTree(y);
+    }
+  } else if (format === 'base64') {
+    // Base64 is never rewritten here: the editor keeps the source, the tree only
+    // shows a read-only decoded preview.
+    const info = decodeBase64(content);
+    if (info.valid) {
+      const PREVIEW_LIMIT = 2000;
+      const preview =
+        info.text === null
+          ? null
+          : info.text.length > PREVIEW_LIMIT
+            ? `${info.text.slice(0, PREVIEW_LIMIT)}…`
+            : info.text;
+      parsed = {
+        valid: true,
+        decodedBytes: info.byteLength,
+        decodedType: info.binary ? 'binary' : 'text',
+        decodedText: preview,
+      };
+      tree = buildJsonTree(parsed);
     }
   }
 
@@ -359,13 +380,11 @@ export const useDataToolsStore = create<DataToolsState>((set, get) => {
         }
         commitContent(activeFormat, res.formattedJson, res.parsed, tree, calcJsonStats(res.formattedJson));
       } else if (activeFormat === 'base64') {
-        try {
-          const decoded = atob(doc.trim());
-          commitContent(activeFormat, decoded, null, null, calcTextStats(decoded));
-        } catch {
-          const encoded = btoa(doc);
-          commitContent(activeFormat, encoded, null, null, calcTextStats(encoded));
-        }
+        // Beautify = normalize only (strip whitespace, fix padding).
+        // Never decode into the editor: decoding is a read-only preview shown in the tree.
+        const normalized = normalizeBase64(doc);
+        const { parsed, tree } = analyzeContent(normalized, activeFormat);
+        commitContent(activeFormat, normalized, parsed, tree, calcTextStats(normalized));
       }
     },
 
@@ -388,6 +407,11 @@ export const useDataToolsStore = create<DataToolsState>((set, get) => {
         // Keep the content as-is to avoid destroying the structure.
         const { parsed, tree } = analyzeContent(doc, activeFormat);
         commitContent(activeFormat, doc, parsed, tree, calcTextStats(doc));
+      } else if (activeFormat === 'base64') {
+        // Base64 minify = strip whitespace/padding-line breaks only; never re-encode.
+        const compact = doc.replace(/\s+/g, '');
+        const { parsed, tree } = analyzeContent(compact, activeFormat);
+        commitContent(activeFormat, compact, parsed, tree, calcTextStats(compact));
       } else {
         const minified = doc.replace(/\s+/g, ' ').trim();
         commitContent(activeFormat, minified, null, null, calcTextStats(minified));

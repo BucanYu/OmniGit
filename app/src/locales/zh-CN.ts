@@ -1427,7 +1427,7 @@ export const zhCN: LocaleDictionary = {
     viewTree: '交互式结构透视树视图 (节点自由折叠收起与检索)',
     viewTable: '数据表格视图 (对象数组行列透视)',
     noTreeData: '暂无结构透视数据',
-    noTreeDataDesc: '在左侧粘贴或输入合法的 JSON/JWT/YAML/URL 数据即可生成可交互折叠树',
+    noTreeDataDesc: '在左侧粘贴或输入合法的 JSON/JWT/YAML/URL/Base64 数据即可生成可交互折叠树',
     searchTreePlaceholder: '过滤字段名或值...',
     expandAll: '全部展开所有层级',
     collapseAll: '全部折叠到根节点',
