@@ -24,7 +24,10 @@ export function jsonToYaml(obj: any, indent = 2, currentIndent = 0): string {
     return obj
       .map((item) => {
         if (typeof item === 'object' && item !== null) {
-          const formatted = jsonToYaml(item, indent, currentIndent + indent);
+          // Children of a "- key: value" entry must align 2 columns after the dash,
+          // regardless of the configured indent width (otherwise the emitted YAML
+          // has misaligned sibling keys and re-parsing truncates the document).
+          const formatted = jsonToYaml(item, indent, currentIndent + 2);
           const lines = formatted.split('\n');
           return `${pad}- ${lines[0].trimStart()}\n${lines.slice(1).join('\n')}`.trimEnd();
         }
@@ -252,8 +255,20 @@ export function parseYamlObject(raw: string): any | null {
         if (rest) {
           // Compact entry ("- key: value"): rewrite the dash into spaces so the
           // entry aligns as the first line of a nested block, then parse it.
+          // Align to the following sibling key when present, so documents emitted
+          // with wider indent widths (e.g. 4 spaces) are parsed losslessly too.
           const offset = c.length - rest.length;
-          lines[i] = lines[i].slice(0, ind) + ' '.repeat(offset) + rest;
+          let virtualIndent = ind + offset;
+          let k = i + 1;
+          while (k < lines.length && isSkippable(lines[k])) k++;
+          if (k < lines.length) {
+            const nc = stripComment(lines[k]).trim();
+            const nind = getIndent(k);
+            if (nind > ind && !(nc === '-' || nc.startsWith('- '))) {
+              virtualIndent = nind;
+            }
+          }
+          lines[i] = ' '.repeat(virtualIndent) + rest;
           const [val, ni] = parseNode(i);
           arr.push(val);
           i = ni;
@@ -356,7 +371,14 @@ export function formatYaml(raw: string, indent = 2): { formatted: string; parsed
   // Parse the YAML subset into a structure and re-dump normalized output
   const parsed = parseYamlObject(raw);
   if (parsed !== null && typeof parsed === 'object') {
-    return { formatted: jsonToYaml(parsed, indent), parsed };
+    const formatted = jsonToYaml(parsed, indent);
+    // Safety net: never hand back a formatted document that loses information
+    // (guards against emitter/parser mismatches on unusual indent widths).
+    const roundTrip = parseYamlObject(formatted);
+    if (JSON.stringify(roundTrip) !== JSON.stringify(parsed)) {
+      return { formatted: raw, parsed, error: 'YAML format verification failed' };
+    }
+    return { formatted, parsed };
   }
 
   // Fallback: light text cleanup for plain scalar / unparsable content
