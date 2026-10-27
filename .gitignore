@@ -85,3 +85,6 @@ Desktop.ini
 *.sln
 *.sw?
 .csdn_profile/
+
+# --- AI Assistant Workspace (local session data) ---
+.workbuddy/
