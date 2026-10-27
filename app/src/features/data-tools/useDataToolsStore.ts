@@ -115,6 +115,18 @@ function calcStatsFor(content: string, format: DataFormat): FormatStats {
   return format === 'json' ? calcJsonStats(content) : calcTextStats(content);
 }
 
+/** Try parsing the document as a JSON object/array (e.g. a previously derived view). */
+function tryParseJsonDoc(content: string): any | null {
+  const t = content.trim();
+  if (!t.startsWith('{') && !t.startsWith('[')) return null;
+  try {
+    const v = JSON.parse(t);
+    return v !== null && typeof v === 'object' ? v : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Parse the document of a given format into { parsed, tree, stats }. */
 function analyzeContent(
   content: string,
@@ -122,6 +134,15 @@ function analyzeContent(
 ): { parsed: any; tree: TreeNodeData | null; stats: FormatStats } {
   let parsed: any = null;
   let tree: TreeNodeData | null = null;
+
+  // jwt/url tabs may hold their own derived JSON view (from a previous convert);
+  // treat that view as a JSON document instead of failing the token/query parser.
+  if (format === 'jwt' || format === 'url') {
+    const jsonView = tryParseJsonDoc(content);
+    if (jsonView) {
+      return { parsed: jsonView, tree: buildJsonTree(jsonView), stats: calcJsonStats(content) };
+    }
+  }
 
   if (format === 'json') {
     try {
@@ -366,19 +387,32 @@ export const useDataToolsStore = create<DataToolsState>((set, get) => {
         const res = formatSql(doc, indentSize);
         commitContent(activeFormat, res.formatted, null, null, calcTextStats(res.formatted));
       } else if (activeFormat === 'jwt') {
-        const res = parseJwt(doc);
-        let tree: TreeNodeData | null = null;
-        if (res.payload) {
-          tree = buildJsonTree({ header: res.header, payload: res.payload });
+        const jsonView = tryParseJsonDoc(doc);
+        if (jsonView) {
+          // Already a decoded view: beautify = pretty-print that JSON document
+          const pretty = JSON.stringify(jsonView, null, indentSize);
+          commitContent(activeFormat, pretty, jsonView, buildJsonTree(jsonView), calcJsonStats(pretty));
+        } else {
+          const res = parseJwt(doc);
+          let tree: TreeNodeData | null = null;
+          if (res.payload) {
+            tree = buildJsonTree({ header: res.header, payload: res.payload });
+          }
+          commitContent(activeFormat, res.formattedJson, res.payload, tree, calcJsonStats(res.formattedJson));
         }
-        commitContent(activeFormat, res.formattedJson, res.payload, tree, calcJsonStats(res.formattedJson));
       } else if (activeFormat === 'url') {
-        const res = parseUrlQuery(doc);
-        let tree: TreeNodeData | null = null;
-        if (res.parsed) {
-          tree = buildJsonTree(res.parsed);
+        const jsonView = tryParseJsonDoc(doc);
+        if (jsonView) {
+          const pretty = JSON.stringify(jsonView, null, indentSize);
+          commitContent(activeFormat, pretty, jsonView, buildJsonTree(jsonView), calcJsonStats(pretty));
+        } else {
+          const res = parseUrlQuery(doc);
+          let tree: TreeNodeData | null = null;
+          if (res.parsed) {
+            tree = buildJsonTree(res.parsed);
+          }
+          commitContent(activeFormat, res.formattedJson, res.parsed, tree, calcJsonStats(res.formattedJson));
         }
-        commitContent(activeFormat, res.formattedJson, res.parsed, tree, calcJsonStats(res.formattedJson));
       } else if (activeFormat === 'base64') {
         // Beautify = normalize only (strip whitespace, fix padding).
         // Never decode into the editor: decoding is a read-only preview shown in the tree.
@@ -412,6 +446,17 @@ export const useDataToolsStore = create<DataToolsState>((set, get) => {
         const compact = doc.replace(/\s+/g, '');
         const { parsed, tree } = analyzeContent(compact, activeFormat);
         commitContent(activeFormat, compact, parsed, tree, calcTextStats(compact));
+      } else if (activeFormat === 'jwt' || activeFormat === 'url') {
+        // Decoded JSON view: minify = compact JSON (never collapse whitespace inside strings)
+        const jsonView = tryParseJsonDoc(doc);
+        if (jsonView) {
+          const compact = JSON.stringify(jsonView);
+          commitContent(activeFormat, compact, jsonView, buildJsonTree(jsonView), calcJsonStats(compact));
+        } else {
+          const compact = doc.replace(/\s+/g, ' ').trim();
+          const { parsed, tree } = analyzeContent(compact, activeFormat);
+          commitContent(activeFormat, compact, parsed, tree, calcTextStats(compact));
+        }
       } else {
         const minified = doc.replace(/\s+/g, ' ').trim();
         commitContent(activeFormat, minified, null, null, calcTextStats(minified));
