@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useDataToolsStore } from './useDataToolsStore';
 import type { DataFormat, DataViewMode } from './types';
 import { useTranslation } from '../../locales';
@@ -41,6 +41,43 @@ export const DataToolsHeader: React.FC = () => {
 
   const [copied, setCopied] = useState(false);
   const [isSampleMenuOpen, setIsSampleMenuOpen] = useState(false);
+  const [sampleMenuPos, setSampleMenuPos] = useState({ top: 0, right: 0 });
+  const sampleBtnRef = useRef<HTMLButtonElement | null>(null);
+  const sampleMenuRef = useRef<HTMLDivElement | null>(null);
+
+  const toggleSampleMenu = () => {
+    if (!isSampleMenuOpen && sampleBtnRef.current) {
+      // Fixed positioning anchored to the button's real viewport rect:
+      // absolute positioning gets clipped/misplaced by the toolbar's
+      // overflow-x-auto scroll container.
+      const rect = sampleBtnRef.current.getBoundingClientRect();
+      setSampleMenuPos({
+        top: rect.bottom + 6,
+        right: Math.max(8, window.innerWidth - rect.right),
+      });
+    }
+    setIsSampleMenuOpen(!isSampleMenuOpen);
+  };
+
+  // Close the sample menu on outside click or Escape
+  useEffect(() => {
+    if (!isSampleMenuOpen) return;
+    const handleMouseDown = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (sampleMenuRef.current?.contains(target)) return;
+      if (sampleBtnRef.current?.contains(target)) return;
+      setIsSampleMenuOpen(false);
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsSampleMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handleMouseDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleMouseDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isSampleMenuOpen]);
 
   const handleCopy = async () => {
     if (!formattedContent) return;
@@ -170,7 +207,9 @@ export const DataToolsHeader: React.FC = () => {
         <div className="relative">
           <button
             type="button"
-            onClick={() => setIsSampleMenuOpen(!isSampleMenuOpen)}
+            ref={sampleBtnRef}
+            data-testid="data-tools-btn-samples"
+            onClick={toggleSampleMenu}
             className="flex items-center gap-1 px-2 py-1 rounded-lg border border-theme-border/80 bg-theme-card hover:bg-theme-hover text-theme-muted hover:text-theme-main text-xs font-medium transition-colors cursor-pointer"
             title={t.dataTools.samplesTooltip}
           >
@@ -181,8 +220,9 @@ export const DataToolsHeader: React.FC = () => {
 
           {isSampleMenuOpen && (
             <div
-              className="absolute right-0 top-full mt-1.5 w-44 bg-theme-panel border border-theme-border rounded-xl shadow-2xl z-50 py-1 text-xs animate-in fade-in zoom-in-95"
-              onMouseLeave={() => setIsSampleMenuOpen(false)}
+              ref={sampleMenuRef}
+              style={{ position: 'fixed', top: sampleMenuPos.top, right: sampleMenuPos.right }}
+              className="w-44 bg-theme-panel border border-theme-border rounded-xl shadow-2xl z-[9999] py-1 text-xs animate-in fade-in zoom-in-95"
             >
               <div className="px-2.5 py-1 text-[10px] font-semibold text-theme-dim uppercase tracking-wider">
                 {t.dataTools.loadSampleTitle}
