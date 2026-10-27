@@ -1427,7 +1427,7 @@ export const enUS: LocaleDictionary = {
     viewTree: 'Tree Inspector Only (Interactive Folding & Search)',
     viewTable: 'Table View (Array of Objects)',
     noTreeData: 'No Structural Data Available',
-    noTreeDataDesc: 'Paste or type valid JSON, JWT, or URL query data to view interactive tree',
+    noTreeDataDesc: 'Paste or type valid JSON, JWT, YAML, or URL query data to view interactive tree',
     searchTreePlaceholder: 'Filter keys or values...',
     expandAll: 'Expand All Nodes',
     collapseAll: 'Collapse All Nodes',

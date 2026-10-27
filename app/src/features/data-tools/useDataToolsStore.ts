@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { DataFormat, DataViewMode, FormatStats, TreeNodeData } from './types';
 import { formatJson, minifyJson, repairJson, calcJsonStats, calcTextStats, buildJsonTree } from './formatters/jsonFormatter';
-import { formatYaml } from './formatters/yamlFormatter';
+import { formatYaml, parseYamlObject } from './formatters/yamlFormatter';
 import { formatXml, minifyXml } from './formatters/xmlFormatter';
 import { formatSql, minifySql } from './formatters/sqlFormatter';
 import { parseJwt } from './formatters/jwtFormatter';
@@ -162,6 +162,12 @@ export const useDataToolsStore = create<DataToolsState>((set, get) => {
           parsed = u.parsed;
           tree = buildJsonTree(parsed);
         }
+      } else if (activeFormat === 'yaml') {
+        const y = parseYamlObject(content);
+        if (y !== null && typeof y === 'object') {
+          parsed = y;
+          tree = buildJsonTree(y);
+        }
       }
 
       set({
@@ -219,7 +225,16 @@ export const useDataToolsStore = create<DataToolsState>((set, get) => {
         });
       } else if (activeFormat === 'yaml') {
         const res = formatYaml(rawContent, indentSize);
-        set({ formattedContent: res.formatted, stats: calcTextStats(res.formatted) });
+        let tree: TreeNodeData | null = null;
+        if (res.parsed !== null && res.parsed !== undefined && typeof res.parsed === 'object') {
+          tree = buildJsonTree(res.parsed);
+        }
+        set({
+          formattedContent: res.formatted,
+          parsedData: res.parsed ?? null,
+          treeRoot: tree,
+          stats: calcTextStats(res.formatted),
+        });
       } else if (activeFormat === 'xml') {
         const res = formatXml(rawContent, indentSize);
         set({ formattedContent: res.formatted, stats: calcTextStats(res.formatted) });
