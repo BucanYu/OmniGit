@@ -275,7 +275,73 @@ async function main() {
     })()`);
     report('loadSample(yaml) -> content + tree', loadSampleState.hasContent && loadSampleState.hasTree, loadSampleState);
 
-    console.log(failures === 0 ? '\n=== ALL YAML/DROPDOWN TARGETED CHECKS PASSED ===' : `\n=== ${failures} CHECK(S) FAILED ===`);
+    // === Part 5: Base64 must never be rewritten by beautify (source stays, decode is preview-only) ===
+    const BASE64_SAMPLE = 'T21uaUdpdCBEYXRhIFRvb2xzIC0gQmFzZTY0IHNhbXBsZSBwYXlsb2Fk';
+    const base64State = await evaluate(`(function(){
+      const dt = window.__dataToolsStore;
+      dt.getState().setFormat('base64');
+      dt.getState().setContent('${BASE64_SAMPLE}');
+      const before = window.__dataToolsStore.getState().formattedContent;
+      dt.getState().formatCurrent();
+      const afterFirst = window.__dataToolsStore.getState().formattedContent;
+      dt.getState().formatCurrent();
+      const afterSecond = window.__dataToolsStore.getState().formattedContent;
+      dt.getState().formatCurrent();
+      const afterThird = window.__dataToolsStore.getState().formattedContent;
+      const st = window.__dataToolsStore.getState();
+      const decodedNode = st.treeRoot && st.treeRoot.children
+        ? st.treeRoot.children.find(c => c.key === 'decodedText')
+        : null;
+      return {
+        before,
+        afterFirst,
+        afterSecond,
+        afterThird,
+        isBase64Charset: /^[A-Za-z0-9+/]+=*$/.test(afterThird),
+        decodedText: decodedNode ? decodedNode.value : null,
+        hasTree: Boolean(st.treeRoot)
+      };
+    })()`);
+    report(
+      'Base64 -> beautify is idempotent (no decode/re-encode toggling)',
+      base64State.before === base64State.afterFirst &&
+        base64State.afterFirst === base64State.afterSecond &&
+        base64State.afterSecond === base64State.afterThird,
+      { before: base64State.before.slice(0, 24), third: base64State.afterThird.slice(0, 24) }
+    );
+    report('Base64 -> editor keeps base64 source after beautify', base64State.isBase64Charset === true);
+    report(
+      'Base64 -> decoded text shown in tree preview only',
+      base64State.hasTree === true && base64State.decodedText === 'OmniGit Data Tools - Base64 sample payload',
+      { decodedText: base64State.decodedText }
+    );
+
+    // Switching tabs away and back must NOT transform the base64 document either
+    const base64TabRoundTrip = await evaluate(`(function(){
+      const dt = window.__dataToolsStore;
+      dt.getState().setFormat('json');
+      dt.getState().setFormat('base64');
+      const after = dt.getState().formattedContent;
+      return { after, unchanged: after === '${BASE64_SAMPLE}' };
+    })()`);
+    report('Base64 -> tab round-trip keeps source untouched', base64TabRoundTrip.unchanged === true, {
+      head: base64TabRoundTrip.after.slice(0, 24),
+    });
+
+    // Minify only strips whitespace, never re-encodes
+    const base64Minify = await evaluate(`(function(){
+      const dt = window.__dataToolsStore;
+      const wrapped = '${BASE64_SAMPLE}'.slice(0, 32) + '\\n  ' + '${BASE64_SAMPLE}'.slice(32);
+      dt.getState().setContent(wrapped);
+      dt.getState().minifyCurrent();
+      const s = dt.getState().formattedContent;
+      return { content: s, noWhitespace: !/\\s/.test(s) };
+    })()`);
+    report('Base64 -> minify strips whitespace only', base64Minify.noWhitespace === true, {
+      len: base64Minify.content.length,
+    });
+
+    console.log(failures === 0 ? '\n=== ALL YAML/DROPDOWN/BASE64 TARGETED CHECKS PASSED ===' : `\n=== ${failures} CHECK(S) FAILED ===`);
     process.exitCode = failures === 0 ? 0 : 1;
   } finally {
     ws.close();
