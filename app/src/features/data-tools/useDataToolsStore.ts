@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { DataFormat, DataViewMode, FormatStats, TreeNodeData } from './types';
-import { formatJson, minifyJson, repairJson, calcJsonStats, buildJsonTree } from './formatters/jsonFormatter';
+import { formatJson, minifyJson, repairJson, calcJsonStats, calcTextStats, buildJsonTree } from './formatters/jsonFormatter';
 import { formatYaml } from './formatters/yamlFormatter';
 import { formatXml, minifyXml } from './formatters/xmlFormatter';
 import { formatSql, minifySql } from './formatters/sqlFormatter';
@@ -51,6 +51,14 @@ const DEFAULT_SAMPLE_JSON = JSON.stringify(
   null,
   2
 );
+
+/**
+ * Stats dispatch: only JSON content goes through JSON.parse validation,
+ * other formats (yaml/xml/sql) get basic text stats to avoid false syntax errors.
+ */
+function calcStatsFor(content: string, format: DataFormat): FormatStats {
+  return format === 'json' ? calcJsonStats(content) : calcTextStats(content);
+}
 
 interface DataToolsState {
   rawContent: string;
@@ -103,7 +111,7 @@ export const useDataToolsStore = create<DataToolsState>((set, get) => {
       localStorage.getItem(STORAGE_KEY_VIEW)) as DataViewMode) || 'split';
 
   // Compute initial stats & tree
-  const initialStats = calcJsonStats(initialContent);
+  const initialStats = calcStatsFor(initialContent, initialFormat);
   let initialParsed: any = null;
   let initialTree: TreeNodeData | null = null;
   const initialExpanded = new Set<string>(['$', '$.data', '$.data.activeProjects']);
@@ -135,7 +143,7 @@ export const useDataToolsStore = create<DataToolsState>((set, get) => {
       const { activeFormat, indentSize, sortKeys } = get();
       let parsed: any = null;
       let tree: TreeNodeData | null = null;
-      const stats = calcJsonStats(content);
+      const stats = calcStatsFor(content, activeFormat);
 
       if (activeFormat === 'json') {
         try {
@@ -211,13 +219,13 @@ export const useDataToolsStore = create<DataToolsState>((set, get) => {
         });
       } else if (activeFormat === 'yaml') {
         const res = formatYaml(rawContent, indentSize);
-        set({ formattedContent: res.formatted, stats: calcJsonStats(res.formatted) });
+        set({ formattedContent: res.formatted, stats: calcTextStats(res.formatted) });
       } else if (activeFormat === 'xml') {
         const res = formatXml(rawContent, indentSize);
-        set({ formattedContent: res.formatted, stats: calcJsonStats(res.formatted) });
+        set({ formattedContent: res.formatted, stats: calcTextStats(res.formatted) });
       } else if (activeFormat === 'sql') {
         const res = formatSql(rawContent, indentSize);
-        set({ formattedContent: res.formatted, stats: calcJsonStats(res.formatted) });
+        set({ formattedContent: res.formatted, stats: calcTextStats(res.formatted) });
       } else if (activeFormat === 'jwt') {
         const res = parseJwt(rawContent);
         let tree: TreeNodeData | null = null;
@@ -262,10 +270,14 @@ export const useDataToolsStore = create<DataToolsState>((set, get) => {
         set({ formattedContent: res.minified, stats: calcJsonStats(res.minified) });
       } else if (activeFormat === 'xml') {
         const res = minifyXml(rawContent);
-        set({ formattedContent: res.minified, stats: calcJsonStats(res.minified) });
+        set({ formattedContent: res.minified, stats: calcTextStats(res.minified) });
       } else if (activeFormat === 'sql') {
         const res = minifySql(rawContent);
-        set({ formattedContent: res.minified, stats: calcJsonStats(res.minified) });
+        set({ formattedContent: res.minified, stats: calcTextStats(res.minified) });
+      } else if (activeFormat === 'yaml') {
+        // YAML minification is not safe: collapsing whitespace would break indentation.
+        // Keep the content as-is to avoid destroying the structure.
+        set({ formattedContent: rawContent, stats: calcTextStats(rawContent) });
       } else {
         const minified = rawContent.replace(/\s+/g, ' ').trim();
         set({ formattedContent: minified });

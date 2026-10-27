@@ -179,6 +179,21 @@ export function calcJsonStats(raw: string): FormatStats {
 }
 
 /**
+ * Basic stats for non-JSON formats (yaml/xml/sql) — no JSON validation.
+ */
+export function calcTextStats(raw: string): FormatStats {
+  const charCount = raw.length;
+  const lineCount = raw ? raw.split('\n').length : 0;
+  const byteSize = formatByteSize(new Blob([raw]).size);
+
+  if (!raw.trim()) {
+    return { charCount: 0, lineCount: 0, byteSize: '0 B', isValid: true };
+  }
+
+  return { charCount, lineCount, byteSize, isValid: true };
+}
+
+/**
  * Build interactive Tree AST from parsed object
  */
 export function buildJsonTree(
