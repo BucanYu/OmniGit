@@ -1,6 +1,9 @@
+export type ServiceKind = 'service' | 'task';
+
 export interface ServiceConfig {
   id: string;
   name: string;
+  kind?: ServiceKind; // 'service' = long-running daemon (default), 'task' = one-shot job
   cwd?: string; // Optional working subdirectory, defaults to project root
   winCommand: string; // Windows startup script path (e.g., scripts/start-backend.bat) or command
   winStopScript?: string; // Optional Windows stop script path (e.g., scripts/stop-backend.bat)
@@ -11,12 +14,20 @@ export interface ServiceConfig {
   updatedAt: number;
 }
 
-export type ServiceStatus = 'stopped' | 'starting' | 'running' | 'stopping' | 'failed';
+export type ServiceStatus =
+  | 'stopped'
+  | 'starting'
+  | 'running'
+  | 'stopping'
+  | 'failed'
+  | 'completed';
 
 export interface ServiceRuntimeState {
   status: ServiceStatus;
   pid?: number;
   startedAt?: number;
+  completedAt?: number;
+  durationMs?: number;
   exitCode?: number | null;
   logs: string[]; // Circular buffer of log lines
 }
@@ -24,6 +35,7 @@ export interface ServiceRuntimeState {
 export interface DiscoveredScriptGroup {
   id: string;
   name: string;
+  kind?: ServiceKind;
   winStartScript?: string;
   winStopScript?: string;
   unixStartScript?: string;

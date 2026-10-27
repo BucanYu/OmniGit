@@ -1245,10 +1245,20 @@ export interface LocaleDictionary {
       stopping: string;
       running: string;
       failed: string;
+      completed: string;
     };
+    kind: {
+      service: string;
+      task: string;
+      serviceDesc: string;
+      taskDesc: string;
+    };
+    runAgain: string;
+    durationLabel: string;
     fields: {
       name: string;
       namePlaceholder: string;
+      kind: string;
       cwd: string;
       cwdPlaceholder: string;
       selectFolderTooltip: string;

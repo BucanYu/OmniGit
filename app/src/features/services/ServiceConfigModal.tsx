@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useServicesStore } from './useServicesStore';
-import type { DiscoveredScriptGroup } from './types';
+import type { DiscoveredScriptGroup, ServiceKind } from './types';
 import { useTranslation } from '../../locales';
 import {
   X,
@@ -36,6 +36,7 @@ export const ServiceConfigModal: React.FC<ServiceConfigModalProps> = ({
   } = useServicesStore();
 
   const [name, setName] = useState('');
+  const [kind, setKind] = useState<ServiceKind>('service');
   const [cwd, setCwd] = useState('');
   const [winCommand, setWinCommand] = useState('');
   const [winStopScript, setWinStopScript] = useState('');
@@ -53,6 +54,7 @@ export const ServiceConfigModal: React.FC<ServiceConfigModalProps> = ({
 
     if (editingService) {
       setName(editingService.name);
+      setKind(editingService.kind || 'service');
       setCwd(editingService.cwd || '');
       setWinCommand(editingService.winCommand || '');
       setWinStopScript(editingService.winStopScript || '');
@@ -72,6 +74,7 @@ export const ServiceConfigModal: React.FC<ServiceConfigModalProps> = ({
     } else {
       // New service creation: reset form
       setName('');
+      setKind('service');
       setCwd('');
       setWinCommand('');
       setWinStopScript('');
@@ -99,6 +102,7 @@ export const ServiceConfigModal: React.FC<ServiceConfigModalProps> = ({
   // Handle clicking a detected project script pill
   const handleApplyScriptGroup = (group: DiscoveredScriptGroup) => {
     setName(group.name);
+    if (group.kind) setKind(group.kind);
     if (group.winStartScript) setWinCommand(group.winStartScript);
     if (group.winStopScript) setWinStopScript(group.winStopScript);
     if (group.unixStartScript) setUnixCommand(group.unixStartScript);
@@ -197,6 +201,7 @@ export const ServiceConfigModal: React.FC<ServiceConfigModalProps> = ({
     if (editingService) {
       updateService(projectId, editingService.id, {
         name: trimmedName,
+        kind,
         cwd: cwd.trim(),
         winCommand: winCommand.trim(),
         winStopScript: winStopScript.trim() || undefined,
@@ -207,6 +212,7 @@ export const ServiceConfigModal: React.FC<ServiceConfigModalProps> = ({
     } else {
       addService(projectId, {
         name: trimmedName,
+        kind,
         cwd: cwd.trim(),
         winCommand: winCommand.trim(),
         winStopScript: winStopScript.trim() || undefined,
@@ -292,6 +298,50 @@ export const ServiceConfigModal: React.FC<ServiceConfigModalProps> = ({
               placeholder={t.services.fields.namePlaceholder}
               className="w-full px-3 py-2 text-xs rounded-lg bg-theme-app border border-theme-border text-theme-main placeholder-theme-muted/50 focus:outline-hidden focus:border-sky-500 transition-colors"
             />
+          </div>
+
+          {/* Service Kind / Run Mode */}
+          <div>
+            <label className="block text-xs font-medium text-theme-main mb-1.5">
+              {t.services.fields.kind}
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setKind('service')}
+                className={`flex flex-col items-start p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                  kind === 'service'
+                    ? 'bg-sky-500/10 border-sky-500 text-sky-400 shadow-xs'
+                    : 'bg-theme-app/60 border-theme-border text-theme-muted hover:border-theme-border/80'
+                }`}
+              >
+                <div className="flex items-center gap-1.5 text-xs font-semibold">
+                  <Play className="w-3.5 h-3.5 fill-current" />
+                  <span>{t.services.kind.service}</span>
+                </div>
+                <span className="text-[10px] text-theme-muted/80 mt-1 line-clamp-1">
+                  {t.services.kind.serviceDesc}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setKind('task')}
+                className={`flex flex-col items-start p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                  kind === 'task'
+                    ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400 shadow-xs'
+                    : 'bg-theme-app/60 border-theme-border text-theme-muted hover:border-theme-border/80'
+                }`}
+              >
+                <div className="flex items-center gap-1.5 text-xs font-semibold">
+                  <Square className="w-3.5 h-3.5" />
+                  <span>{t.services.kind.task}</span>
+                </div>
+                <span className="text-[10px] text-theme-muted/80 mt-1 line-clamp-1">
+                  {t.services.kind.taskDesc}
+                </span>
+              </button>
+            </div>
           </div>
 
           {/* Working Directory (Cwd) */}

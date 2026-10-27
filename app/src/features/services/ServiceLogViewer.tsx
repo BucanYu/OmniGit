@@ -237,6 +237,11 @@ export const ServiceLogViewer: React.FC<ServiceLogViewerProps> = ({
             <span className="text-xs font-semibold text-theme-main truncate" title={service.name}>
               {service.name}
             </span>
+            {/* Kind Badge */}
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-theme-hover text-theme-muted font-normal shrink-0">
+              {service.kind === 'task' ? t.services.kind.task : t.services.kind.service}
+            </span>
+
             {/* Status Badge */}
             <span
               className={`text-[10px] px-2 py-0.5 rounded-full font-medium inline-flex items-center gap-1 shrink-0 ${
@@ -246,6 +251,8 @@ export const ServiceLogViewer: React.FC<ServiceLogViewerProps> = ({
                   ? 'bg-sky-500/10 dark:bg-sky-500/15 text-sky-600 dark:text-sky-400 border border-sky-500/25 dark:border-sky-500/30'
                   : isStopping
                   ? 'bg-amber-500/10 dark:bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/25 dark:border-amber-500/30'
+                  : runtime.status === 'completed'
+                  ? 'bg-emerald-500/10 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25 dark:border-emerald-500/30'
                   : runtime.status === 'failed'
                   ? 'bg-rose-500/10 dark:bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/25 dark:border-rose-500/30'
                   : 'bg-zinc-500/10 dark:bg-zinc-500/15 text-zinc-600 dark:text-zinc-400 border border-zinc-500/25 dark:border-zinc-500/30'
@@ -259,6 +266,8 @@ export const ServiceLogViewer: React.FC<ServiceLogViewerProps> = ({
                     ? 'bg-sky-500 dark:bg-sky-400 animate-pulse'
                     : isStopping
                     ? 'bg-amber-500 dark:bg-amber-400 animate-pulse'
+                    : runtime.status === 'completed'
+                    ? 'bg-emerald-500 dark:bg-emerald-400'
                     : runtime.status === 'failed'
                     ? 'bg-rose-500 dark:bg-rose-400'
                     : 'bg-zinc-400'
@@ -270,6 +279,8 @@ export const ServiceLogViewer: React.FC<ServiceLogViewerProps> = ({
                 ? t.services.status.starting
                 : isStopping
                 ? t.services.status.stopping
+                : runtime.status === 'completed'
+                ? `${t.services.status.completed}${runtime.durationMs ? ` (${runtime.durationMs < 1000 ? `${runtime.durationMs}ms` : `${(runtime.durationMs / 1000).toFixed(1)}s`})` : ''}`
                 : runtime.status === 'failed'
                 ? `${t.services.status.failed} (${runtime.exitCode !== undefined ? runtime.exitCode : 1})`
                 : t.services.status.stopped}

@@ -59,6 +59,7 @@ interface RunningServiceEntry {
 export interface DiscoveredScriptGroup {
   id: string;
   name: string;
+  kind?: 'service' | 'task';
   winStartScript?: string;
   winStopScript?: string;
   unixStartScript?: string;
@@ -69,10 +70,34 @@ export interface DiscoveredScriptGroup {
 export class NodeServiceProcessManager extends EventEmitter {
   private activeServices = new Map<string, RunningServiceEntry>();
   private lockFilePath: string;
+  private watchdogTimer: NodeJS.Timeout | null = null;
 
   constructor() {
     super();
     this.lockFilePath = path.join(os.homedir(), '.omnigit', 'active_service_pids.json');
+    this.startWatchdog();
+  }
+
+  private startWatchdog() {
+    if (this.watchdogTimer) return;
+    this.watchdogTimer = setInterval(() => {
+      this.checkActiveProcessesLiveness();
+    }, 2500);
+    if (this.watchdogTimer.unref) {
+      this.watchdogTimer.unref();
+    }
+  }
+
+  private checkActiveProcessesLiveness() {
+    if (this.activeServices.size === 0) return;
+    for (const [serviceId, entry] of Array.from(this.activeServices.entries())) {
+      if (!this.isProcessAlive(entry.pid)) {
+        console.log(`[NodeServiceProcessManager] Watchdog detected dead process: PID ${entry.pid} (${entry.serviceName})`);
+        this.activeServices.delete(serviceId);
+        this.removeRecord(serviceId);
+        this.emit('exit', { serviceId, exitCode: 1, signal: 'SIGKILL' });
+      }
+    }
   }
 
   public setCustomLockFilePath(customPath: string) {
@@ -294,9 +319,14 @@ export class NodeServiceProcessManager extends EventEmitter {
             .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
             .join(' ') || item.name;
 
+        const isTask =
+          /^(build|clean|compile|package|test|migrate|init|install|setup|sync)/i.test(coreId) ||
+          /[-_](build|clean|compile|package|test|migrate|init|install|setup|sync)$/i.test(coreId);
+
         g = {
           id: `discovered_${coreId}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
           name: friendlyName,
+          kind: isTask ? 'task' : 'service',
           cwd: item.cwd || '',
         };
         groupMap.set(coreId, g);
@@ -435,6 +465,10 @@ export class NodeServiceProcessManager extends EventEmitter {
 
     const mergedEnv = Object.assign({}, process.env, config.env, {
       FORCE_COLOR: '3',
+      SPRING_OUTPUT_ANSI_ENABLED: 'ALWAYS',
+      CLICOLOR_FORCE: '1',
+      COLORTERM: 'truecolor',
+      TERM: 'xterm-256color',
       NODE_ENV: process.env.NODE_ENV || 'development',
     });
 
@@ -444,32 +478,57 @@ export class NodeServiceProcessManager extends EventEmitter {
 
       if (isWin) {
         if (cleanCmd.toLowerCase().endsWith('.ps1')) {
-          execCommand = `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${cleanCmd}"`;
+          child = spawn(
+            'powershell.exe',
+            ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', cleanCmd],
+            {
+              cwd,
+              env: mergedEnv,
+              windowsHide: true,
+              stdio: ['pipe', 'pipe', 'pipe'],
+            }
+          );
         } else if (cleanCmd.toLowerCase().endsWith('.bat') || cleanCmd.toLowerCase().endsWith('.cmd')) {
-          execCommand = `cmd.exe /d /s /c "${cleanCmd}"`;
+          child = spawn('cmd.exe', ['/d', '/s', '/c', cleanCmd], {
+            cwd,
+            env: mergedEnv,
+            windowsHide: true,
+            stdio: ['pipe', 'pipe', 'pipe'],
+          });
+        } else if (/^cmd(?:\.exe)?\s+\/(?:c|k)\s+/i.test(cleanCmd)) {
+          const inner = cleanCmd.replace(/^cmd(?:\.exe)?\s+\/(?:c|k)\s+/i, '').replace(/^["']|["']$/g, '');
+          child = spawn('cmd.exe', ['/d', '/s', '/c', inner], {
+            cwd,
+            env: mergedEnv,
+            windowsHide: true,
+            stdio: ['pipe', 'pipe', 'pipe'],
+          });
+        } else {
+          child = spawn(execCommand, [], {
+            cwd,
+            env: mergedEnv,
+            shell: true,
+            windowsHide: true,
+            stdio: ['pipe', 'pipe', 'pipe'],
+          });
         }
       } else {
         if (cleanCmd.toLowerCase().endsWith('.sh') || cleanCmd.toLowerCase().endsWith('.bash')) {
-          execCommand = `sh "${cleanCmd}"`;
+          child = spawn('sh', [cleanCmd], {
+            cwd,
+            env: mergedEnv,
+            detached: true,
+            stdio: ['pipe', 'pipe', 'pipe'],
+          });
+        } else {
+          child = spawn(execCommand, [], {
+            cwd,
+            env: mergedEnv,
+            shell: true,
+            detached: true,
+            stdio: ['pipe', 'pipe', 'pipe'],
+          });
         }
-      }
-
-      if (isWin) {
-        child = spawn(execCommand, [], {
-          cwd,
-          env: mergedEnv,
-          shell: true,
-          windowsHide: true,
-          stdio: ['pipe', 'pipe', 'pipe'],
-        });
-      } else {
-        child = spawn(execCommand, [], {
-          cwd,
-          env: mergedEnv,
-          shell: true,
-          detached: true,
-          stdio: ['pipe', 'pipe', 'pipe'],
-        });
       }
 
       const pid = child.pid;
@@ -508,23 +567,45 @@ export class NodeServiceProcessManager extends EventEmitter {
         this.emit('log', { serviceId: config.serviceId, data: text, stream: 'stderr' });
       });
 
-      child.on('close', (code, signal) => {
+      // Dual event handling: exit and close, ensuring we never hang if child exited but lingering orphan process holds stdio open
+      let hasReportedExit = false;
+      const handleExitOrClose = (code: number | null, signal: string | null) => {
+        if (hasReportedExit) return;
+        hasReportedExit = true;
+
         this.activeServices.delete(config.serviceId);
         this.removeRecord(config.serviceId);
+
         const exitCode = code !== null ? code : (signal ? 1 : 0);
+
+        // If process exited with failure (code !== 0), proactively clean up any leftover orphan grandchild processes
+        if (exitCode !== 0 && pid) {
+          this.killProcessTree(pid).catch(() => {});
+        }
+
         if (onExit) onExit(config.serviceId, exitCode, signal || undefined);
         this.emit('exit', { serviceId: config.serviceId, exitCode, signal: signal || undefined });
+      };
+
+      child.on('exit', (code, signal) => {
+        handleExitOrClose(code, signal);
+      });
+
+      child.on('close', (code, signal) => {
+        handleExitOrClose(code, signal);
       });
 
       child.on('error', (err) => {
         const errText = `\n[Process Error] ${err.message}\n`;
         if (onLog) onLog(config.serviceId, errText, 'stderr');
         this.emit('log', { serviceId: config.serviceId, data: errText, stream: 'stderr' });
-        this.activeServices.delete(config.serviceId);
-        this.removeRecord(config.serviceId);
-        if (onExit) onExit(config.serviceId, 1);
-        this.emit('exit', { serviceId: config.serviceId, exitCode: 1 });
+        handleExitOrClose(1, null);
       });
+
+      // Immediately send EOF to stdin AFTER listeners are attached to prevent batch scripts with 'pause' from hanging forever
+      try {
+        child.stdin?.end();
+      } catch {}
 
       return { success: true, pid };
     } catch (err: any) {

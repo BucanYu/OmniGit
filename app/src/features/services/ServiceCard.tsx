@@ -62,6 +62,7 @@ export const ServiceCard: React.FC<ServiceCardProps> = React.memo(({
   // Fine-grained selectors: decouple card from log streams (prevent high-frequency re-renders)
   const runtimeStatus = useServicesStore((state) => state.runtimeStates[service.id]?.status || 'stopped');
   const startedAt = useServicesStore((state) => state.runtimeStates[service.id]?.startedAt);
+  const durationMs = useServicesStore((state) => state.runtimeStates[service.id]?.durationMs);
   const exitCode = useServicesStore((state) => state.runtimeStates[service.id]?.exitCode);
   const pid = useServicesStore((state) => state.runtimeStates[service.id]?.pid);
 
@@ -75,6 +76,8 @@ export const ServiceCard: React.FC<ServiceCardProps> = React.memo(({
   const isRunning = runtimeStatus === 'running';
   const isStarting = runtimeStatus === 'starting';
   const isStopping = runtimeStatus === 'stopping';
+  const isCompleted = runtimeStatus === 'completed';
+  const isFailed = runtimeStatus === 'failed';
   const isBusy = isRunning || isStarting || isStopping;
 
   // Inline rename state
@@ -186,7 +189,9 @@ export const ServiceCard: React.FC<ServiceCardProps> = React.memo(({
                   ? 'bg-sky-500'
                   : isStopping
                   ? 'bg-amber-500'
-                  : runtimeStatus === 'failed'
+                  : isCompleted
+                  ? 'bg-emerald-500'
+                  : isFailed
                   ? 'bg-rose-500'
                   : 'bg-zinc-400 dark:bg-zinc-600'
               }`}
@@ -232,6 +237,9 @@ export const ServiceCard: React.FC<ServiceCardProps> = React.memo(({
               <span className="text-xs font-semibold text-theme-main truncate" title={service.name}>
                 {service.name}
               </span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-theme-hover text-theme-muted font-normal shrink-0">
+                {service.kind === 'task' ? t.services.kind.task : t.services.kind.service}
+              </span>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -259,7 +267,9 @@ export const ServiceCard: React.FC<ServiceCardProps> = React.memo(({
                 ? 'bg-rose-500/15 text-rose-400 hover:bg-rose-500/25 border border-rose-500/30 cursor-pointer'
                 : 'bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 border border-emerald-500/30 cursor-pointer'
             }`}
-            title={isStopping ? t.services.status.stopping : isBusy ? t.services.stop : t.services.start}
+            title={
+              isStopping ? t.services.status.stopping : isBusy ? t.services.stop : isCompleted ? t.services.runAgain : t.services.start
+            }
           >
             {isStopping ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -275,9 +285,7 @@ export const ServiceCard: React.FC<ServiceCardProps> = React.memo(({
             onClick={handleRestart}
             disabled={!isRunning}
             className={`p-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
-              isRunning
-                ? 'text-theme-muted hover:text-theme-main hover:bg-theme-hover'
-                : 'text-theme-muted/30 cursor-not-allowed'
+              isRunning ? 'text-theme-muted hover:text-theme-main hover:bg-theme-hover' : 'text-theme-muted/30 cursor-not-allowed'
             }`}
             title={t.services.restart}
           >
@@ -345,10 +353,9 @@ export const ServiceCard: React.FC<ServiceCardProps> = React.memo(({
       {/* Bottom Status Row */}
       <div className="mt-2 flex items-center justify-between text-[10px] text-theme-muted/80">
         <div className="flex items-center gap-2">
-          {/* Status text */}
           <span
             className={`font-medium ${
-              isRunning
+              isRunning || isCompleted
                 ? 'text-emerald-600 dark:text-emerald-400'
                 : isStarting
                 ? 'text-sky-600 dark:text-sky-400'
@@ -365,20 +372,15 @@ export const ServiceCard: React.FC<ServiceCardProps> = React.memo(({
               ? t.services.status.starting
               : runtimeStatus === 'stopping'
               ? t.services.status.stopping
+              : runtimeStatus === 'completed'
+              ? `${t.services.status.completed}${durationMs ? ` (${durationMs < 1000 ? `${durationMs}ms` : `${(durationMs / 1000).toFixed(1)}s`})` : ''}`
               : runtimeStatus === 'failed'
               ? `${t.services.status.failed} (${exitCode !== undefined ? exitCode : 1})`
               : t.services.status.stopped}
           </span>
-
-          {/* PID badge */}
-          {pid && (
-            <span className="font-mono text-zinc-600 dark:text-zinc-400 bg-theme-hover px-1.5 py-0.5 rounded">
-              PID: {pid}
-            </span>
-          )}
+          {pid && <span className="font-mono text-zinc-600 dark:text-zinc-400 bg-theme-hover px-1.5 py-0.5 rounded">PID: {pid}</span>}
         </div>
 
-        {/* Uptime clock */}
         {uptimeText && (
           <span className="flex items-center gap-1 font-mono text-emerald-600 dark:text-emerald-400">
             <Clock className="w-3 h-3" />

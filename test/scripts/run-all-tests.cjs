@@ -32,8 +32,9 @@ async function main() {
   const servicesSwitcherTestScript = path.join(scriptsDir, 'test-services-project-switcher-e2e.cjs');
   const builtinDocOpenTestScript = path.join(scriptsDir, 'test-builtin-doc-open-e2e.cjs');
   const dataToolsTestScript = path.join(scriptsDir, 'test-data-tools-e2e.cjs');
+  const servicesLifecycleTestScript = path.join(scriptsDir, 'test-services-lifecycle-e2e.cjs');
 
-  console.log('>>> [Phase 1/5] Executing API & Performance SLA Tests...');
+  console.log('>>> [Phase 1/6] Executing API & Performance SLA Tests...');
   const apiResult = await runScript(apiTestScript);
 
   if (apiResult.code !== 0) {
@@ -43,7 +44,7 @@ async function main() {
 
   console.log(`\n✓ Phase 1 Completed Successfully in ${apiResult.duration.toFixed(0)}ms\n`);
 
-  console.log('>>> [Phase 2/5] Executing Headless Chrome CDP Browser E2E Tests...');
+  console.log('>>> [Phase 2/6] Executing Headless Chrome CDP Browser E2E Tests...');
   const browserResult = await runScript(browserTestScript);
 
   if (browserResult.code !== 0) {
@@ -53,7 +54,7 @@ async function main() {
 
   console.log(`\n✓ Phase 2 Completed Successfully in ${browserResult.duration.toFixed(0)}ms\n`);
 
-  console.log('>>> [Phase 3/5] Executing Services In-Module Project Switcher E2E Tests...');
+  console.log('>>> [Phase 3/6] Executing Services In-Module Project Switcher E2E Tests...');
   const servicesResult = await runScript(servicesSwitcherTestScript);
 
   if (servicesResult.code !== 0) {
@@ -63,7 +64,7 @@ async function main() {
 
   console.log(`\n✓ Phase 3 Completed Successfully in ${servicesResult.duration.toFixed(0)}ms\n`);
 
-  console.log('>>> [Phase 4/5] Executing Built-in Doc Open in Editor E2E Tests...');
+  console.log('>>> [Phase 4/6] Executing Built-in Doc Open in Editor E2E Tests...');
   const docOpenResult = await runScript(builtinDocOpenTestScript);
 
   if (docOpenResult.code !== 0) {
@@ -73,7 +74,7 @@ async function main() {
 
   console.log(`\n✓ Phase 4 Completed Successfully in ${docOpenResult.duration.toFixed(0)}ms\n`);
 
-  console.log('>>> [Phase 5/5] Executing Data Tools & Formatter Workbench E2E Tests...');
+  console.log('>>> [Phase 5/6] Executing Data Tools & Formatter Workbench E2E Tests...');
   const dataToolsResult = await runScript(dataToolsTestScript);
 
   if (dataToolsResult.code !== 0) {
@@ -82,6 +83,16 @@ async function main() {
   }
 
   console.log(`\n✓ Phase 5 Completed Successfully in ${dataToolsResult.duration.toFixed(0)}ms\n`);
+
+  console.log('>>> [Phase 6/6] Executing Services Lifecycle, Pause Unblocking & Failure Cleanup E2E Tests...');
+  const lifecycleResult = await runScript(servicesLifecycleTestScript);
+
+  if (lifecycleResult.code !== 0) {
+    console.error(`\n✖ Phase 6 Failed with exit code ${lifecycleResult.code} (${lifecycleResult.duration.toFixed(0)}ms)`);
+    process.exit(lifecycleResult.code);
+  }
+
+  console.log(`\n✓ Phase 6 Completed Successfully in ${lifecycleResult.duration.toFixed(0)}ms\n`);
 
   console.log('######################################################################');
   console.log('       ALL VERIFICATION GATES PASSED (100% SUCCESS)');

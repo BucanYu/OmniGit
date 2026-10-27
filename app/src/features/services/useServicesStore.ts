@@ -1,5 +1,11 @@
 import { create } from 'zustand';
-import type { ServiceConfig, ServiceRuntimeState, DiscoveredScriptGroup } from './types';
+import type {
+  ServiceConfig,
+  ServiceRuntimeState,
+  DiscoveredScriptGroup,
+  ServiceStatus,
+  ServiceKind,
+} from './types';
 import { useAppStore } from '../../store/useAppStore';
 import { normalizePath } from '../../store/storeHelpers';
 
@@ -712,6 +718,7 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
       const newService: ServiceConfig = {
         id,
         name: g.name,
+        kind: g.kind || 'service',
         cwd: g.cwd || '',
         winCommand: winCmd,
         winStopScript: g.winStopScript || '',
@@ -1004,18 +1011,24 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
         });
 
         if (res.success && res.pid) {
-          set((state) => ({
-            runtimeStates: {
-              ...state.runtimeStates,
-              [serviceId]: {
-                ...state.getRuntime(serviceId),
-                status: 'running',
-                pid: res.pid,
-                startedAt: Date.now(),
-                exitCode: null,
+          set((state) => {
+            const current = state.getRuntime(serviceId);
+            if (current.status === 'completed' || current.status === 'stopped' || current.status === 'failed') {
+              return state;
+            }
+            return {
+              runtimeStates: {
+                ...state.runtimeStates,
+                [serviceId]: {
+                  ...current,
+                  status: 'running',
+                  pid: res.pid,
+                  startedAt: current.startedAt || Date.now(),
+                  exitCode: null,
+                },
               },
-            },
-          }));
+            };
+          });
           return true;
         } else {
           get().appendLog(serviceId, `\x1b[31m[OmniGit Error] 启动失败: ${res.error || '未知错误'}\x1b[0m\n`);
@@ -1064,18 +1077,24 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
         const res = await resp.json();
 
         if (res.success && res.pid) {
-          set((state) => ({
-            runtimeStates: {
-              ...state.runtimeStates,
-              [serviceId]: {
-                ...state.getRuntime(serviceId),
-                status: 'running',
-                pid: res.pid,
-                startedAt: Date.now(),
-                exitCode: null,
+          set((state) => {
+            const current = state.getRuntime(serviceId);
+            if (current.status === 'completed' || current.status === 'stopped' || current.status === 'failed') {
+              return state;
+            }
+            return {
+              runtimeStates: {
+                ...state.runtimeStates,
+                [serviceId]: {
+                  ...current,
+                  status: 'running',
+                  pid: res.pid,
+                  startedAt: current.startedAt || Date.now(),
+                  exitCode: null,
+                },
               },
-            },
-          }));
+            };
+          });
           return true;
         } else {
           get().appendLog(serviceId, `\x1b[31m[OmniGit Error] 启动失败: ${res.error || '未知错误'}\x1b[0m\n`);
@@ -1274,15 +1293,46 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
 
   handleProcessExit: (serviceId: string, exitCode: number, signal?: string) => {
     const prevRuntime = get().getRuntime(serviceId);
-    const wasUserStopped = prevRuntime.status === 'stopped';
-    const isSuccess = exitCode === 0 || wasUserStopped;
-    const exitMsg = wasUserStopped
-      ? `\n\x1b[33m>>> [OmniGit] 进程已主动终止关闭\x1b[0m\n`
-      : signal
-      ? `\n\x1b[33m>>> [OmniGit] 进程收到信号退出: ${signal} (代码: ${exitCode})\x1b[0m\n`
-      : isSuccess
-      ? `\n\x1b[32m>>> [OmniGit] 进程正常退出 (代码: 0)\x1b[0m\n`
-      : `\n\x1b[31m>>> [OmniGit] 进程异常退出 (退出代码: ${exitCode})\x1b[0m\n`;
+    const wasUserStopped = prevRuntime.status === 'stopped' || prevRuntime.status === 'stopping';
+    const isSuccess = exitCode === 0;
+
+    let serviceKind = 'service';
+    for (const list of Object.values(get().configsByProject)) {
+      const found = list.find((s) => s.id === serviceId);
+      if (found) {
+        serviceKind = found.kind || 'service';
+        break;
+      }
+    }
+
+    const durationMs = prevRuntime.startedAt ? Date.now() - prevRuntime.startedAt : undefined;
+    const formattedDuration = durationMs
+      ? durationMs < 1000
+        ? `${durationMs}ms`
+        : `${(durationMs / 1000).toFixed(1)}s`
+      : '';
+
+    let nextStatus: ServiceStatus = 'stopped';
+    let exitMsg = '';
+
+    if (wasUserStopped) {
+      nextStatus = 'stopped';
+      exitMsg = `\n\x1b[33m>>> [OmniGit] 进程已主动终止关闭\x1b[0m\n`;
+    } else if (signal) {
+      nextStatus = 'failed';
+      exitMsg = `\n\x1b[33m>>> [OmniGit] 进程收到信号退出: ${signal} (代码: ${exitCode})\x1b[0m\n`;
+    } else if (isSuccess) {
+      if (serviceKind === 'task') {
+        nextStatus = 'completed';
+        exitMsg = `\n\x1b[32m>>> [OmniGit] 任务执行完成 (退出代码: 0${formattedDuration ? `，耗时: ${formattedDuration}` : ''})\x1b[0m\n`;
+      } else {
+        nextStatus = 'stopped';
+        exitMsg = `\n\x1b[32m>>> [OmniGit] 服务正常退出 (退出代码: 0${formattedDuration ? `，运行时间: ${formattedDuration}` : ''})\x1b[0m\n`;
+      }
+    } else {
+      nextStatus = 'failed';
+      exitMsg = `\n\x1b[31m>>> [OmniGit] 进程异常退出 (退出代码: ${exitCode}${formattedDuration ? `，耗时: ${formattedDuration}` : ''})\x1b[0m\n`;
+    }
 
     get().appendLog(serviceId, exitMsg);
 
@@ -1291,9 +1341,11 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
         ...state.runtimeStates,
         [serviceId]: {
           ...state.getRuntime(serviceId),
-          status: isSuccess ? 'stopped' : 'failed',
+          status: nextStatus,
           pid: undefined,
           exitCode,
+          durationMs,
+          completedAt: isSuccess ? Date.now() : undefined,
         },
       },
     }));
