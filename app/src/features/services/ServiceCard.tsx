@@ -237,9 +237,6 @@ export const ServiceCard: React.FC<ServiceCardProps> = React.memo(({
               <span className="text-xs font-semibold text-theme-main truncate" title={service.name}>
                 {service.name}
               </span>
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-theme-hover text-theme-muted font-normal shrink-0">
-                {service.kind === 'task' ? t.services.kind.task : t.services.kind.service}
-              </span>
               <button
                 onClick={(e) => {
                   e.stopPropagation();

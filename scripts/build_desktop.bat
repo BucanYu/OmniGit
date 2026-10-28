@@ -1,13 +1,11 @@
 @echo off
-chcp 65001 >nul
 title OmniGit - Build Desktop Package
 
 echo =======================================================
 echo      OmniGit - Cross-Platform Desktop Packager
 echo =======================================================
-echo  提示: 打包过程中请勿点击控制台黑框内部，避免进入
-echo        Windows「快速编辑模式」导致打包进程被挂起。
-echo        若误点且标题出现【选择】，请按一下【回车键】恢复。
+echo  Notice: Avoid clicking console window to prevent QuickEdit pause.
+echo         Press [Enter] if [Select] appears in the console title.
 echo =======================================================
 echo.
 
@@ -16,11 +14,14 @@ if "%TARGET%"=="" set "TARGET=all"
 
 echo [1/4] Checking build environment...
 if exist "D:\tools\nvm\nodejs" set "PATH=%PATH%;D:\tools\nvm\nodejs"
+if exist "D:\tools\nodejs" set "PATH=%PATH%;D:\tools\nodejs"
+if exist "D:\tools\nvm\nvm\v20.19.5" set "PATH=%PATH%;D:\tools\nvm\nvm\v20.19.5"
+if exist "D:\tools\nvm\nvm\v22.20.0" set "PATH=%PATH%;D:\tools\nvm\nvm\v22.20.0"
 if exist "D:\tools\7-Zip" set "PATH=%PATH%;D:\tools\7-Zip"
 
 where node >nul 2>nul
 if errorlevel 1 (
-    echo [ERROR] Node.js is not found in PATH! Please install Node.js ^(>=18.0^).
+    echo [ERROR] Node.js is not found in PATH! Please install Node.js 18 or above.
     goto :BUILD_FAIL
 )
 
