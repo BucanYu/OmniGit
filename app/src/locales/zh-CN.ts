@@ -1447,6 +1447,17 @@ export const zhCN: LocaleDictionary = {
     typeGeneratorModalTitle: '一键生成跨语言数据模型定义',
     typeGeneratorModalDesc: '基于当前 JSON 深度推导生成强类型结构代码，直接复制使用',
     copyCode: '复制代码',
+    newWindow: '新增窗口',
+    selectFormatForNewWindow: '选择新窗口数据格式',
+    closeWindow: '关闭窗口',
+    renameWindow: '双击重命名窗口',
+    duplicateWindow: '复制窗口',
+    splitCompare: '双窗口并排对比',
+    splitCompareActive: '双屏对比中',
+    singleWindow: '单窗口模式',
+    selectSecondaryWindow: '对比窗口',
+    windowLeft: '窗口 1',
+    windowRight: '窗口 2',
   },
 };
 

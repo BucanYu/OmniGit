@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useDataToolsStore } from './useDataToolsStore';
+import React, { useState, useMemo } from 'react';
+import { useDataToolsStore, analyzeContent } from './useDataToolsStore';
 import type { TreeNodeData } from './types';
 import { useTranslation } from '../../locales';
 import {
@@ -13,18 +13,39 @@ import {
   FoldHorizontal,
 } from 'lucide-react';
 
-export const DataToolsTreeViewer: React.FC = () => {
+interface DataToolsTreeViewerProps {
+  tabId?: string;
+}
+
+export const DataToolsTreeViewer: React.FC<DataToolsTreeViewerProps> = ({ tabId }) => {
   const { t } = useTranslation();
-  const {
-    treeRoot,
-    expandedPaths,
-    togglePath,
-    expandAll,
-    collapseAll,
-    collapseToDepth,
-    treeSearchQuery,
-    setTreeSearchQuery,
-  } = useDataToolsStore();
+  const store = useDataToolsStore();
+
+  const targetTab = useMemo(() => {
+    if (!tabId) return null;
+    return store.tabs.find((t) => t.id === tabId) || null;
+  }, [tabId, store.tabs]);
+
+  const treeRoot = useMemo(() => {
+    if (targetTab) {
+      return analyzeContent(targetTab.content, targetTab.format).tree;
+    }
+    return store.treeRoot;
+  }, [targetTab, targetTab?.content, targetTab?.format, store.treeRoot]);
+
+  const expandedPaths = useMemo(() => {
+    if (targetTab) {
+      return new Set(targetTab.expandedPaths || ['$']);
+    }
+    return store.expandedPaths;
+  }, [targetTab, targetTab?.expandedPaths, store.expandedPaths]);
+
+  const togglePath = (path: string) => store.togglePath(path, targetTab ? targetTab.id : undefined);
+  const expandAll = () => store.expandAll(targetTab ? targetTab.id : undefined);
+  const collapseAll = () => store.collapseAll(targetTab ? targetTab.id : undefined);
+  const collapseToDepth = (depth: number) => store.collapseToDepth(depth, targetTab ? targetTab.id : undefined);
+  const treeSearchQuery = targetTab ? targetTab.treeSearchQuery : store.treeSearchQuery;
+  const setTreeSearchQuery = (q: string) => store.setTreeSearchQuery(q, targetTab ? targetTab.id : undefined);
 
   const [copiedPath, setCopiedPath] = useState<string | null>(null);
 

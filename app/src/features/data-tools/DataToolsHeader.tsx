@@ -128,7 +128,7 @@ export const DataToolsHeader: React.FC = () => {
         <button
           type="button"
           data-testid="data-tools-btn-beautify"
-          onClick={formatCurrent}
+          onClick={() => formatCurrent()}
           className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 text-sky-600 dark:text-sky-400 border border-sky-500/30 text-xs font-medium transition-colors cursor-pointer shadow-2xs"
           title={t.dataTools.beautifyTooltip}
         >
@@ -140,7 +140,7 @@ export const DataToolsHeader: React.FC = () => {
         <button
           type="button"
           data-testid="data-tools-btn-minify"
-          onClick={minifyCurrent}
+          onClick={() => minifyCurrent()}
           className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-theme-border/80 bg-theme-card hover:bg-theme-hover text-theme-main text-xs font-medium transition-colors cursor-pointer shadow-2xs"
           title={t.dataTools.minifyTooltip}
         >
@@ -153,7 +153,7 @@ export const DataToolsHeader: React.FC = () => {
           <button
             type="button"
             data-testid="data-tools-btn-repair"
-            onClick={repairCurrent}
+            onClick={() => repairCurrent()}
             className="flex items-center gap-1.5 px-2 py-1 rounded-lg border border-theme-border/80 bg-theme-card hover:bg-theme-hover text-theme-main text-xs font-medium transition-colors cursor-pointer shadow-2xs"
             title={t.dataTools.repairTooltip}
           >
@@ -300,7 +300,7 @@ export const DataToolsHeader: React.FC = () => {
         {/* Clear */}
         <button
           type="button"
-          onClick={clearContent}
+          onClick={() => clearContent()}
           className="p-1.5 rounded-lg border border-theme-border/80 bg-theme-card hover:bg-rose-500/10 text-theme-muted hover:text-rose-500 transition-colors cursor-pointer shadow-2xs"
           title={t.dataTools.clearTooltip}
         >

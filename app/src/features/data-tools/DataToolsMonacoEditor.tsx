@@ -1,13 +1,33 @@
-import React, { useRef } from 'react';
+import React, { useRef, useMemo } from 'react';
 import Editor, { type OnMount } from '@monaco-editor/react';
-import { useDataToolsStore } from './useDataToolsStore';
+import { useDataToolsStore, analyzeContent } from './useDataToolsStore';
 import { useAppStore } from '../../store/useAppStore';
 import { Loader2, AlertCircle } from 'lucide-react';
 
-export const DataToolsMonacoEditor: React.FC = () => {
-  const { formattedContent, setContent, activeFormat, stats } = useDataToolsStore();
+interface DataToolsMonacoEditorProps {
+  tabId?: string;
+}
+
+export const DataToolsMonacoEditor: React.FC<DataToolsMonacoEditorProps> = ({ tabId }) => {
+  const store = useDataToolsStore();
   const theme = useAppStore((state) => state.theme);
   const editorRef = useRef<any>(null);
+
+  const targetTab = useMemo(() => {
+    if (!tabId) return null;
+    return store.tabs.find((t) => t.id === tabId) || null;
+  }, [tabId, store.tabs]);
+
+  const activeFormat = targetTab ? targetTab.format : store.activeFormat;
+  const formattedContent = targetTab ? targetTab.content : store.formattedContent;
+  const setContent = (val: string) => store.setContent(val, targetTab ? targetTab.id : undefined);
+
+  const stats = useMemo(() => {
+    if (targetTab) {
+      return analyzeContent(targetTab.content, targetTab.format).stats;
+    }
+    return store.stats;
+  }, [targetTab, targetTab?.content, targetTab?.format, store.stats]);
 
   const getMonacoTheme = (appTheme: string): string => {
     switch (appTheme) {

@@ -1447,6 +1447,17 @@ export const enUS: LocaleDictionary = {
     typeGeneratorModalTitle: 'Generate Cross-Language Data Types',
     typeGeneratorModalDesc: 'Infers strong types from current JSON data and generates clean model code',
     copyCode: 'Copy Code',
+    newWindow: 'New Window',
+    selectFormatForNewWindow: 'Select format for new window',
+    closeWindow: 'Close Window',
+    renameWindow: 'Double click to rename',
+    duplicateWindow: 'Duplicate Window',
+    splitCompare: 'Side-by-Side Split Compare',
+    splitCompareActive: 'Comparing',
+    singleWindow: 'Single Window',
+    selectSecondaryWindow: 'Compare With',
+    windowLeft: 'Window 1',
+    windowRight: 'Window 2',
   },
 };
 

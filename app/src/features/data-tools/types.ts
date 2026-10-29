@@ -47,3 +47,18 @@ export interface FormatStats {
   errorLine?: number;
   errorColumn?: number;
 }
+
+export interface DataTab {
+  id: string;
+  title: string;
+  format: DataFormat;
+  content: string;
+  viewMode: DataViewMode;
+  indentSize: number;
+  sortKeys: boolean;
+  treeSearchQuery: string;
+  expandedPaths: string[];
+  editorWidth?: number;
+  createdAt: number;
+  updatedAt: number;
+}

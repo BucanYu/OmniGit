@@ -1447,6 +1447,17 @@ export interface LocaleDictionary {
     typeGeneratorModalTitle: string;
     typeGeneratorModalDesc: string;
     copyCode: string;
+    newWindow: string;
+    selectFormatForNewWindow: string;
+    closeWindow: string;
+    renameWindow: string;
+    duplicateWindow: string;
+    splitCompare: string;
+    splitCompareActive: string;
+    singleWindow: string;
+    selectSecondaryWindow: string;
+    windowLeft: string;
+    windowRight: string;
   };
 }
 

@@ -1,198 +1,38 @@
 import { create } from 'zustand';
-import type { DataFormat, DataViewMode, FormatStats, TreeNodeData } from './types';
-import { formatJson, minifyJson, repairJson, calcJsonStats, calcTextStats, buildJsonTree } from './formatters/jsonFormatter';
-import { formatYaml, parseYamlObject } from './formatters/yamlFormatter';
+import type { DataFormat, DataViewMode, FormatStats, TreeNodeData, DataTab } from './types';
+import {
+  DEFAULT_SAMPLES,
+  FORMAT_METAS,
+  DEFAULT_SAMPLE_JSON,
+} from './defaultSamples';
+import {
+  formatJson,
+  minifyJson,
+  repairJson,
+} from './formatters/jsonFormatter';
+import { formatYaml } from './formatters/yamlFormatter';
 import { formatXml, minifyXml } from './formatters/xmlFormatter';
 import { formatSql, minifySql } from './formatters/sqlFormatter';
 import { parseJwt } from './formatters/jwtFormatter';
 import { parseUrlQuery } from './formatters/urlFormatter';
-import { normalizeBase64, decodeBase64 } from './formatters/base64Formatter';
+import { normalizeBase64 } from './formatters/base64Formatter';
+import { calcStatsFor, tryParseJsonDoc, analyzeContent } from './analyzer';
+import {
+  createNewTab,
+  loadInitialTabs,
+  persistTabs,
+  STORAGE_KEY_SPLIT_COMPARE,
+  STORAGE_KEY_SECONDARY_TAB,
+} from './tabPersistence';
+export { calcStatsFor, tryParseJsonDoc, analyzeContent };
 
-const DEFAULT_SAMPLE_JSON = JSON.stringify(
-  {
-    code: 200,
-    message: 'success',
-    data: {
-      workspace: 'OmniGit Production Hub',
-      version: '0.6.1',
-      activeProjects: [
-        {
-          id: 101,
-          name: 'cloud-gateway-service',
-          status: 'running',
-          port: 8080,
-          tags: ['microservice', 'gateway', 'spring-cloud'],
-          metrics: { cpu: 12.5, memoryMb: 512, qps: 1420 },
-        },
-        {
-          id: 102,
-          name: 'user-auth-service',
-          status: 'running',
-          port: 8081,
-          tags: ['microservice', 'auth', 'jwt'],
-          metrics: { cpu: 8.2, memoryMb: 384, qps: 890 },
-        },
-        {
-          id: 103,
-          name: 'frontend-portal-web',
-          status: 'stopped',
-          port: 3000,
-          tags: ['frontend', 'react', 'vite'],
-          metrics: { cpu: 0, memoryMb: 0, qps: 0 },
-        },
-      ],
-      featuresEnabled: {
-        autoSync: true,
-        antiRceSandbox: true,
-        interactiveCodeFolding: true,
-      },
-    },
-    timestamp: 1793000000000,
-  },
-  null,
-  2
-);
+export interface DataToolsState {
+  tabs: DataTab[];
+  activeTabId: string;
+  splitCompareEnabled: boolean;
+  secondaryTabId: string | null;
 
-const DEFAULT_SAMPLE_YAML = `apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: omnigit-core-service
-  namespace: default
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: omnigit-core
-  template:
-    metadata:
-      labels:
-        app: omnigit-core
-    spec:
-      containers:
-        - name: core
-          image: omnigit/engine:0.6.1
-          ports:
-            - containerPort: 5345`;
-
-const DEFAULT_SAMPLE_XML = `<?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0">
-  <modelVersion>4.0.0</modelVersion>
-  <groupId>com.omnigit</groupId>
-  <artifactId>omnigit-server</artifactId>
-  <version>0.6.1</version>
-  <dependencies>
-    <dependency>
-      <groupId>org.springframework.boot</groupId>
-      <artifactId>spring-boot-starter-web</artifactId>
-    </dependency>
-  </dependencies>
-</project>`;
-
-const DEFAULT_SAMPLE_SQL = `SELECT u.id, u.username, u.email, count(c.id) AS total_commits FROM users u LEFT JOIN commits c ON u.id = c.author_id WHERE u.status = 'ACTIVE' AND c.created_at >= '2026-01-01' GROUP BY u.id, u.username, u.email HAVING count(c.id) > 10 ORDER BY total_commits DESC LIMIT 50;`;
-
-const DEFAULT_SAMPLE_JWT = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkFsZXggRGV2Iiwicm9sZXMiOlsic3VwZXJfYWRtaW4iLCJkZXZlbG9wZXIiXSwiaWF0IjoxNTE2MjM5MDIyLCJleHAiOjE3OTMwMDAwMDB9.signature_placeholder`;
-
-const DEFAULT_SAMPLE_URL = `https://api.omnigit.dev/v1/repositories?workspace=ws_1789&filter=active&sort=updated_desc&page=1&pageSize=20&tags=java&tags=react`;
-
-const DEFAULT_SAMPLE_BASE64 = 'T21uaUdpdCBEYXRhIFRvb2xzIC0gQmFzZTY0IHNhbXBsZSBwYXlsb2Fk';
-
-/** Per-format default sample documents. Each tab is an independent document. */
-const DEFAULT_SAMPLES: Record<DataFormat, string> = {
-  json: DEFAULT_SAMPLE_JSON,
-  yaml: DEFAULT_SAMPLE_YAML,
-  xml: DEFAULT_SAMPLE_XML,
-  sql: DEFAULT_SAMPLE_SQL,
-  jwt: DEFAULT_SAMPLE_JWT,
-  url: DEFAULT_SAMPLE_URL,
-  base64: DEFAULT_SAMPLE_BASE64,
-};
-
-/**
- * Stats dispatch: only JSON content goes through JSON.parse validation,
- * other formats (yaml/xml/sql) get basic text stats to avoid false syntax errors.
- */
-function calcStatsFor(content: string, format: DataFormat): FormatStats {
-  return format === 'json' ? calcJsonStats(content) : calcTextStats(content);
-}
-
-/** Try parsing the document as a JSON object/array (e.g. a previously derived view). */
-function tryParseJsonDoc(content: string): any | null {
-  const t = content.trim();
-  if (!t.startsWith('{') && !t.startsWith('[')) return null;
-  try {
-    const v = JSON.parse(t);
-    return v !== null && typeof v === 'object' ? v : null;
-  } catch {
-    return null;
-  }
-}
-
-/** Parse the document of a given format into { parsed, tree, stats }. */
-function analyzeContent(
-  content: string,
-  format: DataFormat
-): { parsed: any; tree: TreeNodeData | null; stats: FormatStats } {
-  let parsed: any = null;
-  let tree: TreeNodeData | null = null;
-
-  // jwt/url tabs may hold their own derived JSON view (from a previous convert);
-  // treat that view as a JSON document instead of failing the token/query parser.
-  if (format === 'jwt' || format === 'url') {
-    const jsonView = tryParseJsonDoc(content);
-    if (jsonView) {
-      return { parsed: jsonView, tree: buildJsonTree(jsonView), stats: calcJsonStats(content) };
-    }
-  }
-
-  if (format === 'json') {
-    try {
-      parsed = JSON.parse(content);
-      tree = buildJsonTree(parsed);
-    } catch {}
-  } else if (format === 'jwt') {
-    const jwt = parseJwt(content);
-    if (jwt.payload) {
-      parsed = { header: jwt.header, payload: jwt.payload };
-      tree = buildJsonTree(parsed);
-    }
-  } else if (format === 'url') {
-    const u = parseUrlQuery(content);
-    if (u.parsed) {
-      parsed = u.parsed;
-      tree = buildJsonTree(u.parsed);
-    }
-  } else if (format === 'yaml') {
-    const y = parseYamlObject(content);
-    if (y !== null && typeof y === 'object') {
-      parsed = y;
-      tree = buildJsonTree(y);
-    }
-  } else if (format === 'base64') {
-    // Base64 is never rewritten here: the editor keeps the source, the tree only
-    // shows a read-only decoded preview.
-    const info = decodeBase64(content);
-    if (info.valid) {
-      const PREVIEW_LIMIT = 2000;
-      const preview =
-        info.text === null
-          ? null
-          : info.text.length > PREVIEW_LIMIT
-            ? `${info.text.slice(0, PREVIEW_LIMIT)}…`
-            : info.text;
-      parsed = {
-        valid: true,
-        decodedBytes: info.byteLength,
-        decodedType: info.binary ? 'binary' : 'text',
-        decodedText: preview,
-      };
-      tree = buildJsonTree(parsed);
-    }
-  }
-
-  return { parsed, tree, stats: calcStatsFor(content, format) };
-}
-
-interface DataToolsState {
+  // Active tab convenience proxies
   formattedContent: string;
   activeFormat: DataFormat;
   viewMode: DataViewMode;
@@ -205,331 +45,355 @@ interface DataToolsState {
   treeRoot: TreeNodeData | null;
   isTypeModalOpen: boolean;
 
-  // Actions
-  setContent: (content: string) => void;
-  setFormat: (format: DataFormat) => void;
-  setViewMode: (mode: DataViewMode) => void;
-  setIndentSize: (size: number) => void;
-  setSortKeys: (sort: boolean) => void;
-  setTreeSearchQuery: (q: string) => void;
+  // Tab operations
+  addTab: (format?: DataFormat, customTitle?: string, initialContent?: string) => string;
+  closeTab: (tabId: string) => void;
+  setActiveTabId: (tabId: string) => void;
+  renameTab: (tabId: string, title: string) => void;
+  duplicateTab: (tabId: string) => void;
+  setSplitCompareEnabled: (enabled: boolean, secondaryId?: string) => void;
+  setSecondaryTabId: (tabId: string | null) => void;
+
+  // Tab content/view updates
+  setContent: (content: string, tabId?: string) => void;
+  setFormat: (format: DataFormat, tabId?: string) => void;
+  setViewMode: (mode: DataViewMode, tabId?: string) => void;
+  setIndentSize: (size: number, tabId?: string) => void;
+  setSortKeys: (sort: boolean, tabId?: string) => void;
+  setTreeSearchQuery: (q: string, tabId?: string) => void;
   setIsTypeModalOpen: (open: boolean) => void;
 
-  formatCurrent: () => void;
-  minifyCurrent: () => void;
-  repairCurrent: () => void;
-  clearContent: () => void;
-  loadSample: (format?: DataFormat) => void;
+  formatCurrent: (tabId?: string) => void;
+  minifyCurrent: (tabId?: string) => void;
+  repairCurrent: (tabId?: string) => void;
+  clearContent: (tabId?: string) => void;
+  loadSample: (format?: DataFormat, tabId?: string) => void;
 
-  togglePath: (path: string) => void;
-  expandAll: () => void;
-  collapseAll: () => void;
-  collapseToDepth: (depth: number) => void;
+  togglePath: (path: string, tabId?: string) => void;
+  expandAll: (tabId?: string) => void;
+  collapseAll: (tabId?: string) => void;
+  collapseToDepth: (depth: number, tabId?: string) => void;
 }
 
-const STORAGE_KEY_CONTENTS = 'omnigit_datatools_contents';
-const STORAGE_KEY_LEGACY_CONTENT = 'omnigit_datatools_content';
-const STORAGE_KEY_FORMAT = 'omnigit_datatools_format';
-const STORAGE_KEY_VIEW = 'omnigit_datatools_view';
-
 export const useDataToolsStore = create<DataToolsState>((set, get) => {
-  const initialFormat =
-    ((typeof window !== 'undefined' &&
-      localStorage.getItem(STORAGE_KEY_FORMAT)) as DataFormat) || 'json';
-  const initialViewMode =
-    ((typeof window !== 'undefined' &&
-      localStorage.getItem(STORAGE_KEY_VIEW)) as DataViewMode) || 'split';
+  const { tabs: initialTabs, activeTabId: initialActiveId } = loadInitialTabs();
+  const initialSplitCompare =
+    typeof window !== 'undefined' && localStorage.getItem(STORAGE_KEY_SPLIT_COMPARE) === 'true';
+  const initialSecondary =
+    typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY_SECONDARY_TAB) : null;
 
-  // Each format owns an independent document buffer (no cross-tab content leaking).
-  const contentByFormat: Partial<Record<DataFormat, string>> = {};
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY_CONTENTS);
-    if (stored) {
-      const map = JSON.parse(stored);
-      if (map && typeof map === 'object') {
-        (Object.keys(DEFAULT_SAMPLES) as DataFormat[]).forEach((f) => {
-          if (typeof map[f] === 'string') contentByFormat[f] = map[f];
-        });
-      }
-    } else {
-      // Migrate the legacy single-buffer content into the persisted active format.
-      // Historical bug: one shared buffer leaked content across tabs, so the legacy
-      // text may not even match the persisted format (e.g. YAML text under "json").
-      const legacy = localStorage.getItem(STORAGE_KEY_LEGACY_CONTENT);
-      if (legacy) {
-        if (initialFormat === 'json') {
-          let validJson = false;
-          try {
-            JSON.parse(legacy);
-            validJson = true;
-          } catch {}
-          if (validJson) {
-            contentByFormat.json = legacy;
-          } else {
-            // Rescue stray YAML text into its own YAML buffer instead of poisoning JSON
-            const y = parseYamlObject(legacy);
-            if (y !== null && typeof y === 'object') contentByFormat.yaml = legacy;
-          }
-        } else {
-          contentByFormat[initialFormat] = legacy;
-        }
-      }
-    }
-  } catch {}
-
-  const persistContents = () => {
-    try {
-      localStorage.setItem(STORAGE_KEY_CONTENTS, JSON.stringify(contentByFormat));
-    } catch {}
+  const syncActiveState = (tabs: DataTab[], activeId: string) => {
+    const activeTab = tabs.find((t) => t.id === activeId) || tabs[0];
+    const { parsed, tree, stats } = analyzeContent(activeTab.content, activeTab.format);
+    return {
+      tabs,
+      activeTabId: activeTab.id,
+      formattedContent: activeTab.content,
+      activeFormat: activeTab.format,
+      viewMode: activeTab.viewMode,
+      indentSize: activeTab.indentSize,
+      sortKeys: activeTab.sortKeys,
+      treeSearchQuery: activeTab.treeSearchQuery,
+      expandedPaths: new Set(activeTab.expandedPaths || ['$']),
+      stats,
+      parsedData: parsed,
+      treeRoot: tree,
+    };
   };
 
-  /** Resolve the document for a format: user buffer first, default sample otherwise. */
-  const resolveContent = (format: DataFormat): string =>
-    contentByFormat[format] !== undefined ? (contentByFormat[format] as string) : DEFAULT_SAMPLES[format];
-
-  /** Commit a new document for a format (buffer + persisted + reactive state). */
-  const commitContent = (
-    format: DataFormat,
-    content: string,
-    parsed: any,
-    tree: TreeNodeData | null,
-    stats: FormatStats
-  ) => {
-    contentByFormat[format] = content;
-    persistContents();
-    set({ formattedContent: content, parsedData: parsed, treeRoot: tree, stats });
-  };
-
-  const initialContent = resolveContent(initialFormat);
-  const initialAnalysis = analyzeContent(initialContent, initialFormat);
-  const initialExpanded = new Set<string>(['$', '$.data', '$.data.activeProjects']);
+  const initialSync = syncActiveState(initialTabs, initialActiveId);
 
   return {
-    formattedContent: initialContent,
-    activeFormat: initialFormat,
-    viewMode: initialViewMode,
-    indentSize: 2,
-    sortKeys: false,
-    treeSearchQuery: '',
-    expandedPaths: initialExpanded,
-    stats: initialAnalysis.stats,
-    parsedData: initialAnalysis.parsed,
-    treeRoot: initialAnalysis.tree,
+    ...initialSync,
+    splitCompareEnabled: initialSplitCompare,
+    secondaryTabId: initialSecondary,
     isTypeModalOpen: false,
 
-    setContent: (content: string) => {
-      const { activeFormat } = get();
-      const { parsed, tree, stats } = analyzeContent(content, activeFormat);
-      commitContent(activeFormat, content, parsed, tree, stats);
+    addTab: (format = 'json', customTitle, initialContent) => {
+      const { tabs, activeTabId } = get();
+      const meta = FORMAT_METAS.find((m) => m.id === format) || FORMAT_METAS[0];
+      const sameFormatCount = tabs.filter((t) => t.format === format).length;
+      const title = customTitle || `${meta.defaultTitle} ${sameFormatCount + 1}`;
+      const newTab = createNewTab(format, title, initialContent);
+      const nextTabs = [...tabs, newTab];
+      persistTabs(nextTabs, newTab.id);
+      set(syncActiveState(nextTabs, newTab.id));
+      return newTab.id;
     },
 
-    setFormat: (format: DataFormat) => {
-      try {
-        localStorage.setItem(STORAGE_KEY_FORMAT, format);
-      } catch {}
-      if (format === get().activeFormat) return;
-      const content = resolveContent(format);
-      const { parsed, tree, stats } = analyzeContent(content, format);
+    closeTab: (tabId) => {
+      const { tabs, activeTabId, secondaryTabId } = get();
+      if (tabs.length <= 1) {
+        // At least one tab always stays: reset content
+        const resetTab = createNewTab('json', 'JSON 1');
+        const nextTabs = [resetTab];
+        persistTabs(nextTabs, resetTab.id);
+        set(syncActiveState(nextTabs, resetTab.id));
+        return;
+      }
+      const closeIndex = tabs.findIndex((t) => t.id === tabId);
+      const nextTabs = tabs.filter((t) => t.id !== tabId);
+      let nextActive = activeTabId;
+      if (activeTabId === tabId) {
+        const nextIndex = Math.min(closeIndex, nextTabs.length - 1);
+        nextActive = nextTabs[nextIndex].id;
+      }
+      let nextSecondary = secondaryTabId;
+      if (secondaryTabId === tabId) {
+        nextSecondary = nextTabs.find((t) => t.id !== nextActive)?.id || null;
+      }
+      persistTabs(nextTabs, nextActive);
       set({
-        activeFormat: format,
-        formattedContent: content,
-        parsedData: parsed,
-        treeRoot: tree,
-        stats,
+        ...syncActiveState(nextTabs, nextActive),
+        secondaryTabId: nextSecondary,
       });
-      // Apply the format's own display transform on the freshly loaded buffer
-      // (e.g. JWT token -> decoded JSON view). Works on this tab's own document,
-      // so it can never leak content into another format.
-      get().formatCurrent();
     },
 
-    setViewMode: (mode: DataViewMode) => {
+    setActiveTabId: (tabId) => {
+      const { tabs, activeTabId } = get();
+      if (tabId === activeTabId) return;
+      const target = tabs.find((t) => t.id === tabId);
+      if (!target) return;
+      persistTabs(tabs, tabId);
+      set(syncActiveState(tabs, tabId));
+    },
+
+    renameTab: (tabId, title) => {
+      const trimmed = title.trim();
+      if (!trimmed) return;
+      const { tabs, activeTabId } = get();
+      const nextTabs = tabs.map((t) => (t.id === tabId ? { ...t, title: trimmed, updatedAt: Date.now() } : t));
+      persistTabs(nextTabs, activeTabId);
+      set({ tabs: nextTabs });
+    },
+
+    duplicateTab: (tabId) => {
+      const { tabs } = get();
+      const source = tabs.find((t) => t.id === tabId);
+      if (!source) return;
+      get().addTab(source.format, `${source.title} (副本)`, source.content);
+    },
+
+    setSplitCompareEnabled: (enabled, secondaryId) => {
+      const { tabs, activeTabId } = get();
+      let targetSecondary = secondaryId !== undefined ? secondaryId : get().secondaryTabId;
+      if (enabled) {
+        if (!targetSecondary || targetSecondary === activeTabId || !tabs.some((t) => t.id === targetSecondary)) {
+          const candidate = tabs.find((t) => t.id !== activeTabId);
+          if (candidate) {
+            targetSecondary = candidate.id;
+          } else {
+            // Auto-create a second window of current format for immediate comparison
+            const currentTab = tabs.find((t) => t.id === activeTabId);
+            const newId = get().addTab(currentTab?.format || 'json', undefined, currentTab?.content);
+            targetSecondary = newId;
+          }
+        }
+      }
       try {
-        localStorage.setItem(STORAGE_KEY_VIEW, mode);
+        localStorage.setItem(STORAGE_KEY_SPLIT_COMPARE, String(enabled));
+        if (targetSecondary) localStorage.setItem(STORAGE_KEY_SECONDARY_TAB, targetSecondary);
       } catch {}
-      set({ viewMode: mode });
+      set({ splitCompareEnabled: enabled, secondaryTabId: targetSecondary });
     },
 
-    setIndentSize: (size: number) => {
-      set({ indentSize: size });
-      get().formatCurrent();
+    setSecondaryTabId: (tabId) => {
+      try {
+        if (tabId) localStorage.setItem(STORAGE_KEY_SECONDARY_TAB, tabId);
+      } catch {}
+      set({ secondaryTabId: tabId });
     },
 
-    setSortKeys: (sort: boolean) => {
-      set({ sortKeys: sort });
-      get().formatCurrent();
+    setContent: (content, targetTabId) => {
+      const { tabs, activeTabId } = get();
+      const tabId = targetTabId || activeTabId;
+      const nextTabs = tabs.map((t) => (t.id === tabId ? { ...t, content, updatedAt: Date.now() } : t));
+      persistTabs(nextTabs, activeTabId);
+      set(syncActiveState(nextTabs, activeTabId));
     },
 
-    setTreeSearchQuery: (q: string) => set({ treeSearchQuery: q }),
-    setIsTypeModalOpen: (open: boolean) => set({ isTypeModalOpen: open }),
+    setFormat: (format, targetTabId) => {
+      const { tabs, activeTabId } = get();
+      const tabId = targetTabId || activeTabId;
+      const target = tabs.find((t) => t.id === tabId);
+      if (!target || target.format === format) return;
+      const meta = FORMAT_METAS.find((m) => m.id === format) || FORMAT_METAS[0];
+      const nextTabs = tabs.map((t) =>
+        t.id === tabId ? { ...t, format, title: meta.defaultTitle, updatedAt: Date.now() } : t
+      );
+      persistTabs(nextTabs, activeTabId);
+      set(syncActiveState(nextTabs, activeTabId));
+      get().formatCurrent(tabId);
+    },
 
-    formatCurrent: () => {
-      const { formattedContent: doc, activeFormat, indentSize, sortKeys } = get();
-      if (!doc.trim()) return;
+    setViewMode: (mode, targetTabId) => {
+      const { tabs, activeTabId } = get();
+      const tabId = targetTabId || activeTabId;
+      const nextTabs = tabs.map((t) => (t.id === tabId ? { ...t, viewMode: mode, updatedAt: Date.now() } : t));
+      persistTabs(nextTabs, activeTabId);
+      set(syncActiveState(nextTabs, activeTabId));
+    },
 
-      if (activeFormat === 'json') {
-        const res = formatJson(doc, indentSize, sortKeys);
-        let tree: TreeNodeData | null = null;
-        if (res.parsed) {
-          tree = buildJsonTree(res.parsed);
-        }
-        commitContent(activeFormat, res.formatted, res.parsed, tree, calcJsonStats(res.formatted));
-      } else if (activeFormat === 'yaml') {
-        const res = formatYaml(doc, indentSize);
-        let tree: TreeNodeData | null = null;
-        if (res.parsed !== null && res.parsed !== undefined && typeof res.parsed === 'object') {
-          tree = buildJsonTree(res.parsed);
-        }
-        commitContent(activeFormat, res.formatted, res.parsed ?? null, tree, calcTextStats(res.formatted));
-      } else if (activeFormat === 'xml') {
-        const res = formatXml(doc, indentSize);
-        commitContent(activeFormat, res.formatted, null, null, calcTextStats(res.formatted));
-      } else if (activeFormat === 'sql') {
-        const res = formatSql(doc, indentSize);
-        commitContent(activeFormat, res.formatted, null, null, calcTextStats(res.formatted));
-      } else if (activeFormat === 'jwt') {
-        const jsonView = tryParseJsonDoc(doc);
-        if (jsonView) {
-          // Already a decoded view: beautify = pretty-print that JSON document
-          const pretty = JSON.stringify(jsonView, null, indentSize);
-          commitContent(activeFormat, pretty, jsonView, buildJsonTree(jsonView), calcJsonStats(pretty));
-        } else {
-          const res = parseJwt(doc);
-          let tree: TreeNodeData | null = null;
-          if (res.payload) {
-            tree = buildJsonTree({ header: res.header, payload: res.payload });
-          }
-          commitContent(activeFormat, res.formattedJson, res.payload, tree, calcJsonStats(res.formattedJson));
-        }
-      } else if (activeFormat === 'url') {
-        const jsonView = tryParseJsonDoc(doc);
-        if (jsonView) {
-          const pretty = JSON.stringify(jsonView, null, indentSize);
-          commitContent(activeFormat, pretty, jsonView, buildJsonTree(jsonView), calcJsonStats(pretty));
-        } else {
-          const res = parseUrlQuery(doc);
-          let tree: TreeNodeData | null = null;
-          if (res.parsed) {
-            tree = buildJsonTree(res.parsed);
-          }
-          commitContent(activeFormat, res.formattedJson, res.parsed, tree, calcJsonStats(res.formattedJson));
-        }
-      } else if (activeFormat === 'base64') {
-        // Beautify = normalize only (strip whitespace, fix padding).
-        // Never decode into the editor: decoding is a read-only preview shown in the tree.
-        const normalized = normalizeBase64(doc);
-        const { parsed, tree } = analyzeContent(normalized, activeFormat);
-        commitContent(activeFormat, normalized, parsed, tree, calcTextStats(normalized));
+    setIndentSize: (size, targetTabId) => {
+      const { tabs, activeTabId } = get();
+      const tabId = targetTabId || activeTabId;
+      const nextTabs = tabs.map((t) => (t.id === tabId ? { ...t, indentSize: size } : t));
+      persistTabs(nextTabs, activeTabId);
+      set(syncActiveState(nextTabs, activeTabId));
+      get().formatCurrent(tabId);
+    },
+
+    setSortKeys: (sort, targetTabId) => {
+      const { tabs, activeTabId } = get();
+      const tabId = targetTabId || activeTabId;
+      const nextTabs = tabs.map((t) => (t.id === tabId ? { ...t, sortKeys: sort } : t));
+      persistTabs(nextTabs, activeTabId);
+      set(syncActiveState(nextTabs, activeTabId));
+      get().formatCurrent(tabId);
+    },
+
+    setTreeSearchQuery: (q, targetTabId) => {
+      const { tabs, activeTabId } = get();
+      const tabId = targetTabId || activeTabId;
+      const nextTabs = tabs.map((t) => (t.id === tabId ? { ...t, treeSearchQuery: q } : t));
+      set(syncActiveState(nextTabs, activeTabId));
+    },
+
+    setIsTypeModalOpen: (open) => set({ isTypeModalOpen: open }),
+
+    formatCurrent: (targetTabId) => {
+      const { tabs, activeTabId } = get();
+      const tabId = targetTabId || activeTabId;
+      const tab = tabs.find((t) => t.id === tabId);
+      if (!tab || !tab.content.trim()) return;
+
+      let formatted = tab.content;
+      if (tab.format === 'json') {
+        const res = formatJson(tab.content, tab.indentSize, tab.sortKeys);
+        formatted = res.formatted;
+      } else if (tab.format === 'yaml') {
+        formatted = formatYaml(tab.content, tab.indentSize).formatted;
+      } else if (tab.format === 'xml') {
+        formatted = formatXml(tab.content, tab.indentSize).formatted;
+      } else if (tab.format === 'sql') {
+        formatted = formatSql(tab.content, tab.indentSize).formatted;
+      } else if (tab.format === 'jwt') {
+        const jsonView = tryParseJsonDoc(tab.content);
+        if (jsonView) formatted = JSON.stringify(jsonView, null, tab.indentSize);
+        else formatted = parseJwt(tab.content).formattedJson;
+      } else if (tab.format === 'url') {
+        const jsonView = tryParseJsonDoc(tab.content);
+        if (jsonView) formatted = JSON.stringify(jsonView, null, tab.indentSize);
+        else formatted = parseUrlQuery(tab.content).formattedJson;
+      } else if (tab.format === 'base64') {
+        formatted = normalizeBase64(tab.content);
       }
+      get().setContent(formatted, tabId);
     },
 
-    minifyCurrent: () => {
-      const { formattedContent: doc, activeFormat } = get();
-      if (!doc.trim()) return;
+    minifyCurrent: (targetTabId) => {
+      const { tabs, activeTabId } = get();
+      const tabId = targetTabId || activeTabId;
+      const tab = tabs.find((t) => t.id === tabId);
+      if (!tab || !tab.content.trim()) return;
 
-      if (activeFormat === 'json') {
-        const res = minifyJson(doc);
-        const { parsed, tree } = analyzeContent(res.minified, activeFormat);
-        commitContent(activeFormat, res.minified, parsed, tree, calcJsonStats(res.minified));
-      } else if (activeFormat === 'xml') {
-        const res = minifyXml(doc);
-        commitContent(activeFormat, res.minified, null, null, calcTextStats(res.minified));
-      } else if (activeFormat === 'sql') {
-        const res = minifySql(doc);
-        commitContent(activeFormat, res.minified, null, null, calcTextStats(res.minified));
-      } else if (activeFormat === 'yaml') {
-        // YAML minification is not safe: collapsing whitespace would break indentation.
-        // Keep the content as-is to avoid destroying the structure.
-        const { parsed, tree } = analyzeContent(doc, activeFormat);
-        commitContent(activeFormat, doc, parsed, tree, calcTextStats(doc));
-      } else if (activeFormat === 'base64') {
-        // Base64 minify = strip whitespace/padding-line breaks only; never re-encode.
-        const compact = doc.replace(/\s+/g, '');
-        const { parsed, tree } = analyzeContent(compact, activeFormat);
-        commitContent(activeFormat, compact, parsed, tree, calcTextStats(compact));
-      } else if (activeFormat === 'jwt' || activeFormat === 'url') {
-        // Decoded JSON view: minify = compact JSON (never collapse whitespace inside strings)
-        const jsonView = tryParseJsonDoc(doc);
-        if (jsonView) {
-          const compact = JSON.stringify(jsonView);
-          commitContent(activeFormat, compact, jsonView, buildJsonTree(jsonView), calcJsonStats(compact));
-        } else {
-          const compact = doc.replace(/\s+/g, ' ').trim();
-          const { parsed, tree } = analyzeContent(compact, activeFormat);
-          commitContent(activeFormat, compact, parsed, tree, calcTextStats(compact));
-        }
+      let minified = tab.content;
+      if (tab.format === 'json') {
+        minified = minifyJson(tab.content).minified;
+      } else if (tab.format === 'xml') {
+        minified = minifyXml(tab.content).minified;
+      } else if (tab.format === 'sql') {
+        minified = minifySql(tab.content).minified;
+      } else if (tab.format === 'base64') {
+        minified = tab.content.replace(/\s+/g, '');
       } else {
-        const minified = doc.replace(/\s+/g, ' ').trim();
-        commitContent(activeFormat, minified, null, null, calcTextStats(minified));
+        const jsonView = tryParseJsonDoc(tab.content);
+        if (jsonView) minified = JSON.stringify(jsonView);
+        else minified = tab.content.replace(/\s+/g, ' ').trim();
+      }
+      get().setContent(minified, tabId);
+    },
+
+    repairCurrent: (targetTabId) => {
+      const { tabs, activeTabId } = get();
+      const tabId = targetTabId || activeTabId;
+      const tab = tabs.find((t) => t.id === tabId);
+      if (!tab) return;
+      const res = repairJson(tab.content);
+      if (res.success) get().setContent(res.repaired, tabId);
+    },
+
+    clearContent: (targetTabId) => {
+      get().setContent('', targetTabId);
+    },
+
+    loadSample: (format, targetTabId) => {
+      const { tabs, activeTabId } = get();
+      const tabId = targetTabId || activeTabId;
+      const tab = tabs.find((t) => t.id === tabId);
+      const fmt = format || tab?.format || 'json';
+      const sample = DEFAULT_SAMPLES[fmt] || '';
+      get().setContent(sample, tabId);
+      if (tab && tab.format !== fmt) {
+        get().setFormat(fmt, tabId);
       }
     },
 
-    repairCurrent: () => {
-      const { formattedContent: doc } = get();
-      const res = repairJson(doc);
-      if (res.success) {
-        get().setContent(res.repaired);
-      }
+    togglePath: (path, targetTabId) => {
+      const { tabs, activeTabId } = get();
+      const tabId = targetTabId || activeTabId;
+      const tab = tabs.find((t) => t.id === tabId);
+      if (!tab) return;
+      const current = new Set(tab.expandedPaths || ['$']);
+      if (current.has(path)) current.delete(path);
+      else current.add(path);
+      const nextTabs = tabs.map((t) =>
+        t.id === tabId ? { ...t, expandedPaths: Array.from(current) } : t
+      );
+      persistTabs(nextTabs, activeTabId);
+      set(syncActiveState(nextTabs, activeTabId));
     },
 
-    clearContent: () => {
-      get().setContent('');
-    },
-
-    loadSample: (format = 'json') => {
-      contentByFormat[format] = DEFAULT_SAMPLES[format] ?? '';
-      persistContents();
-      if (get().activeFormat === format) {
-        const content = contentByFormat[format] as string;
-        const { parsed, tree, stats } = analyzeContent(content, format);
-        set({ formattedContent: content, parsedData: parsed, treeRoot: tree, stats });
-      } else {
-        get().setFormat(format);
-      }
-    },
-
-    togglePath: (path: string) => {
-      const { expandedPaths } = get();
-      const next = new Set(expandedPaths);
-      if (next.has(path)) {
-        next.delete(path);
-      } else {
-        next.add(path);
-      }
-      set({ expandedPaths: next });
-    },
-
-    expandAll: () => {
-      const { treeRoot } = get();
+    expandAll: (targetTabId) => {
+      const { tabs, activeTabId, treeRoot } = get();
+      const tabId = targetTabId || activeTabId;
       if (!treeRoot) return;
       const allPaths = new Set<string>();
-      function collect(node: TreeNodeData) {
+      const collect = (node: TreeNodeData) => {
         allPaths.add(node.path);
-        if (node.children) {
-          node.children.forEach(collect);
-        }
-      }
+        if (node.children) node.children.forEach(collect);
+      };
       collect(treeRoot);
-      set({ expandedPaths: allPaths });
+      const nextTabs = tabs.map((t) =>
+        t.id === tabId ? { ...t, expandedPaths: Array.from(allPaths) } : t
+      );
+      persistTabs(nextTabs, activeTabId);
+      set(syncActiveState(nextTabs, activeTabId));
     },
 
-    collapseAll: () => {
-      set({ expandedPaths: new Set(['$']) });
+    collapseAll: (targetTabId) => {
+      const { tabs, activeTabId } = get();
+      const tabId = targetTabId || activeTabId;
+      const nextTabs = tabs.map((t) => (t.id === tabId ? { ...t, expandedPaths: ['$'] } : t));
+      persistTabs(nextTabs, activeTabId);
+      set(syncActiveState(nextTabs, activeTabId));
     },
 
-    collapseToDepth: (targetDepth: number) => {
-      const { treeRoot } = get();
+    collapseToDepth: (targetDepth, targetTabId) => {
+      const { tabs, activeTabId, treeRoot } = get();
+      const tabId = targetTabId || activeTabId;
       if (!treeRoot) return;
       const validPaths = new Set<string>();
-      function collect(node: TreeNodeData) {
-        if (node.depth < targetDepth) {
-          validPaths.add(node.path);
-        }
-        if (node.children) {
-          node.children.forEach(collect);
-        }
-      }
+      const collect = (node: TreeNodeData) => {
+        if (node.depth < targetDepth) validPaths.add(node.path);
+        if (node.children) node.children.forEach(collect);
+      };
       collect(treeRoot);
-      set({ expandedPaths: validPaths });
+      const nextTabs = tabs.map((t) =>
+        t.id === tabId ? { ...t, expandedPaths: Array.from(validPaths) } : t
+      );
+      persistTabs(nextTabs, activeTabId);
+      set(syncActiveState(nextTabs, activeTabId));
     },
   };
 });
