@@ -98,12 +98,18 @@ export const DEFAULT_SAMPLES: Record<DataFormat, string> = {
   base64: DEFAULT_SAMPLE_BASE64,
 };
 
-export const FORMAT_METAS: { id: DataFormat; label: string; badge: string; defaultTitle: string }[] = [
-  { id: 'json', label: 'JSON / JSON5', badge: '{ }', defaultTitle: 'JSON' },
-  { id: 'yaml', label: 'YAML', badge: 'yml', defaultTitle: 'YAML' },
-  { id: 'xml', label: 'XML / HTML', badge: '< >', defaultTitle: 'XML' },
-  { id: 'sql', label: 'SQL', badge: 'sql', defaultTitle: 'SQL' },
-  { id: 'jwt', label: 'JWT Token', badge: 'jwt', defaultTitle: 'JWT' },
-  { id: 'url', label: 'URL Query', badge: 'url', defaultTitle: 'URL' },
-  { id: 'base64', label: 'Base64', badge: 'b64', defaultTitle: 'Base64' },
+export const FORMAT_METAS: {
+  id: DataFormat;
+  label: string;
+  badge: string;
+  defaultTitle: string;
+  desc: string;
+}[] = [
+  { id: 'json', label: 'JSON / JSON5', badge: '{ }', defaultTitle: 'JSON', desc: '键值结构 / 接口响应' },
+  { id: 'yaml', label: 'YAML', badge: 'yml', defaultTitle: 'YAML', desc: '配置文件 / Kubernetes' },
+  { id: 'xml', label: 'XML / HTML', badge: '< >', defaultTitle: 'XML', desc: '标记文档 / DOM 树' },
+  { id: 'sql', label: 'SQL', badge: 'sql', defaultTitle: 'SQL', desc: '数据库查询 / DDL 脚本' },
+  { id: 'jwt', label: 'JWT Token', badge: 'jwt', defaultTitle: 'JWT', desc: '鉴权令牌 / Claims' },
+  { id: 'url', label: 'URL Query', badge: 'url', defaultTitle: 'URL', desc: 'URL 查询参数 / 键值对' },
+  { id: 'base64', label: 'Base64', badge: 'b64', defaultTitle: 'Base64', desc: '文本编解码 / 字节分析' },
 ];

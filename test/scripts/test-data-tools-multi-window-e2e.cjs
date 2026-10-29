@@ -175,6 +175,12 @@ async function main() {
     `);
     report('Format Picker Dropdown Opened on + Click', dropdownOpened);
 
+    // Capture screenshot of the opened format picker dropdown
+    if (dropdownOpened) {
+      console.log('Capturing 23_data_tools_add_window_dropdown.png...');
+      await takeScreenshot('23_data_tools_add_window_dropdown.png');
+    }
+
     // 4. Select YAML from dropdown to create YAML window
     console.log('3. Selecting YAML format to create YAML window...');
     const yamlTabAdded = await evalJs(`

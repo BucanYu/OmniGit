@@ -99,9 +99,10 @@ export const DataToolsHeader: React.FC = () => {
   ];
 
   return (
-    <div className="h-11 px-3 border-b border-theme-border bg-theme-sidebar/95 flex items-center justify-between gap-2 shrink-0 select-none overflow-x-auto no-scrollbar">
+    <div className="h-10 px-3 border-b border-theme-border bg-theme-app/95 flex items-center justify-between gap-2 shrink-0 select-none overflow-x-auto no-scrollbar">
       {/* Left: Format selector pills */}
       <div className="flex items-center gap-1.5 shrink-0">
+        <span className="text-[11px] text-theme-dim font-medium mr-0.5 hidden md:inline">当前格式:</span>
         <div className="flex items-center p-0.5 rounded-lg bg-theme-hover/60 border border-theme-border/60">
           {formats.map((fmt) => (
             <button
@@ -109,7 +110,7 @@ export const DataToolsHeader: React.FC = () => {
               type="button"
               data-testid={`data-format-tab-${fmt.id}`}
               onClick={() => setFormat(fmt.id)}
-              className={`px-2 py-1 rounded-md text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={`px-2 py-0.5 rounded-md text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
                 activeFormat === fmt.id
                   ? 'bg-theme-card text-sky-600 dark:text-sky-400 font-semibold shadow-2xs'
                   : 'text-theme-muted hover:text-theme-main hover:bg-theme-hover/50'
