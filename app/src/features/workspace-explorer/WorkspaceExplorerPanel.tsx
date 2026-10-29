@@ -14,6 +14,9 @@ import {
   Layers,
   Plus,
   Crosshair,
+  Eye,
+  EyeOff,
+  ChevronsDownUp,
 } from 'lucide-react';
 
 const EMPTY_CHILDREN: FileTreeNodeItem[] = [];
@@ -134,6 +137,9 @@ export function WorkspaceExplorerPanel() {
   const isLocating = useWorkspaceExplorerStore((state) => state.isLocating);
   const refreshDir = useWorkspaceExplorerStore((state) => state.refreshDir);
   const toggleExpandDir = useWorkspaceExplorerStore((state) => state.toggleExpandDir);
+  const showIgnoredFiles = useWorkspaceExplorerStore((state) => state.showIgnoredFiles);
+  const toggleShowIgnoredFiles = useWorkspaceExplorerStore((state) => state.toggleShowIgnoredFiles);
+  const collapseAllDirs = useWorkspaceExplorerStore((state) => state.collapseAllDirs);
 
   const { tabs, activeTabId } = useEditorTabsStore();
   const { t } = useTranslation();
@@ -222,6 +228,28 @@ export function WorkspaceExplorerPanel() {
           </span>
         </div>
         <div className="flex items-center gap-0.5">
+          {/* Toggle Show/Hide Ignored Files */}
+          <button
+            onClick={toggleShowIgnoredFiles}
+            title={showIgnoredFiles ? t.workspaceExplorer.showAllFiles : t.workspaceExplorer.hideIgnoredFiles}
+            className={`p-1 rounded transition cursor-pointer ${
+              showIgnoredFiles
+                ? 'text-sky-400 hover:bg-theme-hover'
+                : 'text-theme-muted/60 hover:text-theme-main hover:bg-theme-hover'
+            }`}
+          >
+            {showIgnoredFiles ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+          </button>
+
+          {/* Collapse All Folders */}
+          <button
+            onClick={collapseAllDirs}
+            title={t.workspaceExplorer.collapseAll}
+            className="p-1 hover:bg-theme-hover rounded text-theme-muted hover:text-theme-main transition cursor-pointer"
+          >
+            <ChevronsDownUp className="w-3.5 h-3.5" />
+          </button>
+
           {/* Locate Opened File (Scroll from Source) */}
           <button
             onClick={handleLocateCurrentFile}

@@ -7,6 +7,7 @@ export interface FileTreeNodeItem {
   isDirectory: boolean;
   size?: number;
   extension?: string;
+  isIgnored?: boolean;
 }
 
 interface WorkspaceExplorerState {
@@ -16,12 +17,15 @@ interface WorkspaceExplorerState {
   selectedNodePath: string | null;
   locateHighlightTimestamp: number;
   isLocating: boolean;
+  showIgnoredFiles: boolean;
 
   toggleExpandDir: (repoPath: string, subDir?: string, autoExpandDepth?: number) => Promise<void>;
   ensureDirExpanded: (repoPath: string, subDir?: string) => Promise<void>;
   locateFile: (repoPath: string, relativePath: string, fullPath: string) => Promise<void>;
   selectNode: (nodePath: string) => void;
   refreshDir: (repoPath: string, subDir?: string) => Promise<void>;
+  toggleShowIgnoredFiles: () => void;
+  collapseAllDirs: () => void;
 }
 
 export function normalizePath(p: string): string {
@@ -44,6 +48,22 @@ export const useWorkspaceExplorerStore = create<WorkspaceExplorerState>((set, ge
   selectedNodePath: null,
   locateHighlightTimestamp: 0,
   isLocating: false,
+  showIgnoredFiles:
+    typeof window !== 'undefined'
+      ? localStorage.getItem('omnigit_explorer_show_ignored') !== 'false'
+      : true,
+
+  toggleShowIgnoredFiles: () => {
+    const nextVal = !get().showIgnoredFiles;
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('omnigit_explorer_show_ignored', String(nextVal));
+    }
+    set({ showIgnoredFiles: nextVal });
+  },
+
+  collapseAllDirs: () => {
+    set({ expandedDirs: new Set<string>() });
+  },
 
   toggleExpandDir: async (repoPath: string, subDir: string = '', autoExpandDepth: number = 0) => {
     const fullKey = buildDirKey(repoPath, subDir);

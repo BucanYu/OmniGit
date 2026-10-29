@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useWorkspaceExplorerStore, normalizePath, buildDirKey, type FileTreeNodeItem } from './useWorkspaceExplorerStore';
 import { useEditorTabsStore } from '../code-editor/useEditorTabsStore';
+import { useTranslation } from '../../locales';
 
 interface FileTreeNodeProps {
   item: FileTreeNodeItem;
@@ -128,11 +129,13 @@ const EMPTY_CHILDREN: FileTreeNodeItem[] = [];
 export const FileTreeNode = React.memo(function FileTreeNode({ item, repoPath, repoName, depth }: FileTreeNodeProps) {
   const rowRef = useRef<HTMLDivElement>(null);
   const [isLocatePulsing, setIsLocatePulsing] = useState(false);
+  const { t } = useTranslation();
 
   const key = React.useMemo(() => buildDirKey(repoPath, item.relativePath), [repoPath, item.relativePath]);
   const normPath = React.useMemo(() => (item.path ? normalizePath(item.path).toLowerCase() : ''), [item.path]);
 
   // Fine-grained Zustand subscriptions: only re-render if THIS item's specific state changed!
+  const showIgnoredFiles = useWorkspaceExplorerStore((state) => state.showIgnoredFiles);
   const isExpanded = useWorkspaceExplorerStore((state) =>
     item.isDirectory ? state.expandedDirs.has(key) : false
   );
@@ -184,6 +187,15 @@ export const FileTreeNode = React.memo(function FileTreeNode({ item, repoPath, r
     }
   };
 
+  // If user chooses to hide gitignored files, don't render them
+  if (!showIgnoredFiles && item.isIgnored) {
+    return null;
+  }
+
+  const tooltip = item.isIgnored
+    ? `${item.name} (${item.relativePath}) ${t.workspaceExplorer.gitIgnoredBadge}`
+    : `${item.name} (${item.relativePath})`;
+
   return (
     <div>
       <div
@@ -195,9 +207,11 @@ export const FileTreeNode = React.memo(function FileTreeNode({ item, repoPath, r
             ? 'bg-sky-100 dark:bg-sky-500/25 text-sky-800 dark:text-sky-300 font-semibold ring-1 ring-sky-500/60 dark:ring-sky-400 shadow-sm'
             : isSelected
             ? 'bg-theme-hover text-theme-main font-medium'
+            : item.isIgnored
+            ? 'text-theme-muted/70 hover:bg-theme-hover/60 hover:text-theme-main/90'
             : 'text-theme-main/90 hover:bg-theme-hover/60'
         }`}
-        title={`${item.name} (${item.relativePath})`}
+        title={tooltip}
       >
         {item.isDirectory ? (
           <>

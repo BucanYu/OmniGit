@@ -1077,6 +1077,10 @@ export interface LocaleDictionary {
     emptyDesc: string;
     openInSystemExplorer: (path: string) => string;
     emptyDirOrLoading: string;
+    showAllFiles: string;
+    hideIgnoredFiles: string;
+    collapseAll: string;
+    gitIgnoredBadge: string;
   };
   editor: {
     noFileOpenTitle: string;
@@ -1102,6 +1106,11 @@ export interface LocaleDictionary {
     save: string;
     saved: string;
     binaryFileWarning: string;
+    binaryFileTitle: string;
+    openInSystemExplorer: string;
+    openWithDefaultApp: string;
+    largeFileWarning: (size: string) => string;
+    largeFileNotice: string;
     loadingEditor: string;
     dragSplitTooltip: string;
     cursorPosition: (line: number, col: number) => string;

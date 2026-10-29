@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { codeSearchService, type SearchCodeOptions, type SearchCodeMatch } from './codeSearchService';
 
 export interface FileTreeNodeItem {
   name: string;
@@ -9,32 +10,15 @@ export interface FileTreeNodeItem {
   size?: number;
   extension?: string;
   children?: FileTreeNodeItem[];
+  isIgnored?: boolean;
 }
 
-const DEFAULT_IGNORED_DIRS = new Set([
+// Only internal VCS database directories are skipped from tree rendering
+// Project directories (e.g. node_modules, dist, build, .env, target, logs) are fully accessible!
+const VCS_METADATA_DIRS = new Set([
   '.git',
   '.svn',
-  'node_modules',
-  'dist',
-  'dist-electron',
-  'build',
-  'release',
-  '.idea',
-  '.vscode',
-  'target',
-  '.next',
-  '.nuxt',
-  '.turbo',
-  '.cache',
-  '.output',
-  'coverage',
-]);
-
-const DEFAULT_SEARCH_IGNORED_DIRS = new Set([
-  ...DEFAULT_IGNORED_DIRS,
-  'logs',
-  'log',
-  '.tmp_chrome_e2e',
+  '.hg',
 ]);
 
 export class FileSystemService {
@@ -43,7 +27,7 @@ export class FileSystemService {
   /**
    * Parse .gitignore rules into simple prefix/suffix filters (cached with mtime check)
    */
-  private loadGitignoreRules(repoPath: string): string[] {
+  public loadGitignoreRules(repoPath: string): string[] {
     const gitignorePath = path.join(repoPath, '.gitignore');
     if (!fs.existsSync(gitignorePath)) return [];
     try {
@@ -65,17 +49,32 @@ export class FileSystemService {
   }
 
   /**
-   * Check if a file or directory name should be ignored
+   * Check if a file or directory matches .gitignore rules.
+   * This is used purely for visual indication (e.g. muted/opacity), NEVER for hard-excluding files.
    */
-  public isIgnored(name: string, relativePath: string, rules: string[] = []): boolean {
-    if (DEFAULT_IGNORED_DIRS.has(name)) {
-      return true;
-    }
-    // Check custom rules
-    const cleanRel = relativePath.replace(/\\/g, '/');
-    for (const rule of rules) {
-      const cleanRule = rule.replace(/^\/+/, '').replace(/\/+$/, '');
-      if (cleanRule === name || cleanRel === cleanRule || cleanRel.startsWith(cleanRule + '/')) {
+  public matchesGitignore(name: string, relativePath: string, rules: string[] = []): boolean {
+    if (!rules || rules.length === 0) return false;
+    const cleanRel = relativePath.replace(/\\/g, '/').toLowerCase();
+    const cleanName = name.toLowerCase();
+
+    for (const rawRule of rules) {
+      let rule = rawRule.trim();
+      if (!rule || rule.startsWith('#')) continue;
+
+      rule = rule.replace(/^\/+/, '').replace(/\/+$/, '').toLowerCase();
+
+      // Wildcard patterns
+      if (rule.startsWith('*.')) {
+        const ext = rule.substring(1);
+        if (cleanName.endsWith(ext) || cleanRel.endsWith(ext)) {
+          return true;
+        }
+      } else if (rule.endsWith('*')) {
+        const prefix = rule.slice(0, -1);
+        if (cleanName.startsWith(prefix) || cleanRel.startsWith(prefix)) {
+          return true;
+        }
+      } else if (rule === cleanName || cleanRel === rule || cleanRel.startsWith(rule + '/')) {
         return true;
       }
     }
@@ -83,7 +82,16 @@ export class FileSystemService {
   }
 
   /**
-   * Lazy load directory children for a specific folder path (depth = 1)
+   * Backward compatibility alias for isIgnored
+   */
+  public isIgnored(name: string, relativePath: string, rules: string[] = []): boolean {
+    if (VCS_METADATA_DIRS.has(name)) return true;
+    return this.matchesGitignore(name, relativePath, rules);
+  }
+
+  /**
+   * Lazy load directory children for a specific folder path (depth = 1).
+   * Fully exposes all project files and directories without hard-excluding gitignored files.
    */
   public readDirectory(repoPath: string, subDir: string = ''): FileTreeNodeItem[] {
     const targetDir = subDir ? path.resolve(repoPath, subDir) : path.resolve(repoPath);
@@ -99,20 +107,27 @@ export class FileSystemService {
     }
 
     const rules = this.loadGitignoreRules(resolvedRepo);
-    const entries = fs.readdirSync(targetDir, { withFileTypes: true });
+    let entries: fs.Dirent[] = [];
+    try {
+      entries = fs.readdirSync(targetDir, { withFileTypes: true });
+    } catch {
+      return [];
+    }
+
     const items: FileTreeNodeItem[] = [];
 
     for (const entry of entries) {
       const name = entry.name;
-      const fullPath = path.join(targetDir, name);
-      const relPath = path.relative(resolvedRepo, fullPath).replace(/\\/g, '/');
-
-      if (this.isIgnored(name, relPath, rules)) {
+      // Skip VCS internal database directories (e.g. .git)
+      if (VCS_METADATA_DIRS.has(name)) {
         continue;
       }
 
+      const fullPath = path.join(targetDir, name);
+      const relPath = path.relative(resolvedRepo, fullPath).replace(/\\/g, '/');
       const isDir = entry.isDirectory();
       const extension = !isDir ? path.extname(name).toLowerCase() : '';
+      const isIgnored = this.matchesGitignore(name, relPath, rules);
 
       items.push({
         name,
@@ -120,6 +135,7 @@ export class FileSystemService {
         relativePath: relPath,
         isDirectory: isDir,
         extension,
+        isIgnored,
       });
     }
 
@@ -164,15 +180,15 @@ export class FileSystemService {
 
         for (const entry of entries) {
           const name = entry.name;
-          const fullPath = path.join(targetDir, name);
-          const relPath = path.relative(resolvedRepo, fullPath).replace(/\\/g, '/');
-
-          if (this.isIgnored(name, relPath, rules)) {
+          if (VCS_METADATA_DIRS.has(name)) {
             continue;
           }
 
+          const fullPath = path.join(targetDir, name);
+          const relPath = path.relative(resolvedRepo, fullPath).replace(/\\/g, '/');
           const isDir = entry.isDirectory();
           const extension = !isDir ? path.extname(name).toLowerCase() : '';
+          const isIgnored = this.matchesGitignore(name, relPath, rules);
 
           items.push({
             name,
@@ -180,6 +196,7 @@ export class FileSystemService {
             relativePath: relPath,
             isDirectory: isDir,
             extension,
+            isIgnored,
           });
         }
 
@@ -199,196 +216,16 @@ export class FileSystemService {
   }
 
   /**
-   * Search code text inside repository files with fast recursive scanner
+   * Delegate code search to CodeSearchService
    */
   public searchCode(
     repoPath: string,
     query: string,
     options: SearchCodeOptions = {}
   ): SearchCodeMatch[] {
-    if (!query || !query.trim()) return [];
-
-    const resolvedRepo = path.resolve(repoPath);
-    if (!fs.existsSync(resolvedRepo)) return [];
-
-    const maxResults = options.maxResults || 300;
-    const rules = this.loadGitignoreRules(resolvedRepo);
-
-    // Build Search Regular Expression
-    let regex: RegExp;
-    try {
-      const flags = options.isCaseSensitive ? 'g' : 'gi';
-      if (options.isRegex) {
-        regex = new RegExp(query, flags);
-      } else {
-        const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        if (options.isWholeWord) {
-          regex = new RegExp(`\\b${escaped}\\b`, flags);
-        } else {
-          regex = new RegExp(escaped, flags);
-        }
-      }
-    } catch {
-      return [];
-    }
-
-    // Parse file extension/pattern filter (e.g. "*.java, *.ts, *.tsx")
-    const patterns = (options.filePattern || '')
-      .split(',')
-      .map((p) => p.trim().toLowerCase())
-      .filter(Boolean);
-
-    const matchPattern = (filename: string): boolean => {
-      if (patterns.length === 0) return true;
-      const lower = filename.toLowerCase();
-      return patterns.some((pat) => {
-        if (pat.startsWith('*.')) {
-          return lower.endsWith(pat.substring(1));
-        }
-        if (pat.startsWith('.')) {
-          return lower.endsWith(pat);
-        }
-        return lower.includes(pat);
-      });
-    };
-
-    const matchFileName = (filename: string): boolean => {
-      if (!matchPattern(filename)) return false;
-      if (options.isRegex) {
-        try {
-          const r = new RegExp(query, options.isCaseSensitive ? '' : 'i');
-          return r.test(filename);
-        } catch {
-          return false;
-        }
-      }
-      if (options.isWholeWord) {
-        const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const r = new RegExp(`\\b${escaped}\\b`, options.isCaseSensitive ? '' : 'i');
-        return r.test(filename);
-      }
-      if (options.isCaseSensitive) {
-        return filename.includes(query);
-      }
-      return filename.toLowerCase().includes(query.toLowerCase());
-    };
-
-    const binaryExts = new Set([
-      '.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.svgz',
-      '.pdf', '.zip', '.tar', '.gz', '.7z', '.rar',
-      '.exe', '.dll', '.so', '.dylib', '.node', '.bin',
-      '.jar', '.war', '.class', '.pyc',
-      '.mp3', '.mp4', '.wav', '.mov', '.avi',
-      '.woff', '.woff2', '.ttf', '.eot',
-    ]);
-
-    const results: SearchCodeMatch[] = [];
-
-    const walk = (currentDir: string) => {
-      if (results.length >= maxResults) return;
-
-      let entries: fs.Dirent[] = [];
-      try {
-        entries = fs.readdirSync(currentDir, { withFileTypes: true });
-      } catch {
-        return;
-      }
-
-      for (const entry of entries) {
-        if (results.length >= maxResults) break;
-        const name = entry.name;
-        const fullPath = path.join(currentDir, name);
-        const relPath = path.relative(resolvedRepo, fullPath).replace(/\\/g, '/');
-
-        if (this.isIgnored(name, relPath, rules) || DEFAULT_SEARCH_IGNORED_DIRS.has(name)) {
-          continue;
-        }
-
-        if (entry.isDirectory()) {
-          walk(fullPath);
-        } else if (entry.isFile()) {
-          // Check if file name itself matches search query
-          const isNameMatched = matchFileName(name);
-          if (isNameMatched) {
-            let mStart = 0;
-            if (options.isCaseSensitive) {
-              mStart = name.indexOf(query);
-            } else {
-              mStart = name.toLowerCase().indexOf(query.toLowerCase());
-            }
-            if (mStart < 0) mStart = 0;
-
-            results.push({
-              filePath: fullPath,
-              relativePath: relPath,
-              fileName: name,
-              lineNumber: 1,
-              lineContent: name,
-              matchStart: mStart,
-              matchLength: query.length,
-              isFileNameMatch: true,
-            });
-          }
-
-          const ext = path.extname(name).toLowerCase();
-          if (binaryExts.has(ext) || !matchPattern(name)) {
-            continue;
-          }
-
-          try {
-            const stat = fs.statSync(fullPath);
-            if (stat.size > 5 * 1024 * 1024) continue; // Skip files > 5MB
-
-            const content = fs.readFileSync(fullPath, 'utf8');
-            // Quick check if query is in file
-            regex.lastIndex = 0;
-            if (!regex.test(content)) continue;
-
-            const lines = content.split(/\r?\n/);
-            for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
-              if (results.length >= maxResults) break;
-              const line = lines[lineIdx];
-              regex.lastIndex = 0;
-              const execMatch = regex.exec(line);
-              if (execMatch) {
-                results.push({
-                  filePath: fullPath,
-                  relativePath: relPath,
-                  fileName: name,
-                  lineNumber: lineIdx + 1,
-                  lineContent: line.slice(0, 300),
-                  matchStart: execMatch.index,
-                  matchLength: execMatch[0].length,
-                });
-              }
-            }
-          } catch {}
-        }
-      }
-    };
-
-    walk(resolvedRepo);
-    return results;
+    return codeSearchService.searchCode(repoPath, query, options);
   }
 }
 
-export interface SearchCodeOptions {
-  isCaseSensitive?: boolean;
-  isWholeWord?: boolean;
-  isRegex?: boolean;
-  filePattern?: string;
-  maxResults?: number;
-}
-
-export interface SearchCodeMatch {
-  filePath: string;
-  relativePath: string;
-  fileName: string;
-  lineNumber: number;
-  lineContent: string;
-  matchStart?: number;
-  matchLength?: number;
-  isFileNameMatch?: boolean;
-}
-
+export { type SearchCodeOptions, type SearchCodeMatch };
 export const fileSystemService = new FileSystemService();

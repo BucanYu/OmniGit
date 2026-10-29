@@ -15,6 +15,7 @@ export interface EditorTabItem {
   isDirty: boolean;
   language: string;
   isBinary?: boolean;
+  tooLarge?: boolean;
   size?: number;
   mtime?: number;
   hasDiskConflict?: boolean;
@@ -241,6 +242,7 @@ export const useEditorTabsStore = create<EditorTabsState>((set, get) => ({
             isDirty: false,
             language,
             isBinary: Boolean(fileData.isBinary),
+            tooLarge: Boolean(fileData.tooLarge),
             size: fileData.size || 0,
             mtime: fileData.mtime || Date.now(),
             hasDiskConflict: false,
@@ -370,6 +372,7 @@ export const useEditorTabsStore = create<EditorTabsState>((set, get) => ({
           isDirty: false,
           language,
           isBinary: Boolean(data.isBinary),
+          tooLarge: Boolean(data.tooLarge),
           size: data.size || 0,
           mtime: data.mtime || Date.now(),
           hasDiskConflict: false,
@@ -535,6 +538,9 @@ export const useEditorTabsStore = create<EditorTabsState>((set, get) => ({
                 mtime: data.mtime || Date.now(),
                 isDirty: false,
                 hasDiskConflict: false,
+                isBinary: Boolean(data.isBinary),
+                tooLarge: Boolean(data.tooLarge),
+                size: data.size || t.size,
                 readError: undefined,
               };
             }

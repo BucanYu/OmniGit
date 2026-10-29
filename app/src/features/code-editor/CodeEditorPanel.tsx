@@ -5,6 +5,7 @@ import { EditorTabStrip } from './EditorTabStrip';
 import { useAppStore } from '../../store/useAppStore';
 import { MarkdownPreview } from './MarkdownPreview';
 import { ImageViewer } from './ImageViewer';
+import { BinaryOrLargeFileNotice } from './BinaryOrLargeFileNotice';
 import { isImageFile } from './imageUtils';
 import { useTranslation } from '../../locales';
 import {
@@ -503,11 +504,8 @@ export function CodeEditorPanel() {
 
       {/* 3. Main Monaco Editor Container or Markdown Preview */}
       <div className="flex-1 relative overflow-hidden">
-        {activeTab.isBinary ? (
-          <div className="flex flex-col items-center justify-center h-full text-theme-muted text-xs">
-            <AlertCircle className="w-8 h-8 text-amber-400 mb-2" />
-            <p>{t.editor.binaryFileWarning}</p>
-          </div>
+        {activeTab.isBinary || activeTab.tooLarge ? (
+          <BinaryOrLargeFileNotice tab={activeTab} theme={theme} />
         ) : activeTab.readError ? (
           <div className="flex flex-col items-center justify-center h-full text-theme-muted text-xs gap-3 p-4">
             <AlertCircle className="w-10 h-10 text-rose-400" />
