@@ -6,6 +6,7 @@ import {
   List,
   FolderTree,
   Settings,
+  Archive,
 } from 'lucide-react';
 import { useTranslation } from '../../../locales';
 
@@ -93,6 +94,15 @@ export const StatusHeader: React.FC<StatusHeaderProps> = ({
               title={t.statusPanel.toolbar.rollback}
             >
               <Undo2 className="w-3.5 h-3.5 text-theme-main" />
+            </button>
+
+            {/* Stash / Shelve Quick Trigger */}
+            <button
+              onClick={() => setActiveTab('shelf')}
+              className="p-1 hover:text-amber-400 hover:bg-theme-hover rounded transition cursor-pointer"
+              title={t.statusPanel.stash.stashChangesTooltip}
+            >
+              <Archive className="w-3.5 h-3.5 text-theme-main" />
             </button>
 
             {/* Refresh */}

@@ -28,7 +28,9 @@ import {
   RotateCcw,
   AlertTriangle,
   FolderOpen,
+  History,
 } from 'lucide-react';
+import type { GitBlameLineItem } from '../../store/types';
 
 export function CodeEditorPanel() {
   const {
@@ -53,8 +55,12 @@ export function CodeEditorPanel() {
   const splitContainerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
+  const blameDecorationsRef = useRef<string[]>([]);
   const panelContainerRef = useRef<HTMLDivElement>(null);
   const [panelWidth, setPanelWidth] = useState<number>(600);
+  const [showBlame, setShowBlame] = useState(false);
+  const [blameByLine, setBlameByLine] = useState<Map<number, GitBlameLineItem>>(new Map());
+  const [blameLoading, setBlameLoading] = useState(false);
 
   useEffect(() => {
     if (!panelContainerRef.current) return;
@@ -184,6 +190,76 @@ export function CodeEditorPanel() {
       }
     }
   }, [activeTab?.content, activeTab?.isDirty]);
+
+  // Fetch Git Blame when showBlame is active
+  useEffect(() => {
+    if (!showBlame || !activeTab || !activeTab.repoPath || activeTab.isBinary || activeTab.tooLarge) {
+      setBlameByLine(new Map());
+      return;
+    }
+    let cancelled = false;
+    setBlameLoading(true);
+    fetch(
+      `/api/git/blame?path=${encodeURIComponent(activeTab.repoPath)}&file=${encodeURIComponent(activeTab.filePath)}`
+    )
+      .then((res) => (res.ok ? res.json() : []))
+      .then((list: GitBlameLineItem[]) => {
+        if (cancelled) return;
+        const m = new Map<number, GitBlameLineItem>();
+        if (Array.isArray(list)) {
+          for (const item of list) {
+            m.set(item.line, item);
+          }
+        }
+        setBlameByLine(m);
+      })
+      .catch(() => {
+        if (!cancelled) setBlameByLine(new Map());
+      })
+      .finally(() => {
+        if (!cancelled) setBlameLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showBlame, activeTab?.id, activeTab?.repoPath, activeTab?.filePath, activeTab?.mtime]);
+
+  // Render inline Git Blame annotation on active cursor line in Monaco
+  useEffect(() => {
+    const editor = editorRef.current;
+    const monaco = monacoRef.current;
+    if (!editor || !monaco) return;
+
+    if (!showBlame || blameByLine.size === 0) {
+      if (blameDecorationsRef.current.length > 0) {
+        blameDecorationsRef.current = editor.deltaDecorations(blameDecorationsRef.current, []);
+      }
+      return;
+    }
+
+    const b = blameByLine.get(cursorPos.line);
+    if (!b) {
+      blameDecorationsRef.current = editor.deltaDecorations(blameDecorationsRef.current, []);
+      return;
+    }
+
+    const inlineText = `   — ${b.author}, ${b.dateStr || b.shortHash} • ${b.summary} (${b.shortHash})`;
+    blameDecorationsRef.current = editor.deltaDecorations(blameDecorationsRef.current, [
+      {
+        range: new monaco.Range(cursorPos.line, 1, cursorPos.line, 10000),
+        options: {
+          isWholeLine: true,
+          hoverMessage: {
+            value: `**${b.shortHash}** — **${b.author}** (${b.dateStr || 'Working Tree'})\n\n${b.summary}`,
+          },
+          after: {
+            content: inlineText,
+            inlineClassName: 'opacity-45 italic text-xs pointer-events-none select-none pl-6',
+          },
+        },
+      },
+    ]);
+  }, [showBlame, blameByLine, cursorPos.line]);
 
   const handleSplitMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -411,6 +487,22 @@ export function CodeEditorPanel() {
             </div>
           )}
 
+          {/* Git Blame Toggle Button */}
+          {(!isMarkdown || mdViewMode !== 'preview') && activeTab.repoPath && (
+            <button
+              onClick={() => setShowBlame((v) => !v)}
+              className={`flex items-center gap-1 px-1.5 py-0.5 rounded transition cursor-pointer text-[11px] ${
+                showBlame
+                  ? 'text-sky-400 bg-sky-500/15 border border-sky-500/30 font-medium'
+                  : 'text-theme-muted hover:text-sky-400 hover:bg-theme-hover'
+              }`}
+              title={t.editor.gitBlameTooltip}
+            >
+              <History className={`w-3.5 h-3.5 ${blameLoading ? 'animate-spin' : ''}`} />
+              {!isNarrow && <span>{t.editor.gitBlameToggle}</span>}
+            </button>
+          )}
+
           {/* Quick Comment Toggle Button */}
           {(!isMarkdown || mdViewMode !== 'preview') && (
             <button
@@ -619,11 +711,16 @@ export function CodeEditorPanel() {
 
       {/* 4. Bottom Editor Status Bar */}
       <div className="h-6 px-3 bg-theme-sidebar border-t border-theme-border flex items-center justify-between text-[11px] text-theme-muted select-none">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 min-w-0">
           <span>
             {t.editor.cursorPosition(cursorPos.line, cursorPos.col)}
           </span>
           <span>{activeTab.language.toUpperCase()}</span>
+          {showBlame && blameByLine.get(cursorPos.line) && (
+            <span className="text-[10px] text-sky-400/90 font-mono truncate max-w-[360px]">
+              {blameByLine.get(cursorPos.line)!.shortHash} · {blameByLine.get(cursorPos.line)!.author} ({blameByLine.get(cursorPos.line)!.dateStr}) — {blameByLine.get(cursorPos.line)!.summary}
+            </span>
+          )}
           {isMarkdown && (
             <span className="text-[10px] text-sky-400 bg-sky-400/10 px-1.5 py-0.2 rounded font-mono">
               MARKDOWN PREVIEW READY

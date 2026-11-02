@@ -22,6 +22,7 @@ import {
 import { StatusAmendFilesDrawer } from './components/StatusAmendFilesDrawer';
 import { StatusCommitBox } from './components/StatusCommitBox';
 import { StatusRollbackModal } from './components/StatusRollbackModal';
+import { StatusStashDrawer } from './components/StatusStashDrawer';
 
 // Re-export helpers for backward compatibility
 export { renderFileIcon, renderStatusBadge, getGroupCheckboxIcon };
@@ -154,10 +155,7 @@ export function StatusPanel() {
       {activeTab === 'log' ? (
         <GitLogPanel />
       ) : activeTab === 'shelf' ? (
-        <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-theme-dim">
-          <p className="text-xs font-medium text-theme-muted">{t.statusPanel.emptyState.clean}</p>
-          <p className="text-[11px] text-theme-dim mt-1">{t.statusPanel.emptyState.cleanDesc}</p>
-        </div>
+        <StatusStashDrawer repoPath={currentProject?.path || ''} />
       ) : (
         <>
           {/* 2. Merge In Progress Banner */}

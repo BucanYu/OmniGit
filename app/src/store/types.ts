@@ -108,6 +108,27 @@ export interface GitCommitItem {
   date: string;
   refs: string;
   message: string;
+  parents?: string[];
+}
+
+export interface GitStashItem {
+  index: number;
+  stashRef: string;
+  branch: string;
+  message: string;
+  date: string;
+  hash: string;
+}
+
+export interface GitBlameLineItem {
+  line: number;
+  hash: string;
+  shortHash: string;
+  author: string;
+  authorMail: string;
+  authorTime: number;
+  dateStr: string;
+  summary: string;
 }
 
 export interface GitCommitFileChange {

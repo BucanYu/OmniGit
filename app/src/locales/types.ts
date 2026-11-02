@@ -380,6 +380,16 @@ export interface LocaleDictionary {
     outgoingTooltip: (count: number) => string;
     revealInExplorerTooltip: (name: string, path: string) => string;
     removeRepoTooltip: string;
+    batchPullTooltip: string;
+    batchFetchTooltip: string;
+    batchCheckoutTooltip: string;
+    batchCheckoutPrompt: string;
+    batchCheckoutPlaceholder: string;
+    batchCheckoutConfirm: string;
+    batchPullDoneTitle: string;
+    batchFetchDoneTitle: string;
+    batchCheckoutDoneTitle: string;
+    batchSummaryDetail: (ok: number, total: number) => string;
   };
   branchMenu: {
     checkoutTagOrRevision: string;
@@ -507,6 +517,26 @@ export interface LocaleDictionary {
     switchDirectoryTreeTooltip: string;
     switchFlatListTooltip: string;
     rollbackConfirmDescription: (count: number) => string;
+    stash: {
+      stashChangesTooltip: string;
+      stashMessagePlaceholder: string;
+      includeUntracked: string;
+      stashPushBtn: string;
+      stashingBtn: string;
+      applyBtn: string;
+      popBtn: string;
+      dropBtn: string;
+      applyTooltip: string;
+      popTooltip: string;
+      dropTooltip: string;
+      emptyTitle: string;
+      emptyDesc: string;
+      stashSuccessToast: string;
+      applySuccessToast: string;
+      popSuccessToast: string;
+      dropSuccessToast: string;
+      stashConflictToast: string;
+    };
   };
   diff: {
     title: string;
@@ -686,6 +716,7 @@ export interface LocaleDictionary {
       changedFilesList: (count: number) => string;
       viewHistoricalDiff: string;
       comparingDiff: string;
+      showGraphTooltip: string;
     };
   };
   themes: {
@@ -1134,6 +1165,9 @@ export interface LocaleDictionary {
     copiedSource: string;
     copySourceTooltip: string;
     openTabsListCloseHint: string;
+    gitBlameToggle: string;
+    gitBlameTooltip: string;
+    gitBlameLoading: string;
   };
   terminal: {
     newTerminalDefault: (name: string) => string;

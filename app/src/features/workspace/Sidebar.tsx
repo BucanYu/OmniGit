@@ -3,7 +3,7 @@ import { useAppStore } from '../../store/useAppStore';
 import { useTranslation } from '../../locales';
 import { AddRepoModal } from './AddRepoModal';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
-import { FolderGit2, GitBranch, Plus, Settings, X, Layers, FolderOpen, Copy, RefreshCw, User } from 'lucide-react';
+import { FolderGit2, GitBranch, Plus, Settings, X, Layers, FolderOpen, Copy, RefreshCw, User, ArrowDownToLine } from 'lucide-react';
 
 export function Sidebar() {
   const { t } = useTranslation();
@@ -30,11 +30,83 @@ export function Sidebar() {
   const [projectToRemove, setProjectToRemove] = useState<{ name: string; path: string } | null>(null);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const [batchOpType, setBatchOpType] = useState<'pull' | 'fetch' | 'checkout' | null>(null);
+  const [showBatchCheckoutBar, setShowBatchCheckoutBar] = useState(false);
+  const [batchBranchInput, setBatchBranchInput] = useState('');
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
     project: { name: string; path: string; id: string };
   } | null>(null);
+
+  const runBatchRepoAction = async (type: 'pull' | 'fetch' | 'checkout', branchName?: string) => {
+    if (projects.length === 0 || batchOpType !== null) return;
+    setBatchOpType(type);
+    try {
+      const paths = projects.map((p) => p.path);
+      const endpoint =
+        type === 'pull'
+          ? '/api/git/batch-pull'
+          : type === 'fetch'
+          ? '/api/git/batch-fetch'
+          : '/api/git/batch-checkout';
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paths, branch: branchName }),
+      });
+      if (res.ok) {
+        const results: Array<{
+          path: string;
+          success: boolean;
+          branch?: string;
+          incoming?: number;
+          outgoing?: number;
+        }> = await res.json();
+        const okCount = results.filter((r) => r.success).length;
+
+        // Update project list sync indicators in store
+        const byPath = new Map(results.map((r) => [r.path.replace(/\\/g, '/').toLowerCase(), r]));
+        useAppStore.setState((s) => ({
+          projects: s.projects.map((p) => {
+            const m = byPath.get(p.path.replace(/\\/g, '/').toLowerCase());
+            if (!m) return p;
+            return {
+              ...p,
+              currentBranch: m.branch || p.currentBranch,
+              incoming: m.incoming ?? p.incoming,
+              outgoing: m.outgoing ?? p.outgoing,
+            };
+          }),
+        }));
+
+        if (currentProject) {
+          useAppStore.getState().loadRepoData(currentProject.path, true);
+        }
+
+        const title =
+          type === 'pull'
+            ? t.sidebar.batchPullDoneTitle
+            : type === 'fetch'
+            ? t.sidebar.batchFetchDoneTitle
+            : t.sidebar.batchCheckoutDoneTitle;
+
+        useAppStore.getState().setNotification({
+          id: Date.now(),
+          title,
+          detail: t.sidebar.batchSummaryDetail(okCount, results.length),
+          type: okCount === results.length ? 'success' : 'info',
+        });
+      }
+    } catch {
+      // ignore
+    } finally {
+      setBatchOpType(null);
+      if (type === 'checkout') {
+        setShowBatchCheckoutBar(false);
+      }
+    }
+  };
 
   useEffect(() => {
     const handleClose = () => setContextMenu(null);
@@ -67,6 +139,44 @@ export function Sidebar() {
           </span>
         </div>
         <div className="flex items-center gap-0.5">
+          {projects.length > 0 && (
+            <>
+              <button
+                type="button"
+                disabled={batchOpType !== null}
+                onClick={() => runBatchRepoAction('fetch')}
+                title={t.sidebar.batchFetchTooltip}
+                className="p-1 hover:bg-theme-hover rounded text-theme-muted hover:text-sky-400 transition cursor-pointer disabled:opacity-40"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${batchOpType === 'fetch' ? 'animate-spin text-sky-400' : ''}`} />
+              </button>
+              <button
+                type="button"
+                disabled={batchOpType !== null}
+                onClick={() => runBatchRepoAction('pull')}
+                title={t.sidebar.batchPullTooltip}
+                className="p-1 hover:bg-theme-hover rounded text-theme-muted hover:text-emerald-400 transition cursor-pointer disabled:opacity-40"
+              >
+                <ArrowDownToLine className={`w-3.5 h-3.5 ${batchOpType === 'pull' ? 'animate-bounce text-emerald-400' : ''}`} />
+              </button>
+              <button
+                type="button"
+                disabled={batchOpType !== null}
+                onClick={() => {
+                  if (!showBatchCheckoutBar && currentProject?.currentBranch) {
+                    setBatchBranchInput(currentProject.currentBranch);
+                  }
+                  setShowBatchCheckoutBar((v) => !v);
+                }}
+                title={t.sidebar.batchCheckoutTooltip}
+                className={`p-1 hover:bg-theme-hover rounded transition cursor-pointer disabled:opacity-40 ${
+                  showBatchCheckoutBar ? 'text-orange-400 bg-orange-500/15' : 'text-theme-muted hover:text-orange-400'
+                }`}
+              >
+                <GitBranch className="w-3.5 h-3.5" />
+              </button>
+            </>
+          )}
           <button
             onClick={() => openProjectFolder(getWorkspaceOpenFolder())}
             title={t.sidebar.contextMenu.showInExplorer}
@@ -83,6 +193,46 @@ export function Sidebar() {
           </button>
         </div>
       </div>
+
+      {/* Optional Batch Checkout Bar */}
+      {showBatchCheckoutBar && projects.length > 0 && (
+        <div className="px-2.5 py-2 border-b border-theme-border bg-theme-subbar flex flex-col gap-1.5 shrink-0">
+          <div className="flex items-center justify-between text-[10px] text-theme-muted font-medium">
+            <span>{t.sidebar.batchCheckoutPrompt}</span>
+            <button
+              type="button"
+              onClick={() => setShowBatchCheckoutBar(false)}
+              className="text-theme-dim hover:text-theme-main cursor-pointer"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+          <div className="flex items-center gap-1">
+            <input
+              type="text"
+              value={batchBranchInput}
+              onChange={(e) => setBatchBranchInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && batchBranchInput.trim()) {
+                  runBatchRepoAction('checkout', batchBranchInput.trim());
+                } else if (e.key === 'Escape') {
+                  setShowBatchCheckoutBar(false);
+                }
+              }}
+              placeholder={t.sidebar.batchCheckoutPlaceholder}
+              className="flex-1 min-w-0 px-2 py-1 rounded bg-theme-input border border-theme-border text-theme-main text-[11px] font-mono focus:outline-none focus:border-sky-500"
+            />
+            <button
+              type="button"
+              disabled={!batchBranchInput.trim() || batchOpType !== null}
+              onClick={() => runBatchRepoAction('checkout', batchBranchInput.trim())}
+              className="px-2 py-1 rounded bg-sky-600 hover:bg-sky-500 disabled:opacity-40 text-white text-[11px] font-medium cursor-pointer shrink-0 transition"
+            >
+              {t.sidebar.batchCheckoutConfirm}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Repositories List in Current Workspace */}
       <div className="flex-1 overflow-y-auto py-1">

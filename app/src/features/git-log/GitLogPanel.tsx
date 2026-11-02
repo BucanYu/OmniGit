@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   GitCommit,
   Clock,
@@ -25,6 +25,7 @@ import { CommitContextMenu } from './CommitContextMenu';
 import { ResetBranchModal } from './ResetBranchModal';
 import { CreateBranchOrTagModal } from './CreateBranchOrTagModal';
 import { SyncCommitModal } from './SyncCommitModal';
+import { CommitGraphLane, computeCommitGraphRows } from './CommitGraphLane';
 import { VerticalResizeDivider } from '../../components/ui/VerticalResizeDivider';
 import { ResizeDivider } from '../../components/ui/ResizeDivider';
 
@@ -103,6 +104,11 @@ export function GitLogPanel() {
 
   // Copy feedback
   const [copiedHash, setCopiedHash] = useState<string | null>(null);
+
+  const commitGraphRows = useMemo(
+    () => (Array.isArray(commitLogs) ? computeCommitGraphRows(commitLogs) : []),
+    [commitLogs]
+  );
 
   // Fetch initial logs and commit authors
   useEffect(() => {
@@ -248,25 +254,29 @@ export function GitLogPanel() {
             </p>
           </div>
         ) : (
-          commitLogs.map((commit) => {
+          commitLogs.map((commit, commitIdx) => {
             const isSelected = commit.hash === selectedCommitHash;
             const authorInitial = (commit.authorName || 'U').charAt(0).toUpperCase();
             const avatarBg = getAvatarColor(commit.authorName);
+            const graphRow = commitGraphRows[commitIdx];
 
             return (
               <div
                 key={commit.hash}
                 onClick={() => handleRowClick(commit)}
                 onContextMenu={(e) => handleRowContextMenu(e, commit)}
-                className={`flex items-start gap-2 px-3 py-2 text-xs transition-colors cursor-pointer group ${
+                className={`flex items-center gap-2 px-3 py-1.5 text-xs transition-colors cursor-pointer group ${
                   isSelected
                     ? 'bg-theme-active text-theme-active'
                     : 'hover:bg-theme-card text-theme-main'
                 }`}
               >
+                {/* Branch Graph Lane */}
+                {graphRow && <CommitGraphLane row={graphRow} />}
+
                 {/* Author Avatar */}
                 <div
-                  className="w-5 h-5 rounded-full text-white font-semibold text-[10px] flex items-center justify-center shrink-0 mt-0.5 shadow-xs"
+                  className="w-5 h-5 rounded-full text-white font-semibold text-[10px] flex items-center justify-center shrink-0 shadow-xs"
                   style={{ backgroundColor: avatarBg }}
                   title={`${commit.authorName} <${commit.authorEmail}>`}
                 >

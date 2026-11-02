@@ -223,6 +223,39 @@ export async function handleGitApiRequest(req: IncomingMessage, res: ServerRespo
       const paths = body.paths || (query.paths ? query.paths.split(',') : []);
       const result = await gitService.getBatchSyncStatus(paths);
       res.end(JSON.stringify(result));
+    } else if (pathname === '/api/git/batch-pull') {
+      const paths = body.paths || [];
+      const result = await gitService.batchPull(paths);
+      res.end(JSON.stringify(result));
+    } else if (pathname === '/api/git/batch-fetch') {
+      const paths = body.paths || [];
+      const result = await gitService.batchFetch(paths);
+      res.end(JSON.stringify(result));
+    } else if (pathname === '/api/git/batch-checkout') {
+      const paths = body.paths || [];
+      const result = await gitService.batchCheckout(paths, body.branch, body.autoPull === true);
+      res.end(JSON.stringify(result));
+    } else if (pathname === '/api/git/stash-list') {
+      const repoPath = query.path || body.path || '';
+      const result = await gitService.getStashes(repoPath);
+      res.end(JSON.stringify(result));
+    } else if (pathname === '/api/git/stash-push') {
+      const result = await gitService.stashPush(body.path, body.message, body.includeUntracked !== false);
+      res.end(JSON.stringify(result));
+    } else if (pathname === '/api/git/stash-apply') {
+      const result = await gitService.stashApply(body.path, Number(body.index) || 0);
+      res.end(JSON.stringify(result));
+    } else if (pathname === '/api/git/stash-pop') {
+      const result = await gitService.stashPop(body.path, Number(body.index) || 0);
+      res.end(JSON.stringify(result));
+    } else if (pathname === '/api/git/stash-drop') {
+      const result = await gitService.stashDrop(body.path, Number(body.index) || 0);
+      res.end(JSON.stringify(result));
+    } else if (pathname === '/api/git/blame') {
+      const repoPath = query.path || body.path || '';
+      const filePath = decodeGitPath(query.file || body.file || '');
+      const result = await gitService.getFileBlame(repoPath, filePath);
+      res.end(JSON.stringify(result));
     } else if (pathname === '/api/git/status') {
       const status = await gitService.getRepoStatus(query.path || '');
       res.end(JSON.stringify(status));
