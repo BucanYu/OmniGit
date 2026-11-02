@@ -23,9 +23,9 @@
   - **编辑器内核**：`@monaco-editor/react`（双栏差异比对，支持右侧直接实时编辑）。
 - **目录布局**：
   - `app/`：前端应用与 Electron 桌面端主工程
-    - `app/src/`：React 前端源码（`features/`、`store/`、`components/`）
-    - `app/electron/`：Electron 主进程与预加载脚本（`main.ts`、`preload.ts`）
-    - `app/src/server/`：轻量级 Git 服务与 API 路由调度核心
+    - `app/src/`：React 前端源码（`features/`、`store/slices/`、`components/`）
+    - `app/electron/`：Electron 主进程与预加载脚本（`main.ts`、`preload.ts`、`serviceProcessManager.ts`）
+    - `app/src/server/`：轻量级 Git 服务路由（`gitApiHandler.ts`）、Facade（`gitService.ts`）与领域子模块（`app/src/server/git/*.ts`）
   - `scripts/`：统一英文命名的打包与启停脚本目录（`build_desktop.bat`, `start_desktop.bat`, `start_dev.bat`, `stop_dev.bat` 等）
   - `docs/`：产品设计与技术架构文档（`OmniGit_PRD.md`）
 
@@ -167,3 +167,30 @@
 
 - **文件系统沙箱与路径穿越防御 (Anti-Path Traversal)**：
   - 静态资源与本地文件服务接口在读取或写入文件时，必须严格执行目录包含沙箱校验（`filePath.startsWith(baseDir)`），防止使用 `../` 越界读取或覆写系统敏感文件。
+
+---
+
+## 10. 模块化寻址、性能基线与高效开发规约 (Modular Routing & Performance Baseline)
+
+- **领域子模块寻址速查（严禁重新堆砌 Facade）**：
+  - **Git 服务端 (`app/src/server/git/`)**：`gitService.ts` 仅为 60 行聚合 Facade，新增或修改 Git 逻辑请直接定位子模块：
+    - `gitExec.ts`：进程信号量限流（`runGit`）、进程树销毁、冲突标记解析；
+    - `gitStatusIdentityOps.ts`：状态检测、用户信息、凭据探测、仓库文件监听；
+    - `gitLogHistoryOps.ts`：提交历史、分支图谱（`parents`）、单文件历史、提交回滚；
+    - `gitBranchPushOps.ts`：分支增删切、Pull/Push、未推送提交统计；
+    - `gitMergeConflictOps.ts`：合并、三方冲突块提取与冲突解决；
+    - `gitWorkspaceCloneOps.ts`：仓库扫描、流式克隆、工作空间与缓存管理；
+    - `gitBatchStashBlameOps.ts`：多仓库批量 Pull/Fetch/Checkout、Stash 暂存架、行级 Blame。
+  - **状态与服务拆分子模块**：
+    - Store 切片扩展：`workspaceSavedGroupsSlice.ts`（工作空间组与最近项目）、`gitPushSlice.ts`（推送流转）、`gitCommitActionsSlice.ts`（提交与丢弃动作）；
+    - 微服务存储与 IPC 桥接：`app/src/features/services/serviceStorage.ts`；
+    - 重点逼近 800 行水位线的文件（如 `gitApiHandler.ts`、`workspaceSlice.ts`、`useServicesStore.ts`、`SystemSettingsModal.tsx`）严禁直接塞入大段内联逻辑，新增功能必须抽离至独立子文件。
+- **TypeScript `verbatimModuleSyntax` 一次写对规范**：
+  - `tsconfig.app.json` 已开启 `verbatimModuleSyntax: true`，任何跨文件导入纯类型（`interface` / `type`）必须显式标注 `import type { ... }` 或 `import { type ... }`，避免 `TS1484` 报错返工。
+- **运行时性能与并发硬基线**：
+  - **Git 进程并发控制**：一律通过 `gitExec.ts` 的 `runGit()` 调用 Git CLI（自动受本地 6 / 远程 3 并发信号量保护及 `GIT_OPTIONAL_LOCKS=0` 无锁优化），禁止裸调 `execFile('git')`；
+  - **L1 缓存与请求去重**：更新内存快照统一走 `setL1SnapshotCache()`（自动执行 20 仓 LRU 淘汰与日志截断）；低频仓库元数据（Authors / RecentMessages）复用 `repoMetadataFreshness`（30s TTL）避免切换风暴；
+  - **高频流式日志节流**：终端输出统一使用 `StreamLogBuffer` 增量行解析 + `32ms` 节流刷新，严禁每次数据块到达时全量重拼字符串或同步高频触发 React 重渲染。
+- **双端通道对齐与工具箱扩展范式**：
+  - 微服务进程管理支持 Web HTTP（`gitApiHandler.ts`）与 Electron IPC（`electron/serviceProcessManager.ts` + `preload.ts`），新增接口需同步对齐双端并在 `serviceStorage.ts` 封装统一调用函数；
+  - `Data Tools` 新增离线格式仅需：在 `types.ts` 注册 `DataFormat` -> 在 `formatters/` 编写纯同步函数返回 `{ parsed, formattedJson }` -> 在 `analyzer.ts` 通过 `buildJsonTree(parsed)` 生成树结构（自动赋能右侧 Tree / Table 视图） -> 在 `defaultSamples.ts`、`DataToolsHeader.tsx`、`DataToolsTabBar.tsx` 补充元数据。

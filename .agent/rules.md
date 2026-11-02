@@ -39,3 +39,13 @@
    - **渲染防 XSS (Anti-XSS Defense)**：严禁使用 `dangerouslySetInnerHTML` 直接渲染未经清洗的用户输入或外部不可信文档（如 Markdown、Diff 内容、Git Commit 提交信息）。凡涉及 HTML 渲染，必须强制通过 `DOMPurify.sanitize()` 白名单过滤，坚决杜绝任何内联事件（`onerror`, `onload` 等）与恶意脚本执行；
    - **网络与接口安全隔离 (Anti-CSRF & DNS Rebinding)**：本地内嵌 HTTP 服务必须严格校验 `Host`（仅允许 `localhost`/`127.0.0.1`）与 `Origin` 头，严禁对外部未受信域配置 `Access-Control-Allow-Origin: *`，防止恶意网页发起 DNS Rebinding 或跨站攻击；
    - **路径穿越防御 (Anti-Path Traversal)**：静态资源与本地文件服务接口必须严格实施沙箱路径包含校验（`filePath.startsWith(baseDir)`），防止使用 `../` 越界读取或覆写系统敏感文件。
+10. **模块化路由、性能基线与开发效率速查 (Modular Routing & Performance Baseline)**：
+   - **领域子模块直达（禁止回填 Facade）**：
+     - 后端 Git 能力按领域写入 `app/src/server/git/`（`gitExec` / `gitStatusIdentityOps` / `gitLogHistoryOps` / `gitBranchPushOps` / `gitMergeConflictOps` / `gitWorkspaceCloneOps` / `gitBatchStashBlameOps`），`gitService.ts` 仅作轻量 Facade 聚合导出；
+     - 状态切片扩展优先写入对应子切片（如 `workspaceSavedGroupsSlice.ts`、`gitPushSlice.ts`、`gitCommitActionsSlice.ts`），微服务存储/IPC 辅助逻辑写入 `app/src/features/services/serviceStorage.ts`；
+     - 临近 800 行红线的文件（如 `gitApiHandler.ts`、`workspaceSlice.ts`、`useServicesStore.ts`、`SystemSettingsModal.tsx`）新增逻辑必须抽离至独立子模块或 helper。
+   - **`verbatimModuleSyntax` 强制类型导入**：跨文件导入纯 TS `interface`/`type` 必须使用 `import type { ... }` 或 `import { type ... }`，避免触发 `TS1484` 编译错误。
+   - **性能与并发硬基线**：
+     - 后端执行 Git 命令必须统一调用 `gitExec.ts` 的 `runGit()`（内置本地/远程并发信号量限流与 `GIT_OPTIONAL_LOCKS=0`），严禁裸调 `execFile('git')`；
+     - 写入 L1 内存快照优先调用 `setL1SnapshotCache()`（内置 20 仓 LRU 淘汰与日志截断）；高频流式日志必须走增量缓冲与节流刷新（`>= 32ms`）。
+   - **双端通道与工具箱扩展契约**：微服务控制类能力需同步对齐 HTTP（`gitApiHandler.ts`）与 Electron IPC（`electron/serviceProcessManager.ts` + `preload.ts`）；`Data Tools` 新格式统一返回 `{ parsed, formattedJson }` 并接入 `buildJsonTree(parsed)` 自动复用树/表视图。
