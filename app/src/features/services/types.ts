@@ -27,6 +27,7 @@ export type ServiceStatus =
 export interface ServiceRuntimeState {
   status: ServiceStatus;
   pid?: number;
+  lastExitedPid?: number;
   startedAt?: number;
   completedAt?: number;
   durationMs?: number;

@@ -452,7 +452,7 @@ export class NodeServiceProcessManager extends EventEmitter {
   public async start(
     config: ServiceRunConfig,
     onLog?: (serviceId: string, data: string, stream: 'stdout' | 'stderr') => void,
-    onExit?: (serviceId: string, exitCode: number, signal?: string) => void
+    onExit?: (serviceId: string, exitCode: number, signal?: string, pid?: number) => void
   ): Promise<{ success: boolean; pid?: number; error?: string }> {
     if (this.activeServices.has(config.serviceId)) {
       await this.stop(config.serviceId);
@@ -583,8 +583,8 @@ export class NodeServiceProcessManager extends EventEmitter {
           this.killProcessTree(pid).catch(() => {});
         }
 
-        if (onExit) onExit(config.serviceId, exitCode, signal || undefined);
-        this.emit('exit', { serviceId: config.serviceId, exitCode, signal: signal || undefined });
+        if (onExit) onExit(config.serviceId, exitCode, signal || undefined, pid);
+        this.emit('exit', { serviceId: config.serviceId, exitCode, signal: signal || undefined, pid });
       };
 
       child.on('exit', (code, signal) => {

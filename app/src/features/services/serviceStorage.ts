@@ -674,28 +674,76 @@ export function resolveServiceCwd(projectRoot: string, rawCustomCwd?: string, is
 export function bindServiceEventListeners(store: {
   getState: () => {
     appendLog: (serviceId: string, data: string) => void;
-    handleProcessExit: (serviceId: string, exitCode: number, signal?: string) => void;
+    handleProcessExit: (serviceId: string, exitCode: number, signal?: string, pid?: number) => void;
   };
   setState: (updater: (state: any) => any) => void;
-}): void {
-  if (typeof window === 'undefined') return;
+}): () => void {
+  if (typeof window === 'undefined') return () => {};
 
-  const applyRunningServices = (runningList: Array<{ serviceId: string; pid: number; startedAt: number }>) => {
-    if (Array.isArray(runningList) && runningList.length > 0) {
-      store.setState((state: any) => {
-        const nextStates = { ...state.runtimeStates };
-        for (const item of runningList) {
+  const applyRunningServices = (
+    runningList: Array<{ serviceId: string; pid: number; startedAt: number }>
+  ) => {
+    if (!Array.isArray(runningList)) return;
+    store.setState((state: any) => {
+      const nextStates = { ...state.runtimeStates };
+      let changed = false;
+      const runningMap = new Map<string, { pid: number; startedAt: number }>();
+      for (const item of runningList) {
+        runningMap.set(item.serviceId, item);
+      }
+
+      // 1. Sync running services from backend to frontend
+      for (const item of runningList) {
+        const cur = nextStates[item.serviceId];
+        if (!cur || cur.status !== 'running' || cur.pid !== item.pid) {
           nextStates[item.serviceId] = {
-            ...(nextStates[item.serviceId] || DEFAULT_RUNTIME_STATE),
+            ...(cur || DEFAULT_RUNTIME_STATE),
             status: 'running',
             pid: item.pid,
-            startedAt: item.startedAt,
+            startedAt: item.startedAt || cur?.startedAt || Date.now(),
+            exitCode: null,
+            conflictPort: undefined,
           };
+          changed = true;
         }
-        return { runtimeStates: nextStates };
-      });
+      }
+
+      // 2. If frontend thinks a service is 'running', but backend says it's not in runningList
+      // (and it's not currently 'starting'), reconcile it to 'stopped'
+      for (const [id, cur] of Object.entries(nextStates) as [string, any][]) {
+        if (cur?.status === 'running' && !runningMap.has(id)) {
+          nextStates[id] = {
+            ...cur,
+            status: 'stopped',
+            pid: undefined,
+          };
+          changed = true;
+        }
+      }
+
+      return changed ? { runtimeStates: nextStates } : state;
+    });
+  };
+
+  const syncRunning = () => {
+    if ((window as any).electronAPI?.services?.getRunning) {
+      (window as any).electronAPI.services.getRunning().then(applyRunningServices).catch(() => {});
+    } else {
+      fetch('/api/services/running')
+        .then((res) => res.json())
+        .then(applyRunningServices)
+        .catch(() => {});
     }
   };
+
+  // Immediate sync
+  syncRunning();
+
+  // Periodic heartbeat reconciliation (every 3 seconds)
+  const heartbeatTimer = setInterval(syncRunning, 3000);
+
+  // Focus-based reconciliation
+  window.addEventListener('focus', syncRunning);
 
   if ((window as any).electronAPI?.services) {
     const electronAPI = (window as any).electronAPI;
@@ -704,13 +752,11 @@ export function bindServiceEventListeners(store: {
       store.getState().appendLog(payload.serviceId, payload.data);
     });
 
-    electronAPI.services.onExit((payload: { serviceId: string; exitCode: number; signal?: string }) => {
-      store.getState().handleProcessExit(payload.serviceId, payload.exitCode, payload.signal);
-    });
-
-    if (electronAPI.services.getRunning) {
-      electronAPI.services.getRunning().then(applyRunningServices).catch(() => {});
-    }
+    electronAPI.services.onExit(
+      (payload: { serviceId: string; exitCode: number; signal?: string; pid?: number }) => {
+        store.getState().handleProcessExit(payload.serviceId, payload.exitCode, payload.signal, payload.pid);
+      }
+    );
   } else {
     let sse: EventSource | null = null;
     const connectSSE = () => {
@@ -726,7 +772,12 @@ export function bindServiceEventListeners(store: {
         sse.addEventListener('exit', (event) => {
           try {
             const payload = JSON.parse(event.data);
-            store.getState().handleProcessExit(payload.serviceId, payload.exitCode, payload.signal);
+            store.getState().handleProcessExit(
+              payload.serviceId,
+              payload.exitCode,
+              payload.signal,
+              payload.pid
+            );
           } catch {}
         });
 
@@ -739,10 +790,10 @@ export function bindServiceEventListeners(store: {
       }
     };
     connectSSE();
-
-    fetch('/api/services/running')
-      .then((res) => res.json())
-      .then(applyRunningServices)
-      .catch(() => {});
   }
+
+  return () => {
+    clearInterval(heartbeatTimer);
+    window.removeEventListener('focus', syncRunning);
+  };
 }

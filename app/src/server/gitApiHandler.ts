@@ -140,7 +140,7 @@ export async function handleGitApiRequest(req: IncomingMessage, res: ServerRespo
       } catch {}
     };
 
-    const onExit = (payload: { serviceId: string; exitCode: number; signal?: string }) => {
+    const onExit = (payload: { serviceId: string; exitCode: number; signal?: string; pid?: number }) => {
       try {
         res.write(`event: exit\ndata: ${JSON.stringify(payload)}\n\n`);
       } catch {}

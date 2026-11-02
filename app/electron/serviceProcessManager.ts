@@ -27,9 +27,9 @@ export function setupServiceIpcHandlers() {
           sender.send('services:log', { serviceId, data, stream });
         }
       },
-      (serviceId, exitCode, signal) => {
+      (serviceId, exitCode, signal, pid) => {
         if (!sender.isDestroyed()) {
-          sender.send('services:exit', { serviceId, exitCode, signal });
+          sender.send('services:exit', { serviceId, exitCode, signal, pid });
         }
       }
     );

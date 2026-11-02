@@ -149,8 +149,8 @@ const electronAPI = {
         ipcRenderer.removeListener('services:log', handler);
       };
     },
-    onExit: (callback: (payload: { serviceId: string; exitCode: number; signal?: string }) => void) => {
-      const handler = (_event: any, payload: { serviceId: string; exitCode: number; signal?: string }) =>
+    onExit: (callback: (payload: { serviceId: string; exitCode: number; signal?: string; pid?: number }) => void) => {
+      const handler = (_event: any, payload: { serviceId: string; exitCode: number; signal?: string; pid?: number }) =>
         callback(payload);
       ipcRenderer.on('services:exit', handler);
       return () => {

@@ -82,7 +82,7 @@ interface ServicesState {
   hasRunningServices: (projectIdOrPath?: string) => boolean;
   getRunningCount: (projectIdOrPath?: string) => number;
   appendLog: (serviceId: string, text: string) => void;
-  handleProcessExit: (serviceId: string, exitCode: number, signal?: string) => void;
+  handleProcessExit: (serviceId: string, exitCode: number, signal?: string, pid?: number) => void;
 }
 
 const serviceLogBuffers = new Map<string, StreamLogBuffer>();
@@ -481,7 +481,12 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
       if (res.success && res.pid) {
         set((state) => {
           const current = state.getRuntime(serviceId);
-          if (current.status === 'completed' || current.status === 'stopped' || current.status === 'failed') {
+          // Only drop if user initiated a stop while start was in-flight,
+          // or if this was a task that has already completed for THIS EXACT pid.
+          if (
+            current.status === 'stopping' ||
+            (current.status === 'completed' && current.lastExitedPid === res.pid)
+          ) {
             return state;
           }
           return {
@@ -493,6 +498,7 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
                 pid: res.pid,
                 startedAt: current.startedAt || Date.now(),
                 exitCode: null,
+                conflictPort: undefined,
               },
             },
           };
@@ -737,13 +743,23 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
     }
   },
 
-  handleProcessExit: (serviceId: string, exitCode: number, signal?: string) => {
+  handleProcessExit: (serviceId: string, exitCode: number, signal?: string, pid?: number) => {
+    const prevRuntime = get().getRuntime(serviceId);
+
+    // If the exit event carries a PID, and our current runtime has a DIFFERENT PID that is running or starting,
+    // this is a stale exit event from an old process that was stopped/replaced. Safely drop it!
+    if (pid && prevRuntime.pid && prevRuntime.pid !== pid) {
+      console.warn(
+        `[useServicesStore] Dropping stale exit event for service ${serviceId} (event PID: ${pid}, current PID: ${prevRuntime.pid})`
+      );
+      return;
+    }
+
     const pendingTimer = pendingLogFlushTimers.get(serviceId);
     if (pendingTimer) {
       clearTimeout(pendingTimer);
       pendingLogFlushTimers.delete(serviceId);
     }
-    const prevRuntime = get().getRuntime(serviceId);
     const { nextStatus, exitMsg, durationMs, isSuccess } = computeProcessExitInfo(
       serviceId,
       exitCode,
@@ -768,6 +784,7 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
           logs: finalLogs,
           status: nextStatus,
           pid: undefined,
+          lastExitedPid: pid,
           exitCode,
           durationMs,
           completedAt: isSuccess ? Date.now() : undefined,
