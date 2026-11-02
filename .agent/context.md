@@ -170,27 +170,11 @@
 
 ---
 
-## 10. 模块化寻址、性能基线与高效开发规约 (Modular Routing & Performance Baseline)
+## 10. 模块化架构寻址与性能基线规范 (Modular Architecture & Performance Protocol)
 
-- **领域子模块寻址速查（严禁重新堆砌 Facade）**：
-  - **Git 服务端 (`app/src/server/git/`)**：`gitService.ts` 仅为 60 行聚合 Facade，新增或修改 Git 逻辑请直接定位子模块：
-    - `gitExec.ts`：进程信号量限流（`runGit`）、进程树销毁、冲突标记解析；
-    - `gitStatusIdentityOps.ts`：状态检测、用户信息、凭据探测、仓库文件监听；
-    - `gitLogHistoryOps.ts`：提交历史、分支图谱（`parents`）、单文件历史、提交回滚；
-    - `gitBranchPushOps.ts`：分支增删切、Pull/Push、未推送提交统计；
-    - `gitMergeConflictOps.ts`：合并、三方冲突块提取与冲突解决；
-    - `gitWorkspaceCloneOps.ts`：仓库扫描、流式克隆、工作空间与缓存管理；
-    - `gitBatchStashBlameOps.ts`：多仓库批量 Pull/Fetch/Checkout、Stash 暂存架、行级 Blame。
-  - **状态与服务拆分子模块**：
-    - Store 切片扩展：`workspaceSavedGroupsSlice.ts`（工作空间组与最近项目）、`gitPushSlice.ts`（推送流转）、`gitCommitActionsSlice.ts`（提交与丢弃动作）；
-    - 微服务存储与 IPC 桥接：`app/src/features/services/serviceStorage.ts`；
-    - 重点逼近 800 行水位线的文件（如 `gitApiHandler.ts`、`workspaceSlice.ts`、`useServicesStore.ts`、`SystemSettingsModal.tsx`）严禁直接塞入大段内联逻辑，新增功能必须抽离至独立子文件。
-- **TypeScript `verbatimModuleSyntax` 一次写对规范**：
-  - `tsconfig.app.json` 已开启 `verbatimModuleSyntax: true`，任何跨文件导入纯类型（`interface` / `type`）必须显式标注 `import type { ... }` 或 `import { type ... }`，避免 `TS1484` 报错返工。
-- **运行时性能与并发硬基线**：
-  - **Git 进程并发控制**：一律通过 `gitExec.ts` 的 `runGit()` 调用 Git CLI（自动受本地 6 / 远程 3 并发信号量保护及 `GIT_OPTIONAL_LOCKS=0` 无锁优化），禁止裸调 `execFile('git')`；
-  - **L1 缓存与请求去重**：更新内存快照统一走 `setL1SnapshotCache()`（自动执行 20 仓 LRU 淘汰与日志截断）；低频仓库元数据（Authors / RecentMessages）复用 `repoMetadataFreshness`（30s TTL）避免切换风暴；
-  - **高频流式日志节流**：终端输出统一使用 `StreamLogBuffer` 增量行解析 + `32ms` 节流刷新，严禁每次数据块到达时全量重拼字符串或同步高频触发 React 重渲染。
-- **双端通道对齐与工具箱扩展范式**：
-  - 微服务进程管理支持 Web HTTP（`gitApiHandler.ts`）与 Electron IPC（`electron/serviceProcessManager.ts` + `preload.ts`），新增接口需同步对齐双端并在 `serviceStorage.ts` 封装统一调用函数；
-  - `Data Tools` 新增离线格式仅需：在 `types.ts` 注册 `DataFormat` -> 在 `formatters/` 编写纯同步函数返回 `{ parsed, formattedJson }` -> 在 `analyzer.ts` 通过 `buildJsonTree(parsed)` 生成树结构（自动赋能右侧 Tree / Table 视图） -> 在 `defaultSamples.ts`、`DataToolsHeader.tsx`、`DataToolsTabBar.tsx` 补充元数据。
+- **模块寻址目录与详细规范（Skill 式按需加载）**：子模块详细映射、高水位文件清单、性能防退化基线及双端/工具箱扩展契约已归档至独立文档，修改相关模块前请按需查阅：👉 [`.agent/modular-architecture-guide.md`](./modular-architecture-guide.md)；
+- **核心模块目录索引**：
+  - 后端 Git 领域模块：`app/src/server/git/`（`gitExec`、`gitStatusIdentityOps`、`gitLogHistoryOps`、`gitBranchPushOps`、`gitMergeConflictOps`、`gitWorkspaceCloneOps`、`gitBatchStashBlameOps`），`gitService.ts` 仅为聚合 Facade；
+  - 前端 Store 切片：`app/src/store/slices/`（含拆出的 `workspaceSavedGroupsSlice`、`gitPushSlice`、`gitCommitActionsSlice`）与 `storeHelpers.ts`；
+  - 微服务与数据工具：`app/src/features/services/serviceStorage.ts`（持久化与 HTTP/IPC 双端桥接）、`app/src/features/data-tools/formatters/`（离线格式化器）。
+- **3 条必守基线**：跨文件纯类型强制 `import type`（`verbatimModuleSyntax`）；Git 命令统一走 `runGit()` 信号量通道；L1 快照走 `setL1SnapshotCache()` 且流式日志走 `StreamLogBuffer`（`32ms` 节流）。
