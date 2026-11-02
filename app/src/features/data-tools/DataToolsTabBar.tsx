@@ -122,6 +122,18 @@ export const DataToolsTabBar: React.FC = () => {
         return isActive
           ? 'text-teal-500 bg-teal-500/15 border-teal-500/30'
           : 'text-teal-600 dark:text-teal-400 bg-teal-500/10 border-teal-500/20';
+      case 'timestamp':
+        return isActive
+          ? 'text-orange-500 bg-orange-500/15 border-orange-500/30'
+          : 'text-orange-600 dark:text-orange-400 bg-orange-500/10 border-orange-500/20';
+      case 'hash':
+        return isActive
+          ? 'text-pink-500 bg-pink-500/15 border-pink-500/30'
+          : 'text-pink-600 dark:text-pink-400 bg-pink-500/10 border-pink-500/20';
+      case 'regex':
+        return isActive
+          ? 'text-cyan-500 bg-cyan-500/15 border-cyan-500/30'
+          : 'text-cyan-600 dark:text-cyan-400 bg-cyan-500/10 border-cyan-500/20';
       case 'base64':
       default:
         return isActive

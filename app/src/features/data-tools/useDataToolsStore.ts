@@ -16,6 +16,9 @@ import { formatSql, minifySql } from './formatters/sqlFormatter';
 import { parseJwt } from './formatters/jwtFormatter';
 import { parseUrlQuery } from './formatters/urlFormatter';
 import { normalizeBase64 } from './formatters/base64Formatter';
+import { parseTimestampContent } from './formatters/timestampFormatter';
+import { computeHashSummary } from './formatters/uuidHashFormatter';
+import { evaluateRegexContent } from './formatters/regexTester';
 import { calcStatsFor, tryParseJsonDoc, analyzeContent } from './analyzer';
 import {
   createNewTab,
@@ -287,6 +290,12 @@ export const useDataToolsStore = create<DataToolsState>((set, get) => {
         else formatted = parseUrlQuery(tab.content).formattedJson;
       } else if (tab.format === 'base64') {
         formatted = normalizeBase64(tab.content);
+      } else if (tab.format === 'timestamp') {
+        formatted = parseTimestampContent(tab.content, tab.indentSize).formattedJson;
+      } else if (tab.format === 'hash') {
+        formatted = computeHashSummary(tab.content, tab.indentSize).formattedJson;
+      } else if (tab.format === 'regex') {
+        formatted = evaluateRegexContent(tab.content, tab.indentSize).formattedJson;
       }
       get().setContent(formatted, tabId);
     },

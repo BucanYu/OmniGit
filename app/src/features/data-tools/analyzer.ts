@@ -8,6 +8,9 @@ import { parseYamlObject } from './formatters/yamlFormatter';
 import { parseJwt } from './formatters/jwtFormatter';
 import { parseUrlQuery } from './formatters/urlFormatter';
 import { decodeBase64 } from './formatters/base64Formatter';
+import { parseTimestampContent } from './formatters/timestampFormatter';
+import { computeHashSummary } from './formatters/uuidHashFormatter';
+import { evaluateRegexContent } from './formatters/regexTester';
 
 export function calcStatsFor(content: string, format: DataFormat): FormatStats {
   return format === 'json' ? calcJsonStats(content) : calcTextStats(content);
@@ -79,6 +82,18 @@ export function analyzeContent(
       };
       tree = buildJsonTree(parsed);
     }
+  } else if (format === 'timestamp') {
+    const res = parseTimestampContent(content);
+    parsed = res.parsed;
+    tree = buildJsonTree(parsed);
+  } else if (format === 'hash') {
+    const res = computeHashSummary(content);
+    parsed = res.parsed;
+    tree = buildJsonTree(parsed);
+  } else if (format === 'regex') {
+    const res = evaluateRegexContent(content);
+    parsed = res.parsed;
+    tree = buildJsonTree(parsed);
   }
 
   return { parsed, tree, stats: calcStatsFor(content, format) };

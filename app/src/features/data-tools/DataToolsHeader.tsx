@@ -96,6 +96,9 @@ export const DataToolsHeader: React.FC = () => {
     { id: 'jwt', label: 'JWT Token', badge: 'jwt' },
     { id: 'url', label: 'URL Query', badge: 'url' },
     { id: 'base64', label: 'Base64', badge: 'b64' },
+    { id: 'timestamp', label: 'Timestamp', badge: 'time' },
+    { id: 'hash', label: 'UUID & Hash', badge: 'hash' },
+    { id: 'regex', label: 'Regex', badge: 're' },
   ];
 
   return (
@@ -282,6 +285,39 @@ export const DataToolsHeader: React.FC = () => {
               >
                 <span>Maven POM</span>
                 <span className="text-[10px] text-theme-dim font-mono">XML</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  loadSample('timestamp');
+                  setIsSampleMenuOpen(false);
+                }}
+                className="w-full text-left px-3 py-1.5 hover:bg-theme-hover text-theme-main flex items-center justify-between"
+              >
+                <span>Unix & ISO Time</span>
+                <span className="text-[10px] text-theme-dim font-mono">TIME</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  loadSample('hash');
+                  setIsSampleMenuOpen(false);
+                }}
+                className="w-full text-left px-3 py-1.5 hover:bg-theme-hover text-theme-main flex items-center justify-between"
+              >
+                <span>SHA256 & UUIDv4</span>
+                <span className="text-[10px] text-theme-dim font-mono">HASH</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  loadSample('regex');
+                  setIsSampleMenuOpen(false);
+                }}
+                className="w-full text-left px-3 py-1.5 hover:bg-theme-hover text-theme-main flex items-center justify-between"
+              >
+                <span>URL Capture Groups</span>
+                <span className="text-[10px] text-theme-dim font-mono">REGEX</span>
               </button>
             </div>
           )}

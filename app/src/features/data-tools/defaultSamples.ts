@@ -88,6 +88,18 @@ export const DEFAULT_SAMPLE_URL = `https://api.omnigit.dev/v1/repositories?works
 
 export const DEFAULT_SAMPLE_BASE64 = 'T21uaUdpdCBEYXRhIFRvb2xzIC0gQmFzZTY0IHNhbXBsZSBwYXlsb2Fk';
 
+export const DEFAULT_SAMPLE_TIMESTAMP = `now
+1793000000
+1793000000000
+2026-11-02T10:30:00+08:00`;
+
+export const DEFAULT_SAMPLE_HASH = `OmniGit Offline Crypto & UUID Workspace`;
+
+export const DEFAULT_SAMPLE_REGEX = `/(?<protocol>https?):\\/\\/(?<host>[\\w.-]+)(?::(?<port>\\d+))?(?<path>\\/[\\w./-]*)?/gi
+Gateway: https://api.omnigit.dev:8443/v1/repos
+Webhook: http://localhost:5345/api/git/status
+Docs: https://docs.omnigit.dev/guide/quickstart`;
+
 export const DEFAULT_SAMPLES: Record<DataFormat, string> = {
   json: DEFAULT_SAMPLE_JSON,
   yaml: DEFAULT_SAMPLE_YAML,
@@ -96,6 +108,9 @@ export const DEFAULT_SAMPLES: Record<DataFormat, string> = {
   jwt: DEFAULT_SAMPLE_JWT,
   url: DEFAULT_SAMPLE_URL,
   base64: DEFAULT_SAMPLE_BASE64,
+  timestamp: DEFAULT_SAMPLE_TIMESTAMP,
+  hash: DEFAULT_SAMPLE_HASH,
+  regex: DEFAULT_SAMPLE_REGEX,
 };
 
 export const FORMAT_METAS: {
@@ -112,4 +127,7 @@ export const FORMAT_METAS: {
   { id: 'jwt', label: 'JWT Token', badge: 'jwt', defaultTitle: 'JWT', desc: '鉴权令牌 / Claims' },
   { id: 'url', label: 'URL Query', badge: 'url', defaultTitle: 'URL', desc: 'URL 查询参数 / 键值对' },
   { id: 'base64', label: 'Base64', badge: 'b64', defaultTitle: 'Base64', desc: '文本编解码 / 字节分析' },
+  { id: 'timestamp', label: 'Timestamp', badge: 'time', defaultTitle: 'Time', desc: '时间戳 / ISO 日期互转' },
+  { id: 'hash', label: 'UUID & Hash', badge: 'hash', defaultTitle: 'Hash', desc: 'SHA256 / CRC32 / UUIDv4' },
+  { id: 'regex', label: 'Regex Tester', badge: 're', defaultTitle: 'Regex', desc: '正则匹配 / 命名捕获组分析' },
 ];

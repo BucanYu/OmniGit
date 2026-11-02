@@ -5,7 +5,10 @@ export type DataFormat =
   | 'sql'
   | 'jwt'
   | 'url'
-  | 'base64';
+  | 'base64'
+  | 'timestamp'
+  | 'hash'
+  | 'regex';
 
 export type DataViewMode = 'split' | 'editor' | 'tree' | 'table';
 
