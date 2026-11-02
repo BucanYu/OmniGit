@@ -4,10 +4,31 @@ import type {
   ServiceRuntimeState,
   DiscoveredScriptGroup,
   ServiceStatus,
-  ServiceKind,
 } from './types';
-import { useAppStore } from '../../store/useAppStore';
-import { normalizePath } from '../../store/storeHelpers';
+import {
+  StreamLogBuffer,
+  DEFAULT_RUNTIME_STATE,
+  normalizeProjectPath,
+  getPathStorageKey,
+  getLegacyStorageKey,
+  KNOWN_PROJECT_CANONICAL_SERVICES,
+  validateAndSanitizeServices,
+  resolveProject,
+  fetchDiskBackup,
+  saveProjectServiceConfigsLocally,
+  resolveServiceCwd,
+  bindServiceEventListeners,
+  detectConflictPortFromLog,
+  computeProcessExitInfo,
+  fetchProjectScriptsFromBackend,
+  buildImportedServicesFromGroups,
+  applyUpdatedServiceConfigs,
+  invokeStartServiceBackend,
+  invokeStopServiceBackend,
+  invokeKillPortBackend,
+} from './serviceStorage';
+
+export { StreamLogBuffer, normalizeProjectPath };
 
 interface ServicesState {
   configsByProject: Record<string, ServiceConfig[]>;
@@ -64,434 +85,10 @@ interface ServicesState {
   handleProcessExit: (serviceId: string, exitCode: number, signal?: string) => void;
 }
 
-export class StreamLogBuffer {
-  private lines: string[] = [];
-  private currentLine: string = '';
-  private maxLines: number;
-
-  constructor(maxLines = 2000) {
-    this.maxLines = maxLines;
-  }
-
-  public append(incoming: string): string[] {
-    if (!incoming) return this.getDisplayLines();
-
-    // 1. Strip OSC (Operating System Command) sequences e.g. \x1b]0;Title\x07 or \x1b]...\x1b\
-    let sanitized = incoming.replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '');
-    // 2. Strip standalone BEL characters
-    sanitized = sanitized.replace(/\x07/g, '');
-    // 3. Handle ANSI erase line sequences (\x1b[2K, \x1b[K, \x1b[0K) by resetting current line
-    sanitized = sanitized.replace(/\x1b\[[0-2]?K/g, '\r');
-    // 4. Strip non-color ANSI CSI sequences (preserve \x1b[...m for colors)
-    sanitized = sanitized.replace(/\x1b\[\??[0-9;]*[A-LN-Za-ln-z]/g, '');
-
-    let i = 0;
-    while (i < sanitized.length) {
-      const ch = sanitized[i];
-      if (ch === '\r') {
-        if (sanitized[i + 1] === '\n') {
-          // Windows CRLF (\r\n) -> finish current line
-          this.lines.push(this.currentLine);
-          this.currentLine = '';
-          i += 2;
-          continue;
-        } else {
-          // Bare CR (\r) -> carriage return (reset line for in-place progress update)
-          this.currentLine = '';
-          i++;
-          continue;
-        }
-      } else if (ch === '\n') {
-        // Unix LF (\n) -> finish current line
-        this.lines.push(this.currentLine);
-        this.currentLine = '';
-        i++;
-        continue;
-      } else {
-        this.currentLine += ch;
-        i++;
-      }
-    }
-
-    if (this.lines.length > this.maxLines) {
-      this.lines = this.lines.slice(this.lines.length - this.maxLines);
-    }
-
-    return this.getDisplayLines();
-  }
-
-  public getDisplayLines(): string[] {
-    if (this.currentLine.length > 0) {
-      return [...this.lines, this.currentLine];
-    }
-    return [...this.lines];
-  }
-
-  public clear(): void {
-    this.lines = [];
-    this.currentLine = '';
-  }
-}
-
 const serviceLogBuffers = new Map<string, StreamLogBuffer>();
 const pendingLogFlushTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const lastLogFlushTime = new Map<string, number>();
 const LOG_FLUSH_INTERVAL_MS = 32;
-
-const DEFAULT_RUNTIME_STATE: ServiceRuntimeState = {
-  status: 'stopped',
-  logs: [],
-};
-
-export function normalizeProjectPath(p: string): string {
-  if (!p) return '';
-  return normalizePath(p);
-}
-
-function getPathStorageKey(normPath: string): string {
-  return `omnigit_services_path_${normPath}`;
-}
-
-function getLegacyStorageKey(projectId: string): string {
-  return `omnigit_services_${projectId}`;
-}
-
-// Canonical defaults for known workspace projects to guarantee 0ms instant display without cross-project bleed
-const KNOWN_PROJECT_CANONICAL_SERVICES: Record<string, ServiceConfig[]> = {
-  'd:/projects/farmland-engineer-quality-inspect/land-quality-sys': [
-    {
-      id: 'srv_1792397914507_0kbqo',
-      name: 'Backend',
-      cwd: '..',
-      winCommand: 'scripts\\start-backend.bat',
-      winStopScript: 'scripts\\stop-backend.bat',
-      unixCommand: 'scripts/start-backend.sh',
-      unixStopScript: 'scripts/stop-backend.sh',
-      createdAt: 1792397914507,
-      updatedAt: 1792397914507,
-    },
-    {
-      id: 'srv_1792398067230_0kbqo',
-      name: 'Web',
-      cwd: '..',
-      winCommand: 'scripts\\start-web.bat',
-      winStopScript: 'scripts\\stop-web.bat',
-      unixCommand: 'scripts/start-web.sh',
-      unixStopScript: 'scripts/stop-web.sh',
-      createdAt: 1792398067230,
-      updatedAt: 1792398067230,
-    },
-    {
-      id: 'srv_1792398067230_app01',
-      name: 'App',
-      cwd: '..',
-      winCommand: 'scripts\\start-app.bat',
-      winStopScript: 'scripts\\stop-app.bat',
-      unixCommand: 'scripts/start-app.sh',
-      unixStopScript: 'scripts/stop-app.sh',
-      createdAt: 1792398067230,
-      updatedAt: 1792398067230,
-    },
-  ],
-  'd:/projects/farmland-engineer-quality-inspect/land-quality-sys-web': [
-    {
-      id: 'srv_1792398067230_web01',
-      name: 'Web',
-      cwd: '..',
-      winCommand: 'scripts\\start-web.bat',
-      winStopScript: 'scripts\\stop-web.bat',
-      unixCommand: 'scripts/start-web.sh',
-      unixStopScript: 'scripts/stop-web.sh',
-      createdAt: 1792398067230,
-      updatedAt: 1792398067230,
-    },
-    {
-      id: 'srv_1792397914507_back01',
-      name: 'Backend',
-      cwd: '..',
-      winCommand: 'scripts\\start-backend.bat',
-      winStopScript: 'scripts\\stop-backend.bat',
-      unixCommand: 'scripts/start-backend.sh',
-      unixStopScript: 'scripts/stop-backend.sh',
-      createdAt: 1792397914507,
-      updatedAt: 1792397914507,
-    },
-    {
-      id: 'srv_1792398067230_app01',
-      name: 'App',
-      cwd: '..',
-      winCommand: 'scripts\\start-app.bat',
-      winStopScript: 'scripts\\stop-app.bat',
-      unixCommand: 'scripts/start-app.sh',
-      unixStopScript: 'scripts/stop-app.sh',
-      createdAt: 1792398067230,
-      updatedAt: 1792398067230,
-    },
-  ],
-  'd:/projects/farmland-engineer-quality-inspect/farmland-engineer-quality-inspect': [
-    {
-      id: 'srv_1792397914507_0kbqo',
-      name: 'Backend',
-      cwd: '..',
-      winCommand: 'scripts\\start-backend.bat',
-      winStopScript: 'scripts\\stop-backend.bat',
-      unixCommand: 'scripts/start-backend.sh',
-      unixStopScript: 'scripts/stop-backend.sh',
-      createdAt: 1792397914507,
-      updatedAt: 1792397914507,
-    },
-    {
-      id: 'srv_1792398067230_0kbqo',
-      name: 'Web',
-      cwd: '..',
-      winCommand: 'scripts\\start-web.bat',
-      winStopScript: 'scripts\\stop-web.bat',
-      unixCommand: 'scripts/start-web.sh',
-      unixStopScript: 'scripts/stop-web.sh',
-      createdAt: 1792398067230,
-      updatedAt: 1792398067230,
-    },
-  ],
-  'd:/projects/filepreview4-4': [
-    {
-      id: 'srv_1792393827071_o923s',
-      name: '文件预览项目后端',
-      cwd: '',
-      winCommand: 'start-backend.bat',
-      unixCommand: 'start-backend.bat',
-      createdAt: 1792393827071,
-      updatedAt: 1792393939092,
-    },
-  ],
-  'd:/projects/omnigit': [
-    {
-      id: 'srv_1792723245440_3b9s0',
-      name: 'Build Desktop',
-      cwd: '',
-      winCommand: 'scripts\\build_desktop.bat',
-      winStopScript: '',
-      unixCommand: 'scripts/build_desktop.sh',
-      unixStopScript: '',
-      createdAt: 1792723245440,
-      updatedAt: 1792723245440,
-    },
-    {
-      id: 'srv_1792723245440_9fsxd',
-      name: 'Generate Icon',
-      cwd: '',
-      winCommand: 'scripts\\generate_icon.ps1',
-      winStopScript: '',
-      unixCommand: 'scripts/generate_icon.sh',
-      unixStopScript: '',
-      createdAt: 1792723245440,
-      updatedAt: 1792723245440,
-    },
-    {
-      id: 'srv_1792723245440_hq2sb',
-      name: 'Publish Release',
-      cwd: '',
-      winCommand: 'scripts\\publish_release.bat',
-      winStopScript: '',
-      unixCommand: 'scripts/publish_release.sh',
-      unixStopScript: '',
-      createdAt: 1792723245440,
-      updatedAt: 1792723245440,
-    },
-    {
-      id: 'srv_1792723245440_51b08',
-      name: 'Desktop',
-      cwd: '',
-      winCommand: 'scripts\\start_desktop.bat',
-      winStopScript: '',
-      unixCommand: 'scripts/start_desktop.sh',
-      unixStopScript: '',
-      createdAt: 1792723245440,
-      updatedAt: 1792723245440,
-    },
-    {
-      id: 'srv_1792723245440_kyz6j',
-      name: 'Dev',
-      cwd: '',
-      winCommand: 'scripts\\start_dev.bat',
-      winStopScript: 'scripts\\stop_dev.bat',
-      unixCommand: 'scripts/start_dev.sh',
-      unixStopScript: 'scripts/stop_dev.sh',
-      createdAt: 1792723245440,
-      updatedAt: 1792723245440,
-    },
-    {
-      id: 'srv_1792723245440_jdnsu',
-      name: 'Stop Dev',
-      cwd: '',
-      winCommand: 'scripts\\stop_dev.bat',
-      winStopScript: '',
-      unixCommand: 'scripts/stop_dev.sh',
-      unixStopScript: '',
-      createdAt: 1792723245440,
-      updatedAt: 1792723245440,
-    },
-  ],
-};
-
-// Strict cross-project contamination detector and sanitizer
-function validateAndSanitizeServices(normPath: string, services: ServiceConfig[]): ServiceConfig[] | null {
-  if (!services || !Array.isArray(services) || services.length === 0) return null;
-
-  // 1. If project is land-quality-sys or farmland, it CANNOT contain "文件预览" or start-backend in root cwd
-  if (normPath.includes('land-quality-sys') || normPath.includes('farmland')) {
-    const isContaminated = services.some(
-      (s) =>
-        (s.name && s.name.includes('文件预览')) ||
-        (s.cwd === '' && (s.winCommand === 'start-backend.bat' || s.unixCommand === 'start-backend.bat'))
-    );
-    if (isContaminated) {
-      console.warn(`[useServicesStore] Rejected cross-contaminated services for ${normPath}`);
-      return null;
-    }
-  }
-
-  // 2. If project is filepreview, it CANNOT contain cwd: ".." or OmniGit desktop build scripts
-  if (normPath.includes('filepreview')) {
-    const isContaminated = services.some(
-      (s) =>
-        s.cwd === '..' ||
-        s.name === 'Build Desktop' ||
-        s.name === 'Generate Icon' ||
-        (s.name === 'Backend' && s.cwd === '..')
-    );
-    if (isContaminated) {
-      console.warn(`[useServicesStore] Rejected cross-contaminated services for ${normPath}`);
-      return null;
-    }
-  }
-
-  // 3. If project is OmniGit, it CANNOT contain "文件预览" or "Backend" with cwd: ".."
-  if (normPath.includes('omnigit')) {
-    const isContaminated = services.some(
-      (s) => (s.name && s.name.includes('文件预览')) || (s.name === 'Backend' && s.cwd === '..')
-    );
-    if (isContaminated) {
-      console.warn(`[useServicesStore] Rejected cross-contaminated services for ${normPath}`);
-      return null;
-    }
-  }
-
-  return services;
-}
-
-function resolveProject(projectIdOrPath?: string, explicitPath?: string): {
-  projectId: string;
-  projectPath: string;
-  normPath: string;
-} {
-  const projects = useAppStore.getState().projects;
-  const activeProjectId = useAppStore.getState().activeProjectId;
-
-  // 1. Explicit path given
-  if (explicitPath) {
-    const norm = normalizeProjectPath(explicitPath);
-    const matched = projects.find((p) => normalizeProjectPath(p.path) === norm);
-    return {
-      projectId: matched?.id || (projectIdOrPath && !projectIdOrPath.includes('/') && !projectIdOrPath.includes('\\') ? projectIdOrPath : ''),
-      projectPath: explicitPath,
-      normPath: norm,
-    };
-  }
-
-  // 2. Identify by projectIdOrPath
-  if (projectIdOrPath) {
-    const byId = projects.find((p) => p.id === projectIdOrPath);
-    if (byId) {
-      return {
-        projectId: byId.id,
-        projectPath: byId.path,
-        normPath: normalizeProjectPath(byId.path),
-      };
-    }
-
-    const normInput = normalizeProjectPath(projectIdOrPath);
-    const byPath = projects.find((p) => normalizeProjectPath(p.path) === normInput);
-    if (byPath) {
-      return {
-        projectId: byPath.id,
-        projectPath: byPath.path,
-        normPath: normalizeProjectPath(byPath.path),
-      };
-    }
-
-    if (projectIdOrPath.includes('/') || projectIdOrPath.includes('\\')) {
-      return {
-        projectId: '',
-        projectPath: projectIdOrPath,
-        normPath: normInput,
-      };
-    }
-
-    return {
-      projectId: projectIdOrPath,
-      projectPath: '',
-      normPath: '',
-    };
-  }
-
-  // 3. Fallback to active project
-  const activeProject = projects.find((p) => p.id === activeProjectId);
-  if (activeProject) {
-    return {
-      projectId: activeProject.id,
-      projectPath: activeProject.path,
-      normPath: normalizeProjectPath(activeProject.path),
-    };
-  }
-
-  return { projectId: '', projectPath: '', normPath: '' };
-}
-
-async function persistServicesToDisk(normPath: string, services: ServiceConfig[]): Promise<boolean> {
-  if (!normPath) return false;
-  if (typeof window !== 'undefined' && (window as any).electronAPI?.services?.saveBackup) {
-    try {
-      return await (window as any).electronAPI.services.saveBackup({
-        servicesByProject: { [normPath]: services },
-      });
-    } catch (e) {
-      console.warn('[useServicesStore] Save backup via IPC failed:', e);
-    }
-  }
-
-  try {
-    const res = await fetch('/api/services/configs', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        servicesByProject: { [normPath]: services },
-      }),
-    });
-    return res.ok;
-  } catch (e) {
-    return false;
-  }
-}
-
-async function fetchDiskBackup(): Promise<Record<string, ServiceConfig[]>> {
-  if (typeof window !== 'undefined' && (window as any).electronAPI?.services?.getBackup) {
-    try {
-      const res = await (window as any).electronAPI.services.getBackup();
-      if (res && typeof res === 'object') return res;
-    } catch (e) {
-      console.warn('[useServicesStore] Read backup via IPC failed:', e);
-    }
-  }
-
-  try {
-    const res = await fetch('/api/services/configs');
-    if (res.ok) {
-      const data = await res.json();
-      if (data && typeof data === 'object') return data;
-    }
-  } catch (e) {}
-  return {};
-}
 
 export const useServicesStore = create<ServicesState>((set, get) => ({
   configsByProject: {},
@@ -511,7 +108,6 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
   syncWithGitActiveProject: (gitProjectId: string) => {
     if (!gitProjectId) return;
     const { lastSyncedGitProjectId, servicesSelectedProjectId } = get();
-    // If git project changed: reset services view to the newly selected git project!
     if (gitProjectId !== lastSyncedGitProjectId) {
       set({
         servicesSelectedProjectId: gitProjectId,
@@ -519,7 +115,6 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
         activeServiceId: null,
       });
     } else if (!servicesSelectedProjectId) {
-      // First time initialization
       set({
         servicesSelectedProjectId: gitProjectId,
         lastSyncedGitProjectId: gitProjectId,
@@ -530,7 +125,7 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
   loadProjectServices: (projectIdOrPath: string, explicitPath?: string) => {
     if (!projectIdOrPath && !explicitPath) return [];
 
-    const { projectId, projectPath, normPath } = resolveProject(projectIdOrPath, explicitPath);
+    const { projectId, normPath } = resolveProject(projectIdOrPath, explicitPath);
     if (!normPath) return [];
 
     // Tier 1: Check in-memory store
@@ -552,7 +147,6 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
           if (sanitized && sanitized.length > 0) {
             loaded = sanitized;
           } else {
-            // Contaminated record found in localStorage -> purge it immediately
             localStorage.removeItem(getPathStorageKey(normPath));
             if (projectId) localStorage.removeItem(getLegacyStorageKey(projectId));
           }
@@ -567,7 +161,6 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
       loaded = KNOWN_PROJECT_CANONICAL_SERVICES[normPath];
     }
 
-    // If loaded synchronously (from valid path key or canonical definition)
     if (loaded && loaded.length > 0) {
       const nextConfigs: Record<string, ServiceConfig[]> = {
         ...get().configsByProject,
@@ -580,17 +173,7 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
         activeServiceId: state.activeServiceId || loaded![0].id,
       }));
 
-      // Dual-write to localStorage for permanent future boots
-      if (typeof window !== 'undefined') {
-        try {
-          localStorage.setItem(getPathStorageKey(normPath), JSON.stringify(loaded));
-          if (projectId) localStorage.setItem(getLegacyStorageKey(projectId), JSON.stringify(loaded));
-        } catch {}
-      }
-
-      // Persist to disk backup
-      persistServicesToDisk(normPath, loaded);
-
+      saveProjectServiceConfigsLocally(normPath, projectId, loaded);
       return loaded;
     }
 
@@ -608,7 +191,6 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
         }
       }
       if (matched && matched.length > 0) {
-        console.info(`[useServicesStore] Successfully recovered services from disk backup for ${normPath}`);
         const nextConfigs: Record<string, ServiceConfig[]> = {
           ...get().configsByProject,
           [normPath]: matched,
@@ -629,7 +211,6 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
       }
     });
 
-    // Set empty in state for now
     const nextConfigs: Record<string, ServiceConfig[]> = { ...get().configsByProject };
     nextConfigs[normPath] = [];
     if (projectId) nextConfigs[projectId] = [];
@@ -677,81 +258,24 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
 
   scanProjectScripts: async (projectIdOrPath: string) => {
     const { projectPath } = resolveProject(projectIdOrPath);
-    const projectRoot = projectPath || '';
-    if (!projectRoot) return [];
-
-    if ((window as any).electronAPI?.services?.scanScripts) {
-      try {
-        return await (window as any).electronAPI.services.scanScripts(projectRoot);
-      } catch (e) {
-        console.warn('Scan scripts failed via Electron IPC:', e);
-      }
-    }
-
-    try {
-      const res = await fetch(`/api/services/scan-scripts?projectPath=${encodeURIComponent(projectRoot)}`);
-      const data = await res.json();
-      return Array.isArray(data) ? data : [];
-    } catch (e) {
-      console.warn('Scan scripts failed via HTTP:', e);
-    }
-    return [];
+    return fetchProjectScriptsFromBackend(projectPath || '');
   },
 
   importDiscoveredScripts: (projectIdOrPath: string, groups: DiscoveredScriptGroup[]) => {
     if (!projectIdOrPath || !groups || groups.length === 0) return [];
     const { projectId, normPath } = resolveProject(projectIdOrPath);
     const currentList = get().getServices(normPath || projectId || projectIdOrPath);
-    const existingCommands = new Set(
-      currentList.map((s) => (s.winCommand || s.unixCommand || '').toLowerCase().trim())
-    );
-
-    const createdList: ServiceConfig[] = [];
-    const now = Date.now();
-
-    for (const g of groups) {
-      const winCmd = (g.winStartScript || g.unixStartScript || '').trim();
-      const unixCmd = (g.unixStartScript || g.winStartScript || '').trim();
-      if (!winCmd && !unixCmd) continue;
-
-      if (existingCommands.has(winCmd.toLowerCase()) || existingCommands.has(unixCmd.toLowerCase())) {
-        continue;
-      }
-
-      const id = `srv_${now}_${Math.random().toString(36).substring(2, 7)}`;
-      const newService: ServiceConfig = {
-        id,
-        name: g.name,
-        kind: g.kind || 'service',
-        cwd: g.cwd || '',
-        winCommand: winCmd,
-        winStopScript: g.winStopScript || '',
-        unixCommand: unixCmd,
-        unixStopScript: g.unixStopScript || '',
-        createdAt: now,
-        updatedAt: now,
-      };
-      createdList.push(newService);
-      existingCommands.add(winCmd.toLowerCase());
-    }
+    const createdList = buildImportedServicesFromGroups(currentList, groups);
 
     if (createdList.length > 0) {
       const updatedList = [...currentList, ...createdList];
-      const nextConfigs = { ...get().configsByProject };
-      if (normPath) nextConfigs[normPath] = updatedList;
-      if (projectId) nextConfigs[projectId] = updatedList;
-      if (projectIdOrPath) nextConfigs[projectIdOrPath] = updatedList;
-
-      if (typeof window !== 'undefined') {
-        try {
-          if (normPath) localStorage.setItem(getPathStorageKey(normPath), JSON.stringify(updatedList));
-          if (projectId) localStorage.setItem(getLegacyStorageKey(projectId), JSON.stringify(updatedList));
-        } catch {}
-      }
-      if (normPath) {
-        persistServicesToDisk(normPath, updatedList);
-      }
-
+      const nextConfigs = applyUpdatedServiceConfigs(
+        get().configsByProject,
+        normPath,
+        projectId,
+        projectIdOrPath,
+        updatedList
+      );
       set((state) => ({
         configsByProject: nextConfigs,
         activeServiceId: state.activeServiceId || updatedList[0].id,
@@ -774,21 +298,13 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
 
     const currentList = get().getServices(normPath || projectId || projectIdOrPath);
     const updatedList = [...currentList, newService];
-
-    const nextConfigs = { ...get().configsByProject };
-    if (normPath) nextConfigs[normPath] = updatedList;
-    if (projectId) nextConfigs[projectId] = updatedList;
-    if (projectIdOrPath) nextConfigs[projectIdOrPath] = updatedList;
-
-    if (typeof window !== 'undefined') {
-      try {
-        if (normPath) localStorage.setItem(getPathStorageKey(normPath), JSON.stringify(updatedList));
-        if (projectId) localStorage.setItem(getLegacyStorageKey(projectId), JSON.stringify(updatedList));
-      } catch {}
-    }
-    if (normPath) {
-      persistServicesToDisk(normPath, updatedList);
-    }
+    const nextConfigs = applyUpdatedServiceConfigs(
+      get().configsByProject,
+      normPath,
+      projectId,
+      projectIdOrPath,
+      updatedList
+    );
 
     set({
       configsByProject: nextConfigs,
@@ -806,21 +322,13 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
     const updatedList = currentList.map((item) =>
       item.id === serviceId ? { ...item, ...updates, updatedAt: Date.now() } : item
     );
-
-    const nextConfigs = { ...get().configsByProject };
-    if (normPath) nextConfigs[normPath] = updatedList;
-    if (projectId) nextConfigs[projectId] = updatedList;
-    if (projectIdOrPath) nextConfigs[projectIdOrPath] = updatedList;
-
-    if (typeof window !== 'undefined') {
-      try {
-        if (normPath) localStorage.setItem(getPathStorageKey(normPath), JSON.stringify(updatedList));
-        if (projectId) localStorage.setItem(getLegacyStorageKey(projectId), JSON.stringify(updatedList));
-      } catch {}
-    }
-    if (normPath) {
-      persistServicesToDisk(normPath, updatedList);
-    }
+    const nextConfigs = applyUpdatedServiceConfigs(
+      get().configsByProject,
+      normPath,
+      projectId,
+      projectIdOrPath,
+      updatedList
+    );
 
     set({
       configsByProject: nextConfigs,
@@ -852,23 +360,13 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
     const [moved] = reordered.splice(fromIndex, 1);
     reordered.splice(toIndex, 0, moved);
 
-    const nextConfigs = { ...get().configsByProject };
-    if (normPath) nextConfigs[normPath] = reordered;
-    if (projectId) nextConfigs[projectId] = reordered;
-    if (projectIdOrPath) nextConfigs[projectIdOrPath] = reordered;
-
-    if (typeof window !== 'undefined') {
-      try {
-        if (normPath) localStorage.setItem(getPathStorageKey(normPath), JSON.stringify(reordered));
-        if (projectId) localStorage.setItem(getLegacyStorageKey(projectId), JSON.stringify(reordered));
-      } catch (e) {
-        console.warn('[useServicesStore] Failed to save reordered services to localStorage', e);
-      }
-    }
-    if (normPath) {
-      persistServicesToDisk(normPath, reordered);
-    }
-
+    const nextConfigs = applyUpdatedServiceConfigs(
+      get().configsByProject,
+      normPath,
+      projectId,
+      projectIdOrPath,
+      reordered
+    );
     set({ configsByProject: nextConfigs });
   },
 
@@ -881,21 +379,13 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
 
     const currentList = get().getServices(normPath || projectId || projectIdOrPath);
     const updatedList = currentList.filter((item) => item.id !== serviceId);
-
-    const nextConfigs = { ...get().configsByProject };
-    if (normPath) nextConfigs[normPath] = updatedList;
-    if (projectId) nextConfigs[projectId] = updatedList;
-    if (projectIdOrPath) nextConfigs[projectIdOrPath] = updatedList;
-
-    if (typeof window !== 'undefined') {
-      try {
-        if (normPath) localStorage.setItem(getPathStorageKey(normPath), JSON.stringify(updatedList));
-        if (projectId) localStorage.setItem(getLegacyStorageKey(projectId), JSON.stringify(updatedList));
-      } catch {}
-    }
-    if (normPath) {
-      persistServicesToDisk(normPath, updatedList);
-    }
+    const nextConfigs = applyUpdatedServiceConfigs(
+      get().configsByProject,
+      normPath,
+      projectId,
+      projectIdOrPath,
+      updatedList
+    );
 
     set((state) => {
       const nextActiveId =
@@ -946,39 +436,11 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
       return false;
     }
 
-    // Determine working directory
     const projectRoot = projectPath || '';
-    let resolvedCwd = projectRoot;
-    if (service.cwd && service.cwd.trim()) {
-      const customCwd = service.cwd.trim();
-      if (
-        customCwd.startsWith('/') ||
-        customCwd.startsWith('\\') ||
-        customCwd.includes(':\\') ||
-        customCwd.includes(':/')
-      ) {
-        resolvedCwd = customCwd;
-      } else {
-        const sep = isWindows ? '\\' : '/';
-        const combined = `${projectRoot}${sep}${customCwd}`;
-        const parts = combined.split(/[/\\]+/);
-        const resolved: string[] = [];
-        for (const part of parts) {
-          if (part === '.' || part === '') continue;
-          if (part === '..') {
-            if (resolved.length > 0) resolved.pop();
-          } else {
-            resolved.push(part);
-          }
-        }
-        resolvedCwd = isWindows ? resolved.join('\\') : '/' + resolved.join('/');
-      }
-    }
+    const resolvedCwd = resolveServiceCwd(projectRoot, service.cwd, isWindows);
 
-    // Ensure auto-scroll is enabled by default when starting
     get().setAutoScroll(serviceId, true);
 
-    // Set status to starting
     set((state) => ({
       runtimeStates: {
         ...state.runtimeStates,
@@ -1003,54 +465,41 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
         '\n'
     );
 
-    if ((window as any).electronAPI?.services?.start) {
-      try {
-        const res = await (window as any).electronAPI.services.start({
-          serviceId,
-          serviceName: service.name,
-          projectId: resolvedId || normPath || projectIdOrPath,
-          command,
-          stopCommand: stopCommand || undefined,
-          cwd: resolvedCwd,
-          env: service.env,
-        });
+    const startPayload = {
+      serviceId,
+      serviceName: service.name,
+      projectId: resolvedId || normPath || projectIdOrPath,
+      command,
+      stopCommand: stopCommand || undefined,
+      cwd: resolvedCwd,
+      env: service.env,
+    };
 
-        if (res.success && res.pid) {
-          set((state) => {
-            const current = state.getRuntime(serviceId);
-            if (current.status === 'completed' || current.status === 'stopped' || current.status === 'failed') {
-              return state;
-            }
-            return {
-              runtimeStates: {
-                ...state.runtimeStates,
-                [serviceId]: {
-                  ...current,
-                  status: 'running',
-                  pid: res.pid,
-                  startedAt: current.startedAt || Date.now(),
-                  exitCode: null,
-                },
-              },
-            };
-          });
-          return true;
-        } else {
-          get().appendLog(serviceId, `\x1b[31m[OmniGit Error] 启动失败: ${res.error || '未知错误'}\x1b[0m\n`);
-          set((state) => ({
+    try {
+      const res = await invokeStartServiceBackend(startPayload);
+
+      if (res.success && res.pid) {
+        set((state) => {
+          const current = state.getRuntime(serviceId);
+          if (current.status === 'completed' || current.status === 'stopped' || current.status === 'failed') {
+            return state;
+          }
+          return {
             runtimeStates: {
               ...state.runtimeStates,
               [serviceId]: {
-                ...state.getRuntime(serviceId),
-                status: 'failed',
-                exitCode: 1,
+                ...current,
+                status: 'running',
+                pid: res.pid,
+                startedAt: current.startedAt || Date.now(),
+                exitCode: null,
               },
             },
-          }));
-          return false;
-        }
-      } catch (err: any) {
-        get().appendLog(serviceId, `\x1b[31m[OmniGit Error] 启动异常: ${err.message || String(err)}\x1b[0m\n`);
+          };
+        });
+        return true;
+      } else {
+        get().appendLog(serviceId, `\x1b[31m[OmniGit Error] 启动失败: ${res.error || '未知错误'}\x1b[0m\n`);
         set((state) => ({
           runtimeStates: {
             ...state.runtimeStates,
@@ -1063,72 +512,19 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
         }));
         return false;
       }
-    } else {
-      // Web browser mode via HTTP API
-      try {
-        const resp = await fetch('/api/services/start', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            serviceId,
-            serviceName: service.name,
-            projectId: resolvedId || normPath || projectIdOrPath,
-            command,
-            stopCommand: stopCommand || undefined,
-            cwd: resolvedCwd,
-            env: service.env,
-          }),
-        });
-        const res = await resp.json();
-
-        if (res.success && res.pid) {
-          set((state) => {
-            const current = state.getRuntime(serviceId);
-            if (current.status === 'completed' || current.status === 'stopped' || current.status === 'failed') {
-              return state;
-            }
-            return {
-              runtimeStates: {
-                ...state.runtimeStates,
-                [serviceId]: {
-                  ...current,
-                  status: 'running',
-                  pid: res.pid,
-                  startedAt: current.startedAt || Date.now(),
-                  exitCode: null,
-                },
-              },
-            };
-          });
-          return true;
-        } else {
-          get().appendLog(serviceId, `\x1b[31m[OmniGit Error] 启动失败: ${res.error || '未知错误'}\x1b[0m\n`);
-          set((state) => ({
-            runtimeStates: {
-              ...state.runtimeStates,
-              [serviceId]: {
-                ...state.getRuntime(serviceId),
-                status: 'failed',
-                exitCode: 1,
-              },
-            },
-          }));
-          return false;
-        }
-      } catch (err: any) {
-        get().appendLog(serviceId, `\x1b[31m[OmniGit Error] 启动异常: ${err.message || String(err)}\x1b[0m\n`);
-        set((state) => ({
-          runtimeStates: {
-            ...state.runtimeStates,
-            [serviceId]: {
-              ...state.getRuntime(serviceId),
-              status: 'failed',
-              exitCode: 1,
-            },
+    } catch (err: any) {
+      get().appendLog(serviceId, `\x1b[31m[OmniGit Error] 启动异常: ${err.message || String(err)}\x1b[0m\n`);
+      set((state) => ({
+        runtimeStates: {
+          ...state.runtimeStates,
+          [serviceId]: {
+            ...state.getRuntime(serviceId),
+            status: 'failed',
+            exitCode: 1,
           },
-        }));
-        return false;
-      }
+        },
+      }));
+      return false;
     }
   },
 
@@ -1143,23 +539,7 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
       },
     }));
 
-    if ((window as any).electronAPI?.services?.stop) {
-      try {
-        await (window as any).electronAPI.services.stop(serviceId);
-      } catch (err) {
-        console.warn('[useServicesStore] Stop service error:', err);
-      }
-    } else {
-      try {
-        await fetch('/api/services/stop', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ serviceId }),
-        });
-      } catch (err) {
-        console.warn('[useServicesStore] Stop service HTTP error:', err);
-      }
-    }
+    await invokeStopServiceBackend(serviceId);
 
     get().appendLog(serviceId, `\n\x1b[33m>>> [OmniGit] 服务已终止停止\x1b[0m\n`);
 
@@ -1195,25 +575,9 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
     );
 
     try {
-      let killRes: { success: boolean; killedPid?: number; message: string } | null = null;
-      if (typeof window !== 'undefined' && (window as any).electronAPI?.services?.killPort) {
-        killRes = await (window as any).electronAPI.services.killPort(cleanPort);
-      } else {
-        const res = await fetch('/api/services/kill-port', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ port: cleanPort }),
-        });
-        if (res.ok) {
-          killRes = await res.json();
-        }
-      }
-
+      const killRes = await invokeKillPortBackend(cleanPort);
       if (killRes) {
-        get().appendLog(
-          serviceId,
-          `\x1b[32m>>> [OmniGit] ${killRes.message}\x1b[0m\n`
-        );
+        get().appendLog(serviceId, `\x1b[32m>>> [OmniGit] ${killRes.message}\x1b[0m\n`);
       }
     } catch (err: any) {
       get().appendLog(
@@ -1335,30 +699,11 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
     }
     buffer.append(text);
 
-    // Detect port conflict in log chunk (e.g. EADDRINUSE :::8080 or Port 8080 was already in use)
-    let detectedConflictPort: number | undefined;
-    if (
-      /EADDRINUSE|address already in use|already in use|Only one usage of each socket address/i.test(text)
-    ) {
-      const portMatch =
-        text.match(/(?:port|:::|:)\s*(\d{2,5})\b/i) ||
-        text.match(/\b(\d{4,5})\b/);
-      if (portMatch) {
-        const p = parseInt(portMatch[1], 10);
-        if (p > 0 && p <= 65535) {
-          detectedConflictPort = p;
-        }
-      }
-      if (!detectedConflictPort) {
-        for (const list of Object.values(get().configsByProject)) {
-          const found = list.find((s) => s.id === serviceId);
-          if (found?.port) {
-            detectedConflictPort = found.port;
-            break;
-          }
-        }
-      }
-    }
+    const detectedConflictPort = detectConflictPortFromLog(
+      text,
+      serviceId,
+      get().configsByProject
+    );
 
     const flushNow = () => {
       pendingLogFlushTimers.delete(serviceId);
@@ -1399,46 +744,13 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
       pendingLogFlushTimers.delete(serviceId);
     }
     const prevRuntime = get().getRuntime(serviceId);
-    const wasUserStopped = prevRuntime.status === 'stopped' || prevRuntime.status === 'stopping';
-    const isSuccess = exitCode === 0;
-
-    let serviceKind = 'service';
-    for (const list of Object.values(get().configsByProject)) {
-      const found = list.find((s) => s.id === serviceId);
-      if (found) {
-        serviceKind = found.kind || 'service';
-        break;
-      }
-    }
-
-    const durationMs = prevRuntime.startedAt ? Date.now() - prevRuntime.startedAt : undefined;
-    const formattedDuration = durationMs
-      ? durationMs < 1000
-        ? `${durationMs}ms`
-        : `${(durationMs / 1000).toFixed(1)}s`
-      : '';
-
-    let nextStatus: ServiceStatus = 'stopped';
-    let exitMsg = '';
-
-    if (wasUserStopped) {
-      nextStatus = 'stopped';
-      exitMsg = `\n\x1b[33m>>> [OmniGit] 进程已主动终止关闭\x1b[0m\n`;
-    } else if (signal) {
-      nextStatus = 'failed';
-      exitMsg = `\n\x1b[33m>>> [OmniGit] 进程收到信号退出: ${signal} (代码: ${exitCode})\x1b[0m\n`;
-    } else if (isSuccess) {
-      if (serviceKind === 'task') {
-        nextStatus = 'completed';
-        exitMsg = `\n\x1b[32m>>> [OmniGit] 任务执行完成 (退出代码: 0${formattedDuration ? `，耗时: ${formattedDuration}` : ''})\x1b[0m\n`;
-      } else {
-        nextStatus = 'stopped';
-        exitMsg = `\n\x1b[32m>>> [OmniGit] 服务正常退出 (退出代码: 0${formattedDuration ? `，运行时间: ${formattedDuration}` : ''})\x1b[0m\n`;
-      }
-    } else {
-      nextStatus = 'failed';
-      exitMsg = `\n\x1b[31m>>> [OmniGit] 进程异常退出 (退出代码: ${exitCode}${formattedDuration ? `，耗时: ${formattedDuration}` : ''})\x1b[0m\n`;
-    }
+    const { nextStatus, exitMsg, durationMs, isSuccess } = computeProcessExitInfo(
+      serviceId,
+      exitCode,
+      signal,
+      prevRuntime,
+      get().configsByProject
+    );
 
     let buffer = serviceLogBuffers.get(serviceId);
     if (!buffer) {
@@ -1465,89 +777,4 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
   },
 }));
 
-// Setup global event listeners (Electron IPC or Web browser SSE)
-if (typeof window !== 'undefined') {
-  if ((window as any).electronAPI?.services) {
-    const electronAPI = (window as any).electronAPI;
-
-    electronAPI.services.onLog((payload: { serviceId: string; data: string; stream: 'stdout' | 'stderr' }) => {
-      useServicesStore.getState().appendLog(payload.serviceId, payload.data);
-    });
-
-    electronAPI.services.onExit((payload: { serviceId: string; exitCode: number; signal?: string }) => {
-      useServicesStore.getState().handleProcessExit(payload.serviceId, payload.exitCode, payload.signal);
-    });
-
-    if (electronAPI.services.getRunning) {
-      electronAPI.services
-        .getRunning()
-        .then((runningList: Array<{ serviceId: string; pid: number; startedAt: number }>) => {
-          if (Array.isArray(runningList) && runningList.length > 0) {
-            useServicesStore.setState((state) => {
-              const nextStates = { ...state.runtimeStates };
-              for (const item of runningList) {
-                nextStates[item.serviceId] = {
-                  ...(nextStates[item.serviceId] || DEFAULT_RUNTIME_STATE),
-                  status: 'running',
-                  pid: item.pid,
-                  startedAt: item.startedAt,
-                };
-              }
-              return { runtimeStates: nextStates };
-            });
-          }
-        })
-        .catch(() => {});
-    }
-  } else {
-    // Web browser mode: connect SSE
-    let sse: EventSource | null = null;
-    const connectSSE = () => {
-      try {
-        sse = new EventSource('/api/services/stream');
-        sse.addEventListener('log', (event) => {
-          try {
-            const payload = JSON.parse(event.data);
-            useServicesStore.getState().appendLog(payload.serviceId, payload.data);
-          } catch {}
-        });
-
-        sse.addEventListener('exit', (event) => {
-          try {
-            const payload = JSON.parse(event.data);
-            useServicesStore.getState().handleProcessExit(payload.serviceId, payload.exitCode, payload.signal);
-          } catch {}
-        });
-
-        sse.onerror = () => {
-          sse?.close();
-          setTimeout(connectSSE, 3000);
-        };
-      } catch (err) {
-        console.warn('[useServicesStore] Failed to connect SSE:', err);
-      }
-    };
-    connectSSE();
-
-    // Query running services from web server
-    fetch('/api/services/running')
-      .then((res) => res.json())
-      .then((runningList: Array<{ serviceId: string; pid: number; startedAt: number }>) => {
-        if (Array.isArray(runningList) && runningList.length > 0) {
-          useServicesStore.setState((state) => {
-            const nextStates = { ...state.runtimeStates };
-            for (const item of runningList) {
-              nextStates[item.serviceId] = {
-                ...(nextStates[item.serviceId] || DEFAULT_RUNTIME_STATE),
-                status: 'running',
-                pid: item.pid,
-                startedAt: item.startedAt,
-              };
-            }
-            return { runtimeStates: nextStates };
-          });
-        }
-      })
-      .catch(() => {});
-  }
-}
+bindServiceEventListeners(useServicesStore);

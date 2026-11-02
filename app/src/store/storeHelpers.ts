@@ -104,6 +104,88 @@ export function broadcastWorkspaceChanged() {
   window.dispatchEvent(new CustomEvent('omnigit:workspace-changed'));
 }
 
+export function bindCrossWindowWorkspaceListeners(reloadData: () => void): void {
+  if (typeof window === 'undefined' || (window as any).__omnigit_cross_window_listener_set) {
+    return;
+  }
+  (window as any).__omnigit_cross_window_listener_set = true;
+  if (window.electronAPI?.onWorkspaceChanged) {
+    window.electronAPI.onWorkspaceChanged(reloadData);
+  }
+  if (typeof BroadcastChannel !== 'undefined') {
+    try {
+      const ch = new BroadcastChannel('omnigit_workspace_channel');
+      ch.onmessage = reloadData;
+    } catch {}
+  }
+  window.addEventListener('storage', (e) => {
+    if (
+      !e.key ||
+      e.key === 'omnigit_saved_workspaces' ||
+      e.key === 'omnigit_global_recent_projects' ||
+      e.key.startsWith('omnigit_ws_paths_')
+    ) {
+      reloadData();
+    }
+  });
+  window.addEventListener('focus', reloadData);
+  window.addEventListener('omnigit:workspace-changed', reloadData);
+}
+
+export function buildActiveProjectHydratedState(
+  id: string,
+  targetDraft: string,
+  cached?: LightRepoCache | null
+) {
+  if (cached) {
+    return {
+      activeProjectId: id,
+      isRepoLoading: false,
+      files: normalizeSnapshotFiles(Array.isArray(cached.files) ? cached.files : []).filter(
+        (f) => f.status !== 'conflict'
+      ),
+      branches: Array.isArray(cached.branches) ? cached.branches : [],
+      selectedFilePath: cached.selectedFilePath,
+      selectedFileDiff: { oldContent: '', newContent: '' },
+      commitMessage: targetDraft || cached.commitMessage || '',
+      commitHistory: Array.isArray(cached.commitHistory) ? cached.commitHistory : [],
+      isAmend: false,
+      lastCommitDetails: cached.lastCommitDetails || null,
+      selectedCommitHash: null,
+      selectedCommitDetails: null,
+      selectedHistoricalFilePath: null,
+      historicalDiff: null,
+      commitLogs: Array.isArray(cached.commitLogs) ? cached.commitLogs : [],
+      commitLogsSkip: Array.isArray(cached.commitLogs) ? cached.commitLogs.length : 0,
+      isMerging: false,
+      mergeMessage: '',
+      mergeSourceBranch: undefined,
+      conflictedCount: 0,
+    };
+  }
+  return {
+    activeProjectId: id,
+    isRepoLoading: true,
+    files: [],
+    selectedFilePath: null,
+    selectedFileDiff: { oldContent: '', newContent: '' },
+    commitMessage: targetDraft,
+    commitHistory: [],
+    isAmend: false,
+    lastCommitDetails: null,
+    selectedCommitHash: null,
+    selectedCommitDetails: null,
+    selectedHistoricalFilePath: null,
+    historicalDiff: null,
+    commitLogs: [],
+    commitLogsSkip: 0,
+    isMerging: false,
+    mergeMessage: '',
+    mergeSourceBranch: undefined,
+    conflictedCount: 0,
+  };
+}
+
 // Build a canonical WorkspaceGroupItem from a list of project paths, preserving existing custom attributes
 export function buildWorkspaceRecord(
   wsId: string,

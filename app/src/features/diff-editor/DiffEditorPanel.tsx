@@ -18,108 +18,24 @@ import {
   X,
   GitCompare,
   History,
-  Lock,
   FileEdit,
-  Sparkles,
   Copy,
   Check,
   FileCode,
   WrapText,
-  AlertTriangle,
-  ArrowRightLeft,
   FolderOpen,
   RefreshCw,
   ExternalLink,
 } from 'lucide-react';
-
-function hasGitConflictMarkers(text: string): boolean {
-  if (!text || (!text.includes('<<<<<<<') && !text.includes('======='))) return false;
-  if (/(?:^|\r?\n)<<<<<<< [^\r\n]*\r?\n[\s\S]*?(?:^|\r?\n)=======(?:\r?\n)[\s\S]*?(?:^|\r?\n)>>>>>>> [^\r\n]*/m.test(text)) {
-    return true;
-  }
-  const lines = text.split(/\r?\n/);
-  let hasStart = false;
-  for (const line of lines) {
-    if (line.startsWith('<<<<<<< ') || line.startsWith('<<<<<<<HEAD') || line.startsWith('<<<<<<< HEAD')) {
-      hasStart = true;
-    } else if (hasStart && (line === '=======' || line.startsWith('======='))) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function getLanguageFromPath(filePath: string): string {
-  const ext = filePath.split('.').pop()?.toLowerCase() || '';
-  switch (ext) {
-    case 'ts':
-    case 'tsx':
-      return 'typescript';
-    case 'js':
-    case 'jsx':
-    case 'mjs':
-    case 'cjs':
-      return 'javascript';
-    case 'json':
-      return 'json';
-    case 'css':
-      return 'css';
-    case 'scss':
-    case 'sass':
-      return 'scss';
-    case 'less':
-      return 'less';
-    case 'html':
-    case 'htm':
-      return 'html';
-    case 'vue':
-      return 'html';
-    case 'py':
-      return 'python';
-    case 'go':
-      return 'go';
-    case 'rs':
-      return 'rust';
-    case 'java':
-    case 'kt':
-    case 'kts':
-      return 'java';
-    case 'c':
-    case 'h':
-      return 'c';
-    case 'cpp':
-    case 'hpp':
-    case 'cc':
-      return 'cpp';
-    case 'cs':
-      return 'csharp';
-    case 'md':
-    case 'markdown':
-      return 'markdown';
-    case 'xml':
-    case 'svg':
-      return 'xml';
-    case 'yml':
-    case 'yaml':
-      return 'yaml';
-    case 'sh':
-    case 'bash':
-      return 'shell';
-    case 'bat':
-    case 'cmd':
-      return 'bat';
-    case 'ps1':
-      return 'powershell';
-    case 'sql':
-      return 'sql';
-    case 'php':
-      return 'php';
-    case 'dockerfile':
-      return 'dockerfile';
-    default:
-      return 'plaintext';
-  }
-}
+import {
+  hasGitConflictMarkers,
+  insertSelectionFromOriginalToModified,
+  getLanguageFromPath,
+  DiffConflictActionBar,
+  DiffSubheader,
+  DiffPathHoverCard,
+  DiffBinaryPlaceholder,
+} from './DiffEditorSubcomponents';
 
 export function DiffEditorPanel() {
   const {
@@ -144,14 +60,12 @@ export function DiffEditorPanel() {
     isRepoLoading,
   } = useAppStore();
   const { t } = useTranslation();
-  const isSideBySide = true;
   const [wordWrap, setWordWrap] = useState(true);
   const [saved, setSaved] = useState(false);
   const diffEditorRef = useRef<any>(null);
   const singleEditorRef = useRef<any>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  // Container ref & Responsive width (MUST BE AT TOP LEVEL BEFORE ANY EARLY RETURNS)
   const containerRef = useRef<HTMLDivElement>(null);
   const [panelWidth, setPanelWidth] = useState<number>(600);
 
@@ -168,18 +82,15 @@ export function DiffEditorPanel() {
     return () => observer.disconnect();
   }, []);
 
-  // Responsive width breakpoints based purely on container width (ResizeObserver)
   const isUltraCompact = panelWidth < 500;
   const isCompact = panelWidth < 700;
   const isWide = panelWidth >= 880;
   const isVeryWide = panelWidth >= 1080;
 
-  // File Path Hover & Copy States (完整路径悬浮与复制)
   const [copiedType, setCopiedType] = useState<'relative' | 'full' | null>(null);
   const [isPathHovered, setIsPathHovered] = useState(false);
   const hoverTimeoutRef = useRef<any>(null);
 
-  // Search & Navigation States
   const [searchQuery, setSearchQuery] = useState('');
   const [matches, setMatches] = useState<any[]>([]);
   const [currentMatchIndex, setCurrentMatchIndex] = useState<number>(0);
@@ -200,8 +111,12 @@ export function DiffEditorPanel() {
   const fileName = pathParts.pop() || normRelPath;
   const parentDir = pathParts.join('/');
 
-  const originalContent = isHistorical ? (historicalDiff?.original || '') : (selectedFileDiff?.oldContent || '');
-  const modifiedContent = isHistorical ? (historicalDiff?.modified || '') : (selectedFileDiff?.newContent || '');
+  const originalContent = isHistorical
+    ? historicalDiff?.original || ''
+    : selectedFileDiff?.oldContent || '';
+  const modifiedContent = isHistorical
+    ? historicalDiff?.modified || ''
+    : selectedFileDiff?.newContent || '';
 
   const handleCopyPath = (text: string, type: 'relative' | 'full', e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
@@ -215,17 +130,11 @@ export function DiffEditorPanel() {
     if (isHistorical) return;
     let currentText = '';
     if (editorViewMode === 'editor') {
-      if (singleEditorRef.current) {
-        currentText = singleEditorRef.current.getValue();
-      } else {
-        currentText = modifiedContent;
-      }
+      currentText = singleEditorRef.current ? singleEditorRef.current.getValue() : modifiedContent;
     } else {
-      if (diffEditorRef.current) {
-        currentText = diffEditorRef.current.getModifiedEditor().getValue();
-      } else {
-        currentText = modifiedContent;
-      }
+      currentText = diffEditorRef.current
+        ? diffEditorRef.current.getModifiedEditor().getValue()
+        : modifiedContent;
     }
 
     const success = await saveCurrentFile(currentText);
@@ -235,7 +144,6 @@ export function DiffEditorPanel() {
     }
   };
 
-  // Keyboard shortcut Ctrl+F to focus diff search, and Ctrl+S to save
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
@@ -255,7 +163,6 @@ export function DiffEditorPanel() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [editorViewMode, isHistorical, modifiedContent]);
 
-  // Ensure side-by-side is strictly enforced whenever file or historical mode changes (MUST BE TOP-LEVEL HOOK)
   useEffect(() => {
     if (diffEditorRef.current) {
       try {
@@ -265,13 +172,10 @@ export function DiffEditorPanel() {
           renderSideBySideInlineBreakpoint: 0,
           readOnly: isHistorical,
         });
-      } catch (e) {
-        // ignore
-      }
+      } catch {}
     }
   }, [isHistorical, relativePath, editorViewMode]);
 
-  // Ensure clicking the Monaco Find Widget close button or pressing Escape always successfully closes it
   useEffect(() => {
     const handleCloseFindWidget = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
@@ -299,8 +203,12 @@ export function DiffEditorPanel() {
         if (findWidgets.length > 0) {
           if (diffEditorRef.current) {
             try {
-              diffEditorRef.current.getModifiedEditor()?.trigger('keyboard', 'closeFindWidget', null);
-              diffEditorRef.current.getOriginalEditor()?.trigger('keyboard', 'closeFindWidget', null);
+              diffEditorRef.current
+                .getModifiedEditor()
+                ?.trigger('keyboard', 'closeFindWidget', null);
+              diffEditorRef.current
+                .getOriginalEditor()
+                ?.trigger('keyboard', 'closeFindWidget', null);
             } catch {}
           }
           if (singleEditorRef.current) {
@@ -322,19 +230,23 @@ export function DiffEditorPanel() {
 
   if (isRepoLoading && !selectedFile && !isHistorical) {
     return (
-      <div ref={containerRef} className="flex-1 bg-theme-panel flex flex-col items-center justify-center text-theme-dim text-xs select-none">
+      <div
+        ref={containerRef}
+        className="flex-1 bg-theme-panel flex flex-col items-center justify-center text-theme-dim text-xs select-none"
+      >
         <RefreshCw className="w-8 h-8 text-sky-400 mb-3 animate-spin stroke-[1.5]" />
         <p className="text-theme-muted font-medium text-sm">{t.statusPanel.loadingWorkspace}</p>
-        <p className="text-theme-dim text-[11px] mt-1">
-          {t.diff.readingRepoDiff}
-        </p>
+        <p className="text-theme-dim text-[11px] mt-1">{t.diff.readingRepoDiff}</p>
       </div>
     );
   }
 
   if (!selectedFile && !isHistorical) {
     return (
-      <div ref={containerRef} className="flex-1 bg-theme-panel flex flex-col items-center justify-center text-theme-dim text-xs select-none">
+      <div
+        ref={containerRef}
+        className="flex-1 bg-theme-panel flex flex-col items-center justify-center text-theme-dim text-xs select-none"
+      >
         <FileText className="w-10 h-10 text-theme-dim mb-2 stroke-[1.5]" />
         <p className="text-theme-muted font-medium">{t.diff.noFileSelected}</p>
         <p className="text-theme-dim text-[11px] mt-1 text-center max-w-md">
@@ -344,74 +256,9 @@ export function DiffEditorPanel() {
     );
   }
 
-  const insertSelectionFromOriginalToModified = () => {
-    if (!diffEditorRef.current) return;
-    const originalEditor = diffEditorRef.current.getOriginalEditor();
-    const modifiedEditor = diffEditorRef.current.getModifiedEditor();
-    if (!originalEditor || !modifiedEditor) return;
-
-    const sel = originalEditor.getSelection();
-    if (!sel || sel.isEmpty()) return;
-    const textToInsert = originalEditor.getModel()?.getValueInRange(sel) || '';
-    if (!textToInsert) return;
-
-    const modModel = modifiedEditor.getModel();
-    if (!modModel) return;
-
-    const modSel = modifiedEditor.getSelection();
-    const currentLine = modSel ? modSel.startLineNumber : 1;
-    const lineCount = modModel.getLineCount();
-
-    // Check if current position in modified editor is inside a conflict block
-    let conflictStartLine = -1;
-    let conflictEndLine = -1;
-
-    for (let l = currentLine; l >= 1; l--) {
-      const lineText = modModel.getLineContent(l);
-      if (lineText.startsWith('<<<<<<<')) {
-        conflictStartLine = l;
-        break;
-      }
-      if (lineText.startsWith('>>>>>>>') && l < currentLine) {
-        break;
-      }
-    }
-
-    if (conflictStartLine !== -1) {
-      for (let l = conflictStartLine; l <= lineCount; l++) {
-        const lineText = modModel.getLineContent(l);
-        if (lineText.startsWith('>>>>>>>')) {
-          conflictEndLine = l;
-          break;
-        }
-      }
-    }
-
-    if (conflictStartLine !== -1 && conflictEndLine !== -1 && currentLine >= conflictStartLine && currentLine <= conflictEndLine) {
-      // Replace the entire conflict block, stripping <<<<<<< HEAD, =======, >>>>>>> markers
-      const endLineMaxCol = modModel.getLineMaxColumn(conflictEndLine);
-      const conflictRange = {
-        startLineNumber: conflictStartLine,
-        startColumn: 1,
-        endLineNumber: conflictEndLine,
-        endColumn: endLineMaxCol,
-      };
-      modifiedEditor.executeEdits('insert-and-strip-conflict', [
-        { range: conflictRange, text: textToInsert, forceMoveMarkers: true },
-      ]);
-    } else {
-      modifiedEditor.executeEdits('insert-selection', [
-        { range: modSel, text: textToInsert, forceMoveMarkers: true },
-      ]);
-    }
-
-    modifiedEditor.focus();
-  };
-
   const handleMountDiffEditor = (editor: any, monaco: any) => {
     diffEditorRef.current = editor;
 
-    // Strictly lock Monaco in side-by-side mode (prevent auto-inline view when width is constrained)
     try {
       editor.updateOptions({
         renderSideBySide: true,
@@ -422,10 +269,8 @@ export function DiffEditorPanel() {
       console.warn('Failed to lock side-by-side mode on mount', e);
     }
 
-    // Register universal language comment definitions
     registerAllLanguageComments(monaco);
 
-    // Add Ctrl+S and Ctrl+/ commands inside diff editor
     const modifiedEditor = editor.getModifiedEditor();
     if (modifiedEditor) {
       modifiedEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
@@ -437,11 +282,10 @@ export function DiffEditorPanel() {
       });
     }
 
-    // Add Alt+Enter command inside original editor to insert selection to modified editor
     const originalEditor = editor.getOriginalEditor();
     if (originalEditor) {
       originalEditor.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.Enter, () => {
-        insertSelectionFromOriginalToModified();
+        insertSelectionFromOriginalToModified(diffEditorRef.current);
       });
       originalEditor.addAction({
         id: 'insert-selection-to-modified',
@@ -450,12 +294,11 @@ export function DiffEditorPanel() {
         contextMenuGroupId: 'navigation',
         contextMenuOrder: 1.5,
         run: () => {
-          insertSelectionFromOriginalToModified();
+          insertSelectionFromOriginalToModified(diffEditorRef.current);
         },
       });
     }
 
-    // Track real diff changes
     editor.onDidUpdateDiff(() => {
       const changes = editor.getLineChanges() || [];
       setLineChanges(changes);
@@ -467,23 +310,18 @@ export function DiffEditorPanel() {
 
   const handleMountSingleEditor = (editor: any, monaco: any) => {
     singleEditorRef.current = editor;
-
-    // Register universal language comment definitions
     registerAllLanguageComments(monaco);
 
-    // Add Ctrl+S command inside single editor
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
       handleSave();
     });
 
-    // Add Ctrl+/ command inside single editor
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Slash, () => {
       const lang = getLanguageFromPath(selectedFile?.path || '');
       toggleEditorComment(editor, lang, selectedFile?.path);
     });
   };
 
-  // Perform search across the active editor
   const handleSearch = (query: string) => {
     setSearchQuery(query);
     let model: any = null;
@@ -523,39 +361,31 @@ export function DiffEditorPanel() {
     }
   };
 
-  // 向上定位: 上一个匹配项 或 上一处差异 (Previous Match / Previous Diff Change)
   const handleGoToPrevious = () => {
     if (searchQuery.trim() && matches.length > 0) {
-      // 1. Keyword search match previous
       const prevIdx = (currentMatchIndex - 1 + matches.length) % matches.length;
       setCurrentMatchIndex(prevIdx);
       revealMatch(prevIdx, matches);
     } else if (editorViewMode === 'diff' && diffEditorRef.current) {
-      // 2. Git diff change previous
       if (diffEditorRef.current.goToDiff) {
         diffEditorRef.current.goToDiff('previous');
       }
       if (lineChanges.length > 0) {
-        const prevDiff =
-          currentDiffIndex <= 0 ? lineChanges.length - 1 : currentDiffIndex - 1;
+        const prevDiff = currentDiffIndex <= 0 ? lineChanges.length - 1 : currentDiffIndex - 1;
         setCurrentDiffIndex(prevDiff);
         const change = lineChanges[prevDiff];
-        const targetLine =
-          change.modifiedStartLineNumber || change.originalStartLineNumber;
+        const targetLine = change.modifiedStartLineNumber || change.originalStartLineNumber;
         diffEditorRef.current.getModifiedEditor()?.revealLineInCenter(targetLine);
       }
     }
   };
 
-  // 向下定位: 下一个匹配项 或 下一处差异 (Next Match / Next Diff Change)
   const handleGoToNext = () => {
     if (searchQuery.trim() && matches.length > 0) {
-      // 1. Keyword search match next
       const nextIdx = (currentMatchIndex + 1) % matches.length;
       setCurrentMatchIndex(nextIdx);
       revealMatch(nextIdx, matches);
     } else if (editorViewMode === 'diff' && diffEditorRef.current) {
-      // 2. Git diff change next
       if (diffEditorRef.current.goToDiff) {
         diffEditorRef.current.goToDiff('next');
       }
@@ -563,8 +393,7 @@ export function DiffEditorPanel() {
         const nextDiff = (currentDiffIndex + 1) % lineChanges.length;
         setCurrentDiffIndex(nextDiff);
         const change = lineChanges[nextDiff];
-        const targetLine =
-          change.modifiedStartLineNumber || change.originalStartLineNumber;
+        const targetLine = change.modifiedStartLineNumber || change.originalStartLineNumber;
         diffEditorRef.current.getModifiedEditor()?.revealLineInCenter(targetLine);
       }
     }
@@ -603,7 +432,6 @@ export function DiffEditorPanel() {
             hoverTimeoutRef.current = setTimeout(() => setIsPathHovered(false), 200);
           }}
         >
-          {/* File Path text (prominent fileName + subtle parentDir) */}
           <div
             className="flex items-center gap-1.5 min-w-0 overflow-hidden px-1.5 py-0.5 rounded hover:bg-theme-hover transition cursor-pointer"
             onClick={(e) => handleCopyPath(fullAbsolutePath, 'full', e)}
@@ -620,7 +448,6 @@ export function DiffEditorPanel() {
             )}
           </div>
 
-          {/* Quick Copy Full Path Button (Available on wider widths) */}
           {isWide && (
             <button
               type="button"
@@ -636,7 +463,6 @@ export function DiffEditorPanel() {
             </button>
           )}
 
-          {/* Quick Reveal in OS File Manager (Explorer / Finder) */}
           {isWide && (
             <button
               type="button"
@@ -651,14 +477,12 @@ export function DiffEditorPanel() {
             </button>
           )}
 
-          {/* Copied Feedback Badge */}
           {copiedType && (
             <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-1 py-0.2 rounded shrink-0 font-bold animate-pulse">
               {t.diff.copied}
             </span>
           )}
 
-          {/* Status Badge */}
           {isWide && !isHistorical && selectedFile?.status && (
             <span
               className={`text-[9px] px-1.5 py-0.2 rounded font-mono font-bold uppercase shrink-0 ${
@@ -673,89 +497,25 @@ export function DiffEditorPanel() {
             </span>
           )}
 
-          {/* Rich Full Path Hover Card (鼠标移上去悬浮展示完整路径与单独复制按钮) */}
           {isPathHovered && (
-            <div
-              className="absolute left-0 top-full mt-1.5 z-50 w-[440px] max-w-[90vw] theme-dropdown-panel rounded-lg p-3 shadow-2xl border border-theme-border-card text-xs text-theme-main font-sans select-text"
+            <DiffPathHoverCard
+              relativePath={relativePath}
+              fullAbsolutePath={fullAbsolutePath}
+              isHistorical={isHistorical}
+              fileStatus={selectedFile?.status}
+              copiedType={copiedType}
+              handleCopyPath={handleCopyPath}
               onMouseEnter={() => {
                 if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
                 setIsPathHovered(true);
               }}
               onMouseLeave={() => setIsPathHovered(false)}
-            >
-              {/* Header */}
-              <div className="flex items-center justify-between border-b border-theme-border-subtle pb-1.5 mb-2">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <FileCode className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-                  <span className="font-bold text-theme-main text-xs truncate">
-                    {relativePath.split(/[/|\\]/).pop()}
-                  </span>
-                </div>
-                <span className="text-[10px] text-theme-muted font-mono shrink-0">
-                  {isHistorical ? 'HISTORICAL COMMIT' : selectedFile?.status.toUpperCase()}
-                </span>
-              </div>
-
-              {/* Relative Path */}
-              <div className="mb-2">
-                <div className="flex items-center justify-between text-[10px] text-theme-muted mb-0.5">
-                  <span>{t.diff.relativePath}</span>
-                  <button
-                    type="button"
-                    onClick={(e) => handleCopyPath(relativePath, 'relative', e)}
-                    className="flex items-center gap-1 text-sky-400 hover:text-sky-300 font-mono text-[10px] px-1 py-0.5 rounded hover:bg-theme-hover transition cursor-pointer"
-                  >
-                    {copiedType === 'relative' ? (
-                      <>
-                        <Check className="w-2.5 h-2.5 text-emerald-400" />
-                        <span className="text-emerald-400 font-bold">{t.common.copied}</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-2.5 h-2.5" />
-                        <span>{t.common.copy}</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-                <div className="p-1.5 bg-theme-input rounded border border-theme-border text-[11px] font-mono break-all text-theme-main select-all">
-                  {relativePath}
-                </div>
-              </div>
-
-              {/* Absolute Full Path */}
-              <div>
-                <div className="flex items-center justify-between text-[10px] text-theme-muted mb-0.5">
-                  <span>{t.diff.fullAbsolutePath}</span>
-                  <button
-                    type="button"
-                    onClick={(e) => handleCopyPath(fullAbsolutePath, 'full', e)}
-                    className="flex items-center gap-1 text-sky-400 hover:text-sky-300 font-mono text-[10px] px-1 py-0.5 rounded hover:bg-theme-hover transition cursor-pointer"
-                  >
-                    {copiedType === 'full' ? (
-                      <>
-                        <Check className="w-2.5 h-2.5 text-emerald-400" />
-                        <span className="text-emerald-400 font-bold">{t.common.copied}</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-2.5 h-2.5" />
-                        <span>{t.diff.copyFullPath}</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-                <div className="p-1.5 bg-theme-input rounded border border-theme-border text-[11px] font-mono break-all text-theme-main select-all">
-                  {fullAbsolutePath}
-                </div>
-              </div>
-            </div>
+            />
           )}
         </div>
 
-        {/* Center: View Mode Toggle Tabs & Search Box (差异对比 vs 单文件源码编辑) */}
+        {/* Center: View Mode Toggle Tabs & Search Box */}
         <div className="flex items-center gap-1 shrink-0">
-          {/* Mode Switcher Pills */}
           <div className="flex items-center bg-theme-input p-0.5 rounded-lg border border-theme-border text-xs shrink-0 shadow-2xs">
             <button
               type="button"
@@ -785,21 +545,25 @@ export function DiffEditorPanel() {
             </button>
           </div>
 
-          {/* Search Box - dynamic responsive elastic width */}
-          <div className={`flex items-center gap-1 px-1.5 py-0.5 bg-theme-input border border-theme-border rounded-lg focus-within:border-sky-500 transition shadow-2xs shrink ${
-            isUltraCompact ? 'w-20 focus-within:w-28' : isCompact ? 'w-24 focus-within:w-32' : 'w-28 focus-within:w-36'
-          }`}>
+          <div
+            className={`flex items-center gap-1 px-1.5 py-0.5 bg-theme-input border border-theme-border rounded-lg focus-within:border-sky-500 transition shadow-2xs shrink ${
+              isUltraCompact
+                ? 'w-20 focus-within:w-28'
+                : isCompact
+                ? 'w-24 focus-within:w-32'
+                : 'w-28 focus-within:w-36'
+            }`}
+          >
             <Search className="w-3.5 h-3.5 text-theme-dim shrink-0" />
             <input
               ref={searchInputRef}
               type="text"
-              placeholder={isCompact ? (t.common?.search || '搜索') : t.diff.searchPlaceholder}
+              placeholder={isCompact ? t.common?.search || '搜索' : t.diff.searchPlaceholder}
               value={searchQuery}
               onChange={(e) => handleSearch(e.target.value)}
               onKeyDown={handleSearchKeyDown}
               className="bg-transparent border-none outline-none text-theme-main text-xs w-full min-w-0 placeholder:text-theme-dim"
             />
-            {/* Search Match Counter Badge */}
             {searchQuery.trim() && (
               <span className="text-[10px] font-mono text-sky-400 shrink-0 px-1 py-0.2 rounded-full bg-sky-500/10 font-medium">
                 {matches.length > 0 ? `${currentMatchIndex + 1}/${matches.length}` : '0/0'}
@@ -820,7 +584,6 @@ export function DiffEditorPanel() {
             )}
           </div>
 
-          {/* Up & Down Navigation Buttons (仅在有搜索内容或面板宽敞时显示) */}
           {(!isCompact || Boolean(searchQuery.trim())) && (
             <div className="flex items-center gap-0.5 bg-theme-card border border-theme-border rounded-lg p-0.5 shrink-0 shadow-2xs">
               <button
@@ -855,7 +618,6 @@ export function DiffEditorPanel() {
             </div>
           )}
 
-          {/* Diff Changes Counter Badge */}
           {isWide && editorViewMode === 'diff' && !searchQuery.trim() && lineChanges.length > 0 && (
             <span
               className="flex text-[10px] font-mono text-theme-dim px-1.5 py-0.5 rounded bg-theme-subbar border border-theme-border shrink-0 items-center gap-1"
@@ -871,9 +633,8 @@ export function DiffEditorPanel() {
           )}
         </div>
 
-        {/* Right: Actions (Diff View controls / Editor controls / Exit Snapshot / Save / Close) */}
+        {/* Right: Actions */}
         <div className="flex items-center gap-1.5 shrink-0 ml-auto">
-          {/* Editor mode controls: Word Wrap toggle */}
           {editorViewMode === 'editor' && (
             <button
               onClick={() => setWordWrap(!wordWrap)}
@@ -889,7 +650,6 @@ export function DiffEditorPanel() {
             </button>
           )}
 
-          {/* Historical Exit Snapshot Button OR Normal Save button */}
           {isHistorical ? (
             <button
               type="button"
@@ -915,10 +675,8 @@ export function DiffEditorPanel() {
             </button>
           )}
 
-          {/* Vertical Separator */}
           <div className="h-4 w-[1px] bg-theme-border mx-0.5 shrink-0" />
 
-          {/* Close Right Panel [✕] Button */}
           <button
             type="button"
             onClick={closeRightPanel}
@@ -930,156 +688,31 @@ export function DiffEditorPanel() {
         </div>
       </div>
 
-      {/* 1.5 Conflict Resolver Action Bar (IntelliJ IDEA style) */}
-      {!isHistorical && (selectedFile?.status === 'conflict' || (Boolean(modifiedContent) && hasGitConflictMarkers(modifiedContent))) && (
-        <div className="px-3 py-2 bg-amber-500/15 border-b border-amber-500/30 flex items-center justify-between text-xs animate-in fade-in shrink-0 overflow-hidden flex-wrap gap-1.5">
-          <div className="flex items-center gap-2 text-amber-300">
-            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
-            <span>
-              <strong>{t.diff.conflictWarning}</strong>
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2 shrink-0">
-            {/* 1. Conflict list dialog button */}
-            <button
-              type="button"
-              onClick={openConflictsDialog}
-              className="px-2.5 py-1 rounded bg-theme-panel hover:bg-theme-hover text-theme-main border border-theme-border text-[11px] font-semibold transition cursor-pointer flex items-center gap-1"
-              title={t.diff.conflictsDialogTooltip}
-            >
-              <FileCode className="w-3.5 h-3.5 text-amber-400" />
-              <span>{t.diff.conflictList}</span>
-            </button>
-
-            {/* 1.5 Mark as Resolved */}
-            <button
-              type="button"
-              onClick={() => selectedFile && markConflictResolved(selectedFile.path)}
-              className="px-2.5 py-1 rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-[11px] font-semibold transition cursor-pointer flex items-center gap-1"
-              title={t.diff.markResolvedTooltip}
-            >
-              <Check className="w-3.5 h-3.5 text-emerald-400" />
-              <span>{t.diff.markResolved}</span>
-            </button>
-
-            {/* 2. Accept Yours */}
-            <button
-              type="button"
-              onClick={() => selectedFile && resolveConflictQuick(selectedFile.path, 'yours')}
-              className="px-2.5 py-1 rounded bg-theme-panel hover:bg-sky-500/20 text-sky-300 border border-theme-border hover:border-sky-500/40 text-[11px] font-semibold transition cursor-pointer"
-              title={t.diff.acceptYoursTooltip}
-            >
-              {t.diff.acceptYours}
-            </button>
-
-            {/* 3. Accept Theirs */}
-            <button
-              type="button"
-              onClick={() => selectedFile && resolveConflictQuick(selectedFile.path, 'theirs')}
-              className="px-2.5 py-1 rounded bg-theme-panel hover:bg-purple-500/20 text-purple-300 border border-theme-border hover:border-purple-500/40 text-[11px] font-semibold transition cursor-pointer"
-              title={t.diff.acceptTheirsTooltip}
-            >
-              {t.diff.acceptTheirs}
-            </button>
-
-            {/* 4. Primary 3-Way Merge Button */}
-            <button
-              type="button"
-              onClick={() => selectedFile && openThreeWayMerge(selectedFile.path)}
-              className="px-3 py-1 rounded bg-sky-600 hover:bg-sky-500 text-white text-[11px] font-bold shadow-xs transition cursor-pointer flex items-center gap-1.5"
-              title={t.diff.threeWayMergeTooltip}
-            >
-              <ArrowRightLeft className="w-3.5 h-3.5" />
-              <span>{t.diff.mergeModal}</span>
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Conflict Resolver Action Bar */}
+      {!isHistorical &&
+        selectedFile &&
+        (selectedFile.status === 'conflict' ||
+          (Boolean(modifiedContent) && hasGitConflictMarkers(modifiedContent))) && (
+          <DiffConflictActionBar
+            filePath={selectedFile.path}
+            openConflictsDialog={openConflictsDialog}
+            markConflictResolved={markConflictResolved}
+            resolveConflictQuick={resolveConflictQuick}
+            openThreeWayMerge={openThreeWayMerge}
+          />
+        )}
 
       {/* Subheader Toolbar */}
-      {editorViewMode === 'diff' ? (
-        /* 2. Dual Pane Identifiers for Diff Mode (Strictly Side-by-Side 左右并排比对) */
-        <div className="h-7 border-b border-theme-border flex items-center bg-theme-subbar text-xs select-none shrink-0 overflow-hidden">
-          {/* Left: 历史基准 */}
-          <div className="w-1/2 h-full px-2 border-r border-theme-border flex items-center justify-between bg-amber-500/[0.04] min-w-0 overflow-hidden">
-            <div className="flex items-center gap-1.5 min-w-0 flex-1 pr-1 overflow-hidden">
-              <History className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-              <span className="font-bold text-[11px] text-theme-main truncate min-w-0" title={isHistorical ? historicalDiff?.oldLabel : t.diff.leftBase}>
-                {isHistorical
-                  ? t.diff.leftParentLabel(historicalDiff?.oldLabel)
-                  : t.diff.leftBase}
-              </span>
-              <span className="text-[9px] px-1.5 py-0.5 rounded-full font-mono font-medium bg-amber-500/15 text-amber-400 border border-amber-500/30 shrink-0 flex items-center gap-1 shadow-2xs whitespace-nowrap" title={t.diff.readOnly}>
-                <Lock className="w-2.5 h-2.5" />
-                <span className="hidden sm:inline">{t.diff.readOnly}</span>
-              </span>
-            </div>
-            {isWide && (
-              <span className="text-[10px] text-theme-dim font-mono shrink-0">
-                {isHistorical ? t.diff.parentRevision : t.diff.baseRevision}
-              </span>
-            )}
-          </div>
-
-          {/* Right: 调整后代码 */}
-          <div className="w-1/2 h-full px-2 flex items-center justify-between bg-emerald-500/[0.04] min-w-0 overflow-hidden">
-            <div className="flex items-center gap-1.5 min-w-0 flex-1 pr-1 overflow-hidden">
-              {isHistorical ? (
-                <History className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-              ) : (
-                <FileEdit className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-              )}
-              <span className="font-bold text-[11px] text-theme-main truncate min-w-0" title={isHistorical ? historicalDiff?.newLabel : t.diff.rightWorking}>
-                {isHistorical
-                  ? t.diff.rightCommitLabel(historicalDiff?.newLabel)
-                  : t.diff.rightWorking}
-              </span>
-              {isHistorical ? (
-                <span className="text-[9px] px-1.5 py-0.5 rounded-full font-mono font-medium bg-sky-500/15 text-sky-400 border border-sky-500/30 shrink-0 flex items-center gap-1 shadow-2xs whitespace-nowrap" title={t.diff.snapshot}>
-                  <Lock className="w-2.5 h-2.5" />
-                  <span className="hidden sm:inline">{t.diff.snapshot}</span>
-                </span>
-              ) : (
-                <span className="text-[9px] px-1.5 py-0.5 rounded-full font-mono font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0 flex items-center gap-1 shadow-2xs whitespace-nowrap" title={t.diff.editable}>
-                  <Sparkles className="w-2.5 h-2.5" />
-                  <span className="hidden sm:inline">{t.diff.editable}</span>
-                </span>
-              )}
-            </div>
-            {isWide && (
-              <span className="text-[10px] text-theme-dim font-mono shrink-0">
-                {isHistorical ? t.diff.commitRevision : t.diff.workingCopy}
-              </span>
-            )}
-          </div>
-        </div>
-      ) : (
-        /* Subheader for Single File Editor Mode */
-        <div className="h-7 px-2 sm:px-3 border-b border-theme-border flex items-center justify-between bg-theme-subbar text-xs select-none shrink-0 overflow-hidden">
-          <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 overflow-hidden">
-            <FileCode className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-            <span className="font-bold text-[11px] text-theme-main truncate" title={relativePath}>
-              {fileName}
-            </span>
-            <span className="text-[9px] px-1.5 py-0.2 rounded font-mono font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0 flex items-center gap-1 whitespace-nowrap">
-              <Sparkles className="w-2.5 h-2.5" />
-              <span className="hidden sm:inline">{t.diff.liveEditable}</span>
-            </span>
-            <span className="text-[9px] px-1.5 py-0.2 rounded font-mono font-medium bg-sky-500/15 text-sky-400 border border-sky-500/30 shrink-0">
-              {fileLanguage.toUpperCase()}
-            </span>
-            <span className="text-[9px] px-1.5 py-0.2 rounded font-mono text-theme-dim bg-theme-input border border-theme-border shrink-0 hidden sm:inline">
-              UTF-8
-            </span>
-          </div>
-          <div className="flex items-center gap-2 text-[10px] font-mono text-theme-dim shrink-0 hidden md:flex">
-            <span>{t.diff.saveShortcutHint}</span>
-            <span>•</span>
-            <span>{t.diff.autoSyncHint}</span>
-          </div>
-        </div>
-      )}
+      <DiffSubheader
+        editorViewMode={editorViewMode}
+        isHistorical={isHistorical}
+        oldLabel={historicalDiff?.oldLabel}
+        newLabel={historicalDiff?.newLabel}
+        isWide={isWide}
+        relativePath={relativePath}
+        fileName={fileName}
+        fileLanguage={fileLanguage}
+      />
 
       {/* Main Monaco Container */}
       <div className="flex-1 relative">
@@ -1089,36 +722,18 @@ export function DiffEditorPanel() {
             theme={theme}
             onOpenFolder={() => revealFileInOS(relativePath)}
           />
-        ) : Boolean(selectedFileDiff?.isBinary || originalContent.startsWith('(Binary') || originalContent.startsWith('(\u4e8c\u8fdb\u5236\u6587\u4ef6') || modifiedContent.startsWith('(\u4e8c\u8fdb\u5236\u6587\u4ef6')) ? (
-          <div className="w-full h-full flex flex-col items-center justify-center bg-theme-panel text-xs select-none p-6 text-center">
-            <div className="w-12 h-12 rounded-xl bg-sky-500/15 border border-sky-500/30 flex items-center justify-center text-sky-400 mb-3 shadow-inner">
-              <FileCode className="w-6 h-6" />
-            </div>
-            <h3 className="text-sm font-semibold text-theme-main mb-1">
-              {t.diff.binaryAssetTitle} ({selectedFile?.fileName || 'Binary Asset'})
-            </h3>
-            <p className="text-xs text-theme-dim max-w-md mb-4 leading-relaxed">
-              {t.diff.binaryAssetDesc}
-            </p>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => selectedFile && openFileInEditor(selectedFile.path)}
-                className="px-3 py-1.5 bg-theme-hover hover:bg-theme-card border border-theme-border rounded text-xs text-theme-main transition cursor-pointer flex items-center gap-1.5"
-              >
-                <FileEdit className="w-3.5 h-3.5 text-sky-400" />
-                {t.diff.openWithDefaultApp}
-              </button>
-              <button
-                type="button"
-                onClick={() => selectedFile && revealFileInOS(selectedFile.path)}
-                className="px-3 py-1.5 bg-theme-hover hover:bg-theme-card border border-theme-border rounded text-xs text-theme-main transition cursor-pointer flex items-center gap-1.5"
-              >
-                <ExternalLink className="w-3.5 h-3.5 text-sky-400" />
-                {t.diff.showInExplorer}
-              </button>
-            </div>
-          </div>
+        ) : Boolean(
+            selectedFileDiff?.isBinary ||
+              originalContent.startsWith('(Binary') ||
+              originalContent.startsWith('(\u4e8c\u8fdb\u5236\u6587\u4ef6') ||
+              modifiedContent.startsWith('(\u4e8c\u8fdb\u5236\u6587\u4ef6')
+          ) ? (
+          <DiffBinaryPlaceholder
+            fileName={selectedFile?.fileName}
+            filePath={selectedFile?.path}
+            openFileInEditor={openFileInEditor}
+            revealFileInOS={revealFileInOS}
+          />
         ) : editorViewMode === 'diff' ? (
           <DiffEditor
             height="100%"
@@ -1132,22 +747,24 @@ export function DiffEditorPanel() {
                 <span>{t.diff.loadingDiff}</span>
               </div>
             }
-            options={{
-              renderSideBySide: true,
-              useInlineViewWhenSpaceIsLimited: false,
-              renderSideBySideInlineBreakpoint: 0,
-              readOnly: isHistorical,
-              originalEditable: false,
-              automaticLayout: true,
-              fontSize: 13,
-              lineNumbers: 'on',
-              minimap: { enabled: false },
-              scrollBeyondLastLine: false,
-              wordWrap: 'off',
-              diffWordWrap: 'off',
-              enableSplitViewResizing: true,
-              hover: { enabled: false },
-            } as any}
+            options={
+              {
+                renderSideBySide: true,
+                useInlineViewWhenSpaceIsLimited: false,
+                renderSideBySideInlineBreakpoint: 0,
+                readOnly: isHistorical,
+                originalEditable: false,
+                automaticLayout: true,
+                fontSize: 13,
+                lineNumbers: 'on',
+                minimap: { enabled: false },
+                scrollBeyondLastLine: false,
+                wordWrap: 'off',
+                diffWordWrap: 'off',
+                enableSplitViewResizing: true,
+                hover: { enabled: false },
+              } as any
+            }
           />
         ) : (
           <Editor
@@ -1162,17 +779,19 @@ export function DiffEditorPanel() {
                 <span>{t.diff.loadingEditor}</span>
               </div>
             }
-            options={{
-              readOnly: isHistorical,
-              automaticLayout: true,
-              fontSize: 13,
-              lineNumbers: 'on',
-              minimap: { enabled: true },
-              scrollBeyondLastLine: false,
-              wordWrap: wordWrap ? 'on' : 'off',
-              tabSize: 2,
-              hover: { enabled: false },
-            } as any}
+            options={
+              {
+                readOnly: isHistorical,
+                automaticLayout: true,
+                fontSize: 13,
+                lineNumbers: 'on',
+                minimap: { enabled: true },
+                scrollBeyondLastLine: false,
+                wordWrap: wordWrap ? 'on' : 'off',
+                tabSize: 2,
+                hover: { enabled: false },
+              } as any
+            }
           />
         )}
       </div>
