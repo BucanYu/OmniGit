@@ -656,6 +656,7 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
   },
 
   setAutoScroll: (serviceId: string, enabled: boolean) => {
+    if (get().autoScrollByService[serviceId] === enabled) return;
     set((state) => ({
       autoScrollByService: {
         ...state.autoScrollByService,

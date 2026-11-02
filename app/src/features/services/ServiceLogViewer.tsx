@@ -138,6 +138,8 @@ export const ServiceLogViewer: React.FC<ServiceLogViewerProps> = ({
   const logContainerRef = useRef<HTMLDivElement>(null);
   const isProgrammaticScrollRef = useRef(false);
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rafIdRef = useRef<number | null>(null);
+  const touchStartYRef = useRef<number | null>(null);
   const [copied, setCopied] = useState(false);
   const [logSearchQuery, setLogSearchQuery] = useState('');
   const [isKillingPort, setIsKillingPort] = useState(false);
@@ -165,18 +167,31 @@ export const ServiceLogViewer: React.FC<ServiceLogViewerProps> = ({
   const scrollToBottom = (smooth = false) => {
     const container = logContainerRef.current;
     if (!container) return;
-    isProgrammaticScrollRef.current = true;
+
     if (scrollTimeoutRef.current) {
       clearTimeout(scrollTimeoutRef.current);
+      scrollTimeoutRef.current = null;
     }
+    if (rafIdRef.current) {
+      cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = null;
+    }
+
     if (smooth) {
+      isProgrammaticScrollRef.current = true;
       container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+      scrollTimeoutRef.current = setTimeout(() => {
+        isProgrammaticScrollRef.current = false;
+        scrollTimeoutRef.current = null;
+      }, 300);
     } else {
+      isProgrammaticScrollRef.current = true;
       container.scrollTop = container.scrollHeight;
+      rafIdRef.current = requestAnimationFrame(() => {
+        isProgrammaticScrollRef.current = false;
+        rafIdRef.current = null;
+      });
     }
-    scrollTimeoutRef.current = setTimeout(() => {
-      isProgrammaticScrollRef.current = false;
-    }, 120);
   };
 
   // Auto-scroll effect whenever logs update or isAutoScroll is toggled on
@@ -186,30 +201,93 @@ export const ServiceLogViewer: React.FC<ServiceLogViewerProps> = ({
     }
   }, [runtime?.logs, isAutoScroll]);
 
-  // Clean up timeout on unmount
+  // Clean up timeouts and animation frames on unmount
   useEffect(() => {
     return () => {
       if (scrollTimeoutRef.current) {
         clearTimeout(scrollTimeoutRef.current);
       }
+      if (rafIdRef.current) {
+        cancelAnimationFrame(rafIdRef.current);
+      }
     };
   }, []);
 
-  // Detect user manual scroll to pause/resume auto-scroll
+  // Immediate user intent detection on mouse wheel/trackpad
+  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (!service) return;
+    if (e.deltaY < 0) {
+      // User is scrolling UP: give absolute precedence to user
+      isProgrammaticScrollRef.current = false;
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+        scrollTimeoutRef.current = null;
+      }
+      if (rafIdRef.current) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+      }
+      if (isAutoScroll) {
+        setAutoScroll(service.id, false);
+      }
+    } else if (e.deltaY > 0) {
+      // User is scrolling DOWN
+      const container = logContainerRef.current;
+      if (container) {
+        const { scrollTop, scrollHeight, clientHeight } = container;
+        const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+        if (distanceFromBottom <= 30 && !isAutoScroll) {
+          setAutoScroll(service.id, true);
+        }
+      }
+    }
+  };
+
+  // Mobile / touch gestures
+  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length > 0) {
+      touchStartYRef.current = e.touches[0].clientY;
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (touchStartYRef.current === null || !service) return;
+    const currentY = e.touches[0].clientY;
+    const deltaY = currentY - touchStartYRef.current;
+    if (deltaY > 8) {
+      // Swiping downward moves scroll position UP: pause auto-scroll
+      isProgrammaticScrollRef.current = false;
+      if (isAutoScroll) {
+        setAutoScroll(service.id, false);
+      }
+    }
+  };
+
+  // Detect user manual scroll (scrollbar dragging, keyboard PageUp/Down, etc.)
   const handleScroll = () => {
-    if (isProgrammaticScrollRef.current) return;
     const container = logContainerRef.current;
     if (!container || !service) return;
 
     const { scrollTop, scrollHeight, clientHeight } = container;
     const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
 
-    if (distanceFromBottom > 80) {
+    if (isProgrammaticScrollRef.current) {
+      if (distanceFromBottom <= 10) {
+        isProgrammaticScrollRef.current = false;
+        if (scrollTimeoutRef.current) {
+          clearTimeout(scrollTimeoutRef.current);
+          scrollTimeoutRef.current = null;
+        }
+      }
+      return;
+    }
+
+    if (distanceFromBottom > 60) {
       // User explicitly scrolled up away from bottom -> pause auto-scroll
       if (isAutoScroll) {
         setAutoScroll(service.id, false);
       }
-    } else if (distanceFromBottom <= 30) {
+    } else if (distanceFromBottom <= 20) {
       // User scrolled back down to the very bottom -> re-enable auto-scroll
       if (!isAutoScroll) {
         setAutoScroll(service.id, true);
@@ -499,6 +577,9 @@ export const ServiceLogViewer: React.FC<ServiceLogViewerProps> = ({
         <div
           ref={logContainerRef}
           onScroll={handleScroll}
+          onWheel={handleWheel}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
           className="h-full overflow-y-auto p-4 font-mono text-xs text-zinc-200 bg-[#141416] select-text leading-relaxed tracking-wide space-y-0.5"
         >
           {runtime.logs.length === 0 ? (
