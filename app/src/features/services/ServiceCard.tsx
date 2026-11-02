@@ -65,10 +65,12 @@ export const ServiceCard: React.FC<ServiceCardProps> = React.memo(({
   const durationMs = useServicesStore((state) => state.runtimeStates[service.id]?.durationMs);
   const exitCode = useServicesStore((state) => state.runtimeStates[service.id]?.exitCode);
   const pid = useServicesStore((state) => state.runtimeStates[service.id]?.pid);
+  const conflictPort = useServicesStore((state) => state.runtimeStates[service.id]?.conflictPort);
 
   const startService = useServicesStore((state) => state.startService);
   const stopService = useServicesStore((state) => state.stopService);
   const restartService = useServicesStore((state) => state.restartService);
+  const killPortAndRestart = useServicesStore((state) => state.killPortAndRestart);
   const renameService = useServicesStore((state) => state.renameService);
   const deleteService = useServicesStore((state) => state.deleteService);
   const openEditModal = useServicesStore((state) => state.openEditModal);
@@ -376,6 +378,24 @@ export const ServiceCard: React.FC<ServiceCardProps> = React.memo(({
               : t.services.status.stopped}
           </span>
           {pid && <span className="font-mono text-zinc-600 dark:text-zinc-400 bg-theme-hover px-1.5 py-0.5 rounded">PID: {pid}</span>}
+          {service.port && (
+            <span className="font-mono text-sky-400 bg-sky-500/10 border border-sky-500/25 px-1.5 py-0.5 rounded">
+              :{service.port}
+            </span>
+          )}
+          {(conflictPort || (isFailed && service.port)) && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                killPortAndRestart(projectId, service.id, (conflictPort || service.port)!);
+              }}
+              className="px-1.5 py-0.5 rounded bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-400 font-medium cursor-pointer transition-colors"
+              title={t.services.portConflictDetected((conflictPort || service.port)!)}
+            >
+              {t.services.killPortAndRestart((conflictPort || service.port)!)}
+            </button>
+          )}
         </div>
 
         {uptimeText && (

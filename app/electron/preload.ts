@@ -125,6 +125,18 @@ const electronAPI = {
           cwd?: string;
         }>
       >,
+    checkPort: (port: number) =>
+      ipcRenderer.invoke('services:check-port', port) as Promise<{
+        occupied: boolean;
+        pid?: number;
+        processName?: string;
+      }>,
+    killPort: (port: number) =>
+      ipcRenderer.invoke('services:kill-port', port) as Promise<{
+        success: boolean;
+        killedPid?: number;
+        message: string;
+      }>,
     getBackup: () =>
       ipcRenderer.invoke('services:get-backup') as Promise<Record<string, any[]>>,
     saveBackup: (data: { servicesByProject?: Record<string, any[]> }) =>

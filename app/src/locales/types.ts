@@ -1298,6 +1298,15 @@ export interface LocaleDictionary {
     };
     runAgain: string;
     durationLabel: string;
+    portLabel: string;
+    portPlaceholder: string;
+    startDelayLabel: string;
+    startDelayPlaceholder: string;
+    portConflictDetected: (port: number) => string;
+    killPortAndRestart: (port: number) => string;
+    killingPort: string;
+    searchLogsPlaceholder: string;
+    logFilterCount: (matched: number, total: number) => string;
     fields: {
       name: string;
       namePlaceholder: string;

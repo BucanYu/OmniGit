@@ -732,6 +732,14 @@ export async function handleGitApiRequest(req: IncomingMessage, res: ServerRespo
       const projectPath = query.projectPath || body.projectPath || '';
       const scripts = nodeServiceProcessManager.scanProjectScripts(projectPath);
       res.end(JSON.stringify(scripts));
+    } else if (pathname === '/api/services/check-port') {
+      const port = Number(query.port || body.port || 0);
+      const result = nodeServiceProcessManager.checkPortOccupancy(port);
+      res.end(JSON.stringify(result));
+    } else if (pathname === '/api/services/kill-port') {
+      const port = Number(body.port || query.port || 0);
+      const result = nodeServiceProcessManager.killPortProcess(port);
+      res.end(JSON.stringify(result));
     } else if (pathname === '/api/services/configs') {
       if (req.method === 'POST') {
         const success = gitService.saveServicesBackup(body);

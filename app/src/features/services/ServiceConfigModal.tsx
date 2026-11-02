@@ -42,6 +42,8 @@ export const ServiceConfigModal: React.FC<ServiceConfigModalProps> = ({
   const [winStopScript, setWinStopScript] = useState('');
   const [unixCommand, setUnixCommand] = useState('');
   const [unixStopScript, setUnixStopScript] = useState('');
+  const [portStr, setPortStr] = useState('');
+  const [startDelayStr, setStartDelayStr] = useState('');
   const [envPairs, setEnvPairs] = useState<Array<{ key: string; value: string }>>([]);
   const [isEnvExpanded, setIsEnvExpanded] = useState(false);
 
@@ -60,6 +62,8 @@ export const ServiceConfigModal: React.FC<ServiceConfigModalProps> = ({
       setWinStopScript(editingService.winStopScript || '');
       setUnixCommand(editingService.unixCommand || '');
       setUnixStopScript(editingService.unixStopScript || '');
+      setPortStr(editingService.port ? String(editingService.port) : '');
+      setStartDelayStr(editingService.startDelayMs ? String(editingService.startDelayMs) : '');
       if (editingService.env) {
         const pairs = Object.entries(editingService.env).map(([k, v]) => ({
           key: k,
@@ -80,6 +84,8 @@ export const ServiceConfigModal: React.FC<ServiceConfigModalProps> = ({
       setWinStopScript('');
       setUnixCommand('');
       setUnixStopScript('');
+      setPortStr('');
+      setStartDelayStr('');
       setEnvPairs([]);
       setIsEnvExpanded(false);
     }
@@ -198,6 +204,11 @@ export const ServiceConfigModal: React.FC<ServiceConfigModalProps> = ({
       }
     }
 
+    const parsedPort = parseInt(portStr.trim(), 10);
+    const validPort = !isNaN(parsedPort) && parsedPort > 0 && parsedPort <= 65535 ? parsedPort : undefined;
+    const parsedDelay = parseInt(startDelayStr.trim(), 10);
+    const validDelay = !isNaN(parsedDelay) && parsedDelay > 0 ? parsedDelay : undefined;
+
     if (editingService) {
       updateService(projectId, editingService.id, {
         name: trimmedName,
@@ -207,6 +218,8 @@ export const ServiceConfigModal: React.FC<ServiceConfigModalProps> = ({
         winStopScript: winStopScript.trim() || undefined,
         unixCommand: unixCommand.trim(),
         unixStopScript: unixStopScript.trim() || undefined,
+        port: validPort,
+        startDelayMs: validDelay,
         env: Object.keys(envObj).length > 0 ? envObj : undefined,
       });
     } else {
@@ -218,6 +231,8 @@ export const ServiceConfigModal: React.FC<ServiceConfigModalProps> = ({
         winStopScript: winStopScript.trim() || undefined,
         unixCommand: unixCommand.trim(),
         unixStopScript: unixStopScript.trim() || undefined,
+        port: validPort,
+        startDelayMs: validDelay,
         env: Object.keys(envObj).length > 0 ? envObj : undefined,
       });
     }
@@ -366,6 +381,39 @@ export const ServiceConfigModal: React.FC<ServiceConfigModalProps> = ({
                 <Folder className="w-3.5 h-3.5 text-sky-400" />
                 <span>{t.services.browseFolder}</span>
               </button>
+            </div>
+          </div>
+
+          {/* Port & Startup Delay Orchestration */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-theme-main mb-1.5">
+                {t.services.portLabel}
+              </label>
+              <input
+                type="number"
+                min={1}
+                max={65535}
+                value={portStr}
+                onChange={(e) => setPortStr(e.target.value)}
+                placeholder={t.services.portPlaceholder}
+                className="w-full px-3 py-1.5 text-xs rounded-lg bg-theme-app border border-theme-border text-theme-main font-mono placeholder-theme-muted/50 focus:outline-hidden focus:border-sky-500 transition-colors"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-theme-main mb-1.5">
+                {t.services.startDelayLabel}
+              </label>
+              <input
+                type="number"
+                min={0}
+                max={30000}
+                step={500}
+                value={startDelayStr}
+                onChange={(e) => setStartDelayStr(e.target.value)}
+                placeholder={t.services.startDelayPlaceholder}
+                className="w-full px-3 py-1.5 text-xs rounded-lg bg-theme-app border border-theme-border text-theme-main font-mono placeholder-theme-muted/50 focus:outline-hidden focus:border-sky-500 transition-colors"
+              />
             </div>
           </div>
 

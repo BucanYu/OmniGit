@@ -14,6 +14,9 @@ import {
   Terminal,
   Folder,
   Loader2,
+  Search,
+  X,
+  AlertTriangle,
 } from 'lucide-react';
 
 interface ServiceLogViewerProps {
@@ -127,6 +130,7 @@ export const ServiceLogViewer: React.FC<ServiceLogViewerProps> = ({
   const startService = useServicesStore((state) => state.startService);
   const stopService = useServicesStore((state) => state.stopService);
   const restartService = useServicesStore((state) => state.restartService);
+  const killPortAndRestart = useServicesStore((state) => state.killPortAndRestart);
   const clearLogs = useServicesStore((state) => state.clearLogs);
   const setAutoScroll = useServicesStore((state) => state.setAutoScroll);
   const toggleAutoScroll = useServicesStore((state) => state.toggleAutoScroll);
@@ -135,6 +139,8 @@ export const ServiceLogViewer: React.FC<ServiceLogViewerProps> = ({
   const isProgrammaticScrollRef = useRef(false);
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [copied, setCopied] = useState(false);
+  const [logSearchQuery, setLogSearchQuery] = useState('');
+  const [isKillingPort, setIsKillingPort] = useState(false);
 
   const isRunning = runtime?.status === 'running';
   const isStarting = runtime?.status === 'starting';
@@ -417,21 +423,76 @@ export const ServiceLogViewer: React.FC<ServiceLogViewerProps> = ({
         </div>
       </div>
 
-      {/* Sub-header: Command & Cwd Indicator */}
-      <div className="px-4 py-1.5 bg-theme-sidebar/60 border-b border-theme-border/50 text-[11px] font-mono text-theme-muted flex items-center justify-between gap-4 select-none shrink-0 overflow-hidden">
-        <div className="flex items-center gap-1.5 truncate">
-          <Terminal className="w-3 h-3 text-sky-400 shrink-0" />
-          <span className="text-zinc-500 dark:text-zinc-400 shrink-0">{t.services.commandLabel}:</span>
-          <span className="text-theme-main truncate font-medium">{activeCommand || t.common.none}</span>
-        </div>
-        {service.cwd && (
-          <div className="flex items-center gap-1.5 truncate shrink-0">
-            <Folder className="w-3 h-3 text-amber-400 shrink-0" />
-            <span className="text-zinc-500 dark:text-zinc-400">{t.services.cwdLabel}:</span>
-            <span className="text-theme-main truncate">{service.cwd}</span>
+      {/* Sub-header: Command, Cwd & Log Search Filter Bar */}
+      <div className="px-4 py-1.5 bg-theme-sidebar/60 border-b border-theme-border/50 text-[11px] font-mono text-theme-muted flex items-center justify-between gap-3 select-none shrink-0 overflow-hidden">
+        <div className="flex items-center gap-3 min-w-0 flex-1 overflow-hidden">
+          <div className="flex items-center gap-1.5 truncate">
+            <Terminal className="w-3 h-3 text-sky-400 shrink-0" />
+            <span className="text-zinc-500 dark:text-zinc-400 shrink-0">{t.services.commandLabel}:</span>
+            <span className="text-theme-main truncate font-medium">{activeCommand || t.common.none}</span>
           </div>
-        )}
+          {service.cwd && (
+            <div className="flex items-center gap-1.5 truncate shrink-0">
+              <Folder className="w-3 h-3 text-amber-400 shrink-0" />
+              <span className="text-zinc-500 dark:text-zinc-400">{t.services.cwdLabel}:</span>
+              <span className="text-theme-main truncate">{service.cwd}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Log Keyword Filter Input */}
+        <div className="flex items-center gap-1.5 shrink-0 font-sans">
+          <div className="relative flex items-center">
+            <Search className="w-3 h-3 text-theme-muted absolute left-2 pointer-events-none" />
+            <input
+              type="text"
+              value={logSearchQuery}
+              onChange={(e) => setLogSearchQuery(e.target.value)}
+              placeholder={t.services.searchLogsPlaceholder}
+              className="pl-6 pr-6 py-0.5 w-44 rounded bg-theme-app border border-theme-border text-[11px] text-theme-main focus:outline-none focus:border-sky-500"
+            />
+            {logSearchQuery && (
+              <button
+                type="button"
+                onClick={() => setLogSearchQuery('')}
+                className="absolute right-1.5 text-theme-muted hover:text-theme-main cursor-pointer"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+        </div>
       </div>
+
+      {/* Port Conflict Auto-Resolution Banner */}
+      {(runtime.conflictPort || (runtime.status === 'failed' && service.port)) && (
+        <div className="px-4 py-1.5 bg-rose-500/15 border-b border-rose-500/30 flex items-center justify-between gap-2 text-xs text-rose-300 shrink-0 select-none">
+          <div className="flex items-center gap-2 min-w-0">
+            <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+            <span className="font-medium truncate">
+              {t.services.portConflictDetected((runtime.conflictPort || service.port)!)}
+            </span>
+          </div>
+          <button
+            type="button"
+            disabled={isKillingPort}
+            onClick={async () => {
+              const targetPort = (runtime.conflictPort || service.port)!;
+              setIsKillingPort(true);
+              try {
+                await killPortAndRestart(projectId, service.id, targetPort);
+              } finally {
+                setIsKillingPort(false);
+              }
+            }}
+            className="px-2.5 py-0.5 rounded bg-rose-500/25 hover:bg-rose-500/40 border border-rose-500/40 text-rose-200 font-medium text-[11px] cursor-pointer transition shrink-0"
+          >
+            {isKillingPort
+              ? t.services.killingPort
+              : t.services.killPortAndRestart((runtime.conflictPort || service.port)!)}
+          </button>
+        </div>
+      )}
 
       {/* Main Console Output Area */}
       <div className="relative flex-1 min-h-0 overflow-hidden">
@@ -457,9 +518,15 @@ export const ServiceLogViewer: React.FC<ServiceLogViewerProps> = ({
               )}
             </div>
           ) : (
-            runtime.logs.map((line, index) => (
-              <LogLineItem key={index} line={line} />
-            ))
+            (() => {
+              const q = logSearchQuery.trim().toLowerCase();
+              const filteredLogs = q
+                ? runtime.logs.filter((line) => line.toLowerCase().includes(q))
+                : runtime.logs;
+              return filteredLogs.map((line, index) => (
+                <LogLineItem key={index} line={line} />
+              ));
+            })()
           )}
         </div>
 

@@ -51,6 +51,7 @@ interface ServicesState {
   startService: (projectIdOrPath: string, serviceId: string) => Promise<boolean>;
   stopService: (serviceId: string) => Promise<boolean>;
   restartService: (projectIdOrPath: string, serviceId: string) => Promise<boolean>;
+  killPortAndRestart: (projectIdOrPath: string, serviceId: string, port: number) => Promise<boolean>;
   startAllServices: (projectIdOrPath: string) => Promise<void>;
   stopAllServices: (projectIdOrPath: string) => Promise<void>;
 
@@ -985,6 +986,7 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
           ...state.getRuntime(serviceId),
           status: 'starting',
           exitCode: null,
+          conflictPort: undefined,
         },
       },
     }));
@@ -1183,12 +1185,60 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
     return await get().startService(projectIdOrPath, serviceId);
   },
 
+  killPortAndRestart: async (projectIdOrPath: string, serviceId: string, port: number) => {
+    const cleanPort = Number(port);
+    if (!cleanPort || cleanPort <= 0) return false;
+
+    get().appendLog(
+      serviceId,
+      `\n\x1b[36m>>> [OmniGit] 正在扫描并释放占用端口 :${cleanPort} 的冲突进程...\x1b[0m\n`
+    );
+
+    try {
+      let killRes: { success: boolean; killedPid?: number; message: string } | null = null;
+      if (typeof window !== 'undefined' && (window as any).electronAPI?.services?.killPort) {
+        killRes = await (window as any).electronAPI.services.killPort(cleanPort);
+      } else {
+        const res = await fetch('/api/services/kill-port', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ port: cleanPort }),
+        });
+        if (res.ok) {
+          killRes = await res.json();
+        }
+      }
+
+      if (killRes) {
+        get().appendLog(
+          serviceId,
+          `\x1b[32m>>> [OmniGit] ${killRes.message}\x1b[0m\n`
+        );
+      }
+    } catch (err: any) {
+      get().appendLog(
+        serviceId,
+        `\x1b[33m>>> [OmniGit] 释放端口异常: ${err.message || String(err)}\x1b[0m\n`
+      );
+    }
+
+    await new Promise((r) => setTimeout(r, 250));
+    return await get().restartService(projectIdOrPath, serviceId);
+  },
+
   startAllServices: async (projectIdOrPath: string) => {
     const list = get().getServices(projectIdOrPath);
     for (const item of list) {
       get().setAutoScroll(item.id, true);
       const runtime = get().getRuntime(item.id);
       if (runtime.status !== 'running' && runtime.status !== 'starting') {
+        if (item.startDelayMs && item.startDelayMs > 0) {
+          get().appendLog(
+            item.id,
+            `\x1b[90m>>> [OmniGit] 编排等待 ${item.startDelayMs}ms 后启动 ${item.name}...\x1b[0m\n`
+          );
+          await new Promise((r) => setTimeout(r, Math.min(30000, item.startDelayMs)));
+        }
         await get().startService(projectIdOrPath, item.id);
       }
     }
@@ -1285,6 +1335,31 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
     }
     buffer.append(text);
 
+    // Detect port conflict in log chunk (e.g. EADDRINUSE :::8080 or Port 8080 was already in use)
+    let detectedConflictPort: number | undefined;
+    if (
+      /EADDRINUSE|address already in use|already in use|Only one usage of each socket address/i.test(text)
+    ) {
+      const portMatch =
+        text.match(/(?:port|:::|:)\s*(\d{2,5})\b/i) ||
+        text.match(/\b(\d{4,5})\b/);
+      if (portMatch) {
+        const p = parseInt(portMatch[1], 10);
+        if (p > 0 && p <= 65535) {
+          detectedConflictPort = p;
+        }
+      }
+      if (!detectedConflictPort) {
+        for (const list of Object.values(get().configsByProject)) {
+          const found = list.find((s) => s.id === serviceId);
+          if (found?.port) {
+            detectedConflictPort = found.port;
+            break;
+          }
+        }
+      }
+    }
+
     const flushNow = () => {
       pendingLogFlushTimers.delete(serviceId);
       lastLogFlushTime.set(serviceId, Date.now());
@@ -1297,6 +1372,7 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
             ...state.runtimeStates,
             [serviceId]: {
               ...prevRuntime,
+              conflictPort: detectedConflictPort || prevRuntime.conflictPort,
               logs: updatedLines,
             },
           },

@@ -742,6 +742,72 @@ export class NodeServiceProcessManager extends EventEmitter {
     }
     return false;
   }
+
+  public checkPortOccupancy(port: number): { occupied: boolean; pid?: number; processName?: string } {
+    const cleanPort = Number(port);
+    if (!cleanPort || cleanPort <= 0 || cleanPort > 65535) {
+      return { occupied: false };
+    }
+    const isWin = process.platform === 'win32';
+    try {
+      if (isWin) {
+        const out = execSync(`netstat -ano -p tcp`, { encoding: 'utf8', windowsHide: true });
+        const lines = out.split(/\r?\n/);
+        const portSuffix = `:${cleanPort}`;
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith('TCP')) continue;
+          const parts = trimmed.split(/\s+/);
+          // TCP 0.0.0.0:8080 0.0.0.0:0 LISTENING 12345
+          if (parts.length >= 5 && parts[1].endsWith(portSuffix) && parts[3].toUpperCase() === 'LISTENING') {
+            const pid = parseInt(parts[4], 10);
+            if (pid > 0) {
+              let processName = '';
+              try {
+                const tl = execSync(`tasklist /FI "PID eq ${pid}" /NH /FO CSV`, {
+                  encoding: 'utf8',
+                  windowsHide: true,
+                }).trim();
+                const m = tl.match(/^"([^"]+)"/);
+                if (m) processName = m[1];
+              } catch {}
+              return { occupied: true, pid, processName };
+            }
+          }
+        }
+      } else {
+        const out = execSync(`lsof -i :${cleanPort} -sTCP:LISTEN -Fp -Fc`, {
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'ignore'],
+        });
+        let pid = 0;
+        let processName = '';
+        for (const l of out.split(/\r?\n/)) {
+          if (l.startsWith('p')) pid = parseInt(l.slice(1), 10) || 0;
+          else if (l.startsWith('c')) processName = l.slice(1);
+        }
+        if (pid > 0) {
+          return { occupied: true, pid, processName };
+        }
+      }
+    } catch {}
+    return { occupied: false };
+  }
+
+  public killPortProcess(port: number): { success: boolean; killedPid?: number; message: string } {
+    const info = this.checkPortOccupancy(port);
+    if (!info.occupied || !info.pid) {
+      return { success: true, message: `Port ${port} is already free` };
+    }
+    const ok = this.killProcessTreeSync(info.pid);
+    return {
+      success: ok,
+      killedPid: info.pid,
+      message: ok
+        ? `Terminated process PID ${info.pid}${info.processName ? ` (${info.processName})` : ''} on port ${port}`
+        : `Failed to terminate process PID ${info.pid} on port ${port}`,
+    };
+  }
 }
 
 export const nodeServiceProcessManager = new NodeServiceProcessManager();

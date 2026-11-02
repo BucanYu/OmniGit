@@ -9,6 +9,8 @@ export interface ServiceConfig {
   winStopScript?: string; // Optional Windows stop script path (e.g., scripts/stop-backend.bat)
   unixCommand: string; // macOS / Linux startup script path (e.g., scripts/start-backend.sh) or command
   unixStopScript?: string; // Optional macOS / Linux stop script path (e.g., scripts/stop-backend.sh)
+  port?: number; // Optional primary listening port for conflict detection
+  startDelayMs?: number; // Optional delay (ms) before starting in batch orchestration
   env?: Record<string, string>; // Custom environment variables
   createdAt: number;
   updatedAt: number;
@@ -29,6 +31,7 @@ export interface ServiceRuntimeState {
   completedAt?: number;
   durationMs?: number;
   exitCode?: number | null;
+  conflictPort?: number;
   logs: string[]; // Circular buffer of log lines
 }
 
