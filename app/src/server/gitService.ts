@@ -277,11 +277,67 @@ interface RepoWatcherEntry {
 }
 const repoWatchers = new Map<string, RepoWatcherEntry>();
 
-function runGit(
+const REMOTE_GIT_COMMANDS = new Set(['pull', 'push', 'fetch', 'clone', 'ls-remote']);
+const MAX_LOCAL_GIT_CONCURRENCY = 8;
+const MAX_REMOTE_GIT_CONCURRENCY = 4;
+let activeLocalGitCount = 0;
+let activeRemoteGitCount = 0;
+const localGitWaitQueue: Array<() => void> = [];
+const remoteGitWaitQueue: Array<() => void> = [];
+
+function isRemoteGitCommand(args: string[]): boolean {
+  for (const arg of args) {
+    if (REMOTE_GIT_COMMANDS.has(arg)) return true;
+  }
+  return false;
+}
+
+function acquireGitSlot(isRemote: boolean): Promise<() => void> {
+  return new Promise((resolve) => {
+    const release = () => {
+      if (isRemote) {
+        activeRemoteGitCount = Math.max(0, activeRemoteGitCount - 1);
+        const next = remoteGitWaitQueue.shift();
+        if (next) next();
+      } else {
+        activeLocalGitCount = Math.max(0, activeLocalGitCount - 1);
+        const next = localGitWaitQueue.shift();
+        if (next) next();
+      }
+    };
+
+    if (isRemote) {
+      if (activeRemoteGitCount < MAX_REMOTE_GIT_CONCURRENCY) {
+        activeRemoteGitCount++;
+        resolve(release);
+      } else {
+        remoteGitWaitQueue.push(() => {
+          activeRemoteGitCount++;
+          resolve(release);
+        });
+      }
+    } else {
+      if (activeLocalGitCount < MAX_LOCAL_GIT_CONCURRENCY) {
+        activeLocalGitCount++;
+        resolve(release);
+      } else {
+        localGitWaitQueue.push(() => {
+          activeLocalGitCount++;
+          resolve(release);
+        });
+      }
+    }
+  });
+}
+
+async function runGit(
   args: string[],
   cwd?: string,
   timeout = 120000
 ): Promise<{ stdout: string; stderr: string; code: number }> {
+  const isRemote = isRemoteGitCommand(args);
+  const releaseSlot = await acquireGitSlot(isRemote);
+
   return new Promise((resolve) => {
     // Explicitly enforce core.quotepath=false so Git outputs raw UTF-8 strings
     // instead of C-style octal escape sequences for non-ASCII characters (e.g. Chinese filenames)
@@ -304,6 +360,7 @@ function runGit(
         },
       },
       (error, stdout, stderr) => {
+        releaseSlot();
         let cleanStdout = stdout ? stdout.replace(/\r?\n$/, '') : '';
         let cleanStderr = stderr ? stderr.replace(/\r?\n$/, '') : '';
 
@@ -352,7 +409,13 @@ export function hasGitConflictMarkers(text: string): boolean {
   return false;
 }
 
+let cachedSysCreds: { timestamp: number; data: Array<{ target: string; host: string; username: string }> } | null = null;
+const SYS_CREDS_CACHE_TTL_MS = 60_000;
+
 function getSystemGitCredentials(): Promise<Array<{ target: string; host: string; username: string }>> {
+  if (cachedSysCreds && Date.now() - cachedSysCreds.timestamp < SYS_CREDS_CACHE_TTL_MS) {
+    return Promise.resolve(cachedSysCreds.data);
+  }
   return new Promise((resolve) => {
     const credentials: Array<{ target: string; host: string; username: string }> = [];
 
@@ -372,7 +435,7 @@ function getSystemGitCredentials(): Promise<Array<{ target: string; host: string
 
     // 2. Query Windows Credential Manager on Windows
     if (process.platform === 'win32') {
-      execFile('cmdkey', ['/list'], { encoding: 'utf8' }, (error, stdout) => {
+      execFile('cmdkey', ['/list'], { encoding: 'utf8', windowsHide: true }, (error, stdout) => {
         if (!error && stdout) {
           const lines = stdout.split(/\r?\n/);
           for (let i = 0; i < lines.length; i++) {
@@ -407,9 +470,11 @@ function getSystemGitCredentials(): Promise<Array<{ target: string; host: string
             }
           }
         }
+        cachedSysCreds = { timestamp: Date.now(), data: credentials };
         resolve(credentials);
       });
     } else {
+      cachedSysCreds = { timestamp: Date.now(), data: credentials };
       resolve(credentials);
     }
   });

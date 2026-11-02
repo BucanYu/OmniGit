@@ -14,6 +14,8 @@ import {
   initialTheme,
   currentWorkspaceId,
   repoSnapshotCache,
+  setL1SnapshotCache,
+  repoMetadataFreshness,
   syncRuntime,
   repoInFlight,
 } from '../storeHelpers';
@@ -167,8 +169,9 @@ export const createGitStatusSlice = (set: any, get: any) => ({
         lastCommitDetails: cached?.lastCommitDetails || null,
         lastUpdated: Date.now(),
       };
-      repoSnapshotCache.set(normPath, snapshot);
+      setL1SnapshotCache(normPath, snapshot);
       saveLocalSnapshot(normPath, snapshot);
+      repoMetadataFreshness.set(normPath, Date.now());
 
       // Guard: Discard applying to active state if active project switched or another load began
       const nowActive = get().projects.find((p) => p.id === get().activeProjectId);
@@ -238,6 +241,10 @@ export const createGitStatusSlice = (set: any, get: any) => ({
     }
 
     const targetPath = currentActive.path;
+    const normTarget = normalizePath(targetPath);
+    // Avoid racing with an active loadRepoData call for the same repo
+    if (repoInFlight.has(normTarget)) return;
+
     syncRuntime.isSyncingSilently = true;
     const loadId = syncRuntime.currentRepoLoadId;
 

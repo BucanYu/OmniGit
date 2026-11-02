@@ -151,13 +151,14 @@ export default function App() {
 
   // When switching back to Git workbench mode, refresh repo status on demand cleanly
   useEffect(() => {
-    if (workbenchMode === 'git' && activeProjectId) {
-      const currentProject = useAppStore.getState().projects.find((p) => p.id === activeProjectId);
+    if (workbenchMode === 'git') {
+      const state = useAppStore.getState();
+      const currentProject = state.projects.find((p) => p.id === state.activeProjectId);
       if (currentProject) {
-        useAppStore.getState().syncRepoStatusSilently(currentProject.path);
+        state.syncRepoStatusSilently(currentProject.path);
       }
     }
-  }, [workbenchMode, activeProjectId]);
+  }, [workbenchMode]);
 
   // Global shortcuts (Push, Settings, Terminal, Mode Switching)
   useEffect(() => {

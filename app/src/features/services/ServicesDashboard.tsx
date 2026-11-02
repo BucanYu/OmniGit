@@ -30,7 +30,16 @@ export const ServicesDashboard: React.FC = () => {
   const syncWithGitActiveProject = useServicesStore((state) => state.syncWithGitActiveProject);
   const setServicesSelectedProjectId = useServicesStore((state) => state.setServicesSelectedProjectId);
   const configsByProject = useServicesStore((state) => state.configsByProject);
-  const runtimeStates = useServicesStore((state) => state.runtimeStates);
+  // Primitive signature of running/starting service IDs: prevents re-rendering ServicesDashboard on every log chunk
+  const runningServicesSignature = useServicesStore((state) => {
+    const activeIds: string[] = [];
+    for (const [id, runtime] of Object.entries(state.runtimeStates)) {
+      if (runtime.status === 'running' || runtime.status === 'starting') {
+        activeIds.push(id);
+      }
+    }
+    return activeIds.sort().join('|');
+  });
 
   // Sync with Git active project:
   // If git project changed: automatically resets services to the newly selected git project.
@@ -51,14 +60,15 @@ export const ServicesDashboard: React.FC = () => {
     (pId: string, pPath: string) => {
       const norm = pPath ? normalizeProjectPath(pPath) : '';
       const cfgs = (norm ? configsByProject[norm] : null) || configsByProject[pId] || [];
+      if (cfgs.length === 0 || !runningServicesSignature) return 0;
+      const runningSet = new Set(runningServicesSignature.split('|'));
       let count = 0;
       for (const s of cfgs) {
-        const st = runtimeStates[s.id]?.status;
-        if (st === 'running' || st === 'starting') count++;
+        if (runningSet.has(s.id)) count++;
       }
       return count;
     },
-    [configsByProject, runtimeStates]
+    [configsByProject, runningServicesSignature]
   );
 
   // Strictly isolate services by normPath to prevent ANY cross-project collision or bleeding

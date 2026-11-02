@@ -21,9 +21,15 @@ interface ServiceLogViewerProps {
   projectId: string;
 }
 
+const ansiHtmlCache = new Map<string, string>();
+const MAX_ANSI_HTML_CACHE_SIZE = 3000;
+
 // Convert standard ANSI color escape sequences to safe styled HTML spans
 function parseAnsiToHtml(text: string): string {
   if (!text) return '';
+  const cached = ansiHtmlCache.get(text);
+  if (cached !== undefined) return cached;
+
   // 1. Strip OSC sequences e.g. \x1b]0;Title\x07 or \x1b]0;Title\x1b\
   let cleanText = text
     .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)?/g, '')
@@ -77,8 +83,24 @@ function parseAnsiToHtml(text: string): string {
     return styles ? `<span style="${styles}">` : '';
   });
 
+  if (ansiHtmlCache.size >= MAX_ANSI_HTML_CACHE_SIZE) {
+    const oldestKey = ansiHtmlCache.keys().next().value;
+    if (oldestKey !== undefined) {
+      ansiHtmlCache.delete(oldestKey);
+    }
+  }
+  ansiHtmlCache.set(text, html);
+
   return html;
 }
+
+const LogLineItem = React.memo<{ line: string }>(({ line }) => (
+  <div
+    className="whitespace-pre-wrap break-all min-h-[1.25em]"
+    dangerouslySetInnerHTML={{ __html: parseAnsiToHtml(line) || '&nbsp;' }}
+  />
+));
+LogLineItem.displayName = 'LogLineItem';
 
 function formatUptime(ms: number): string {
   const seconds = Math.floor(ms / 1000);
@@ -436,11 +458,7 @@ export const ServiceLogViewer: React.FC<ServiceLogViewerProps> = ({
             </div>
           ) : (
             runtime.logs.map((line, index) => (
-              <div
-                key={index}
-                className="whitespace-pre-wrap break-all min-h-[1.25em]"
-                dangerouslySetInnerHTML={{ __html: parseAnsiToHtml(line) || '&nbsp;' }}
-              />
+              <LogLineItem key={index} line={line} />
             ))
           )}
         </div>

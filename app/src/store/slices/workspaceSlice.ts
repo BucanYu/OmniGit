@@ -14,6 +14,8 @@ import {
   initialTheme,
   currentWorkspaceId,
   repoSnapshotCache,
+  setL1SnapshotCache,
+  repoMetadataFreshness,
   syncRuntime,
   aggregateReposIntoWorkspaces,
 } from '../storeHelpers';
@@ -1015,29 +1017,11 @@ export const createWorkspaceSlice = (set: any, get: any) => ({
         document.title = `OmniGit - ${activeProject.name}`;
       }
 
-      // Concurrently load active repo data, workspace sync, git user, and pull backend disk snapshots
+      // Concurrently load active repo data, workspace sync, and workspace accounts (without dumping unrelated disk snapshots into L1)
       Promise.all([
         get().loadRepoData(activeProject.path),
         get().pollWorkspaceSyncStatus(),
-        get().loadRepoAuthors(activeProject.path),
         get().loadWorkspaceAccounts(),
-        fetch(`/api/git/user?path=${encodeURIComponent(activeProject.path)}`)
-          .then((res) => res.json())
-          .then((user) => set({ gitUser: user }))
-          .catch(() => {}),
-        fetch('/api/git/cache/snapshots')
-          .then((res) => res.json())
-          .then((diskSnapshots) => {
-            if (diskSnapshots && typeof diskSnapshots === 'object') {
-              Object.entries(diskSnapshots).forEach(([normP, snap]: [string, any]) => {
-                // Populate L1 In-Memory Cache (0ms) without polluting L2 localStorage!
-                if (!repoSnapshotCache.has(normP)) {
-                  repoSnapshotCache.set(normP, snap);
-                }
-              });
-            }
-          })
-          .catch(() => {}),
       ]);
 
       // Lazily populate allScannedProjects in the background for AddRepoModal
@@ -1499,21 +1483,19 @@ export const createWorkspaceSlice = (set: any, get: any) => ({
       }
 
       // 15s TTL: only revalidate in background if cache is >= 15 seconds old!
-      if (Date.now() - (cached.lastUpdated || 0) >= 15000) {
+      const isStale = Date.now() - (cached.lastUpdated || 0) >= 15000;
+      if (isStale) {
+        // loadRepoData already fetches status, branches, user, authors, recentCommitMessages, lastCommit, and mergeUndoStatus
         get().loadRepoData(targetProject.path, false);
+      } else {
+        const lastMetaTime = repoMetadataFreshness.get(normTargetPath) || 0;
+        if (Date.now() - lastMetaTime >= 30000) {
+          repoMetadataFreshness.set(normTargetPath, Date.now());
+          get().loadRepoAuthors(targetProject.path);
+          get().loadRecentCommitMessages(targetProject.path);
+          get().loadLastCommit(targetProject.path);
+        }
       }
-      get().loadRepoAuthors(targetProject.path);
-      get().loadRecentCommitMessages(targetProject.path);
-      get().loadLastCommit(targetProject.path);
-      fetch(`/api/git/user?path=${encodeURIComponent(targetProject.path)}`)
-        .then((res) => res.json())
-        .then((user) => {
-          if (user && user.name) {
-            set({ gitUser: user });
-            get().loadWorkspaceAccounts();
-          }
-        })
-        .catch(() => {});
       get().loadWorkspaceAccounts();
       if (get().activeTab === 'log') {
         get().fetchCommitLogs(true);
@@ -1550,8 +1532,6 @@ export const createWorkspaceSlice = (set: any, get: any) => ({
 
       try {
         await get().loadRepoData(targetProject.path, true);
-        get().loadRecentCommitMessages(targetProject.path);
-        get().loadLastCommit(targetProject.path);
         get().loadWorkspaceAccounts();
         if (get().activeTab === 'log') {
           await get().fetchCommitLogs(true);

@@ -226,6 +226,27 @@ export const syncRuntime = {
 export const repoInFlight = new Set<string>();
 export const repoSnapshotCache = new Map<string, LightRepoCache>();
 export const outgoingCommitsMemoryCache = new Map<string, OutgoingCommitsData>();
+export const repoMetadataFreshness = new Map<string, number>();
+
+const MAX_L1_SNAPSHOT_CACHE_SIZE = 20;
+
+export function setL1SnapshotCache(normPath: string, snapshot: LightRepoCache): void {
+  if (!normPath || !snapshot) return;
+  if (repoSnapshotCache.has(normPath)) {
+    repoSnapshotCache.delete(normPath);
+  } else if (repoSnapshotCache.size >= MAX_L1_SNAPSHOT_CACHE_SIZE) {
+    const oldestKey = repoSnapshotCache.keys().next().value;
+    if (oldestKey) {
+      repoSnapshotCache.delete(oldestKey);
+    }
+  }
+  const boundedSnapshot: LightRepoCache = {
+    ...snapshot,
+    commitLogs: Array.isArray(snapshot.commitLogs) ? snapshot.commitLogs.slice(0, 120) : [],
+    commitHistory: Array.isArray(snapshot.commitHistory) ? snapshot.commitHistory.slice(0, 30) : [],
+  };
+  repoSnapshotCache.set(normPath, boundedSnapshot);
+}
 
 // ==========================================
 // 3-Tier Cache Architecture & Safe Storage
@@ -368,9 +389,11 @@ export function sanitizeSnapshot(snapshot: LightRepoCache): LightRepoCache {
 export function getLocalSnapshot(rawPath: string): LightRepoCache | null {
   if (typeof window === 'undefined') return null;
   const normPath = normalizePath(rawPath);
-  // 1. Check L1 In-Memory Cache first (0ms)
+  // 1. Check L1 In-Memory Cache first (0ms) & promote LRU position
   if (repoSnapshotCache.has(normPath)) {
     const cached = repoSnapshotCache.get(normPath)!;
+    repoSnapshotCache.delete(normPath);
+    repoSnapshotCache.set(normPath, cached);
     if (cached && cached.files) {
       cached.files = normalizeSnapshotFiles(cached.files);
     }
@@ -386,7 +409,7 @@ export function getLocalSnapshot(rawPath: string): LightRepoCache | null {
           parsed.files = normalizeSnapshotFiles(parsed.files);
         }
         const clean = sanitizeSnapshot(parsed);
-        repoSnapshotCache.set(normPath, clean);
+        setL1SnapshotCache(normPath, clean);
         return clean;
       }
     }
@@ -405,7 +428,7 @@ export async function loadDiskSnapshot(repoPath: string): Promise<LightRepoCache
         diskSnap.files = normalizeSnapshotFiles(diskSnap.files);
       }
       const clean = sanitizeSnapshot(diskSnap);
-      repoSnapshotCache.set(normPath, clean);
+      setL1SnapshotCache(normPath, clean);
       return clean;
     }
   } catch {}
@@ -416,10 +439,10 @@ export function saveLocalSnapshot(rawPath: string, snapshot: LightRepoCache) {
   if (typeof window === 'undefined') return;
   const normPath = normalizePath(rawPath);
 
-  // 1. L1 Memory: Full runtime state preserved with normalized files
+  // 1. L1 Memory: Full runtime state preserved with normalized files & LRU cap
   const normalizedFiles = normalizeSnapshotFiles(snapshot.files || []);
   const safeSnapshot = { ...snapshot, files: normalizedFiles };
-  repoSnapshotCache.set(normPath, safeSnapshot);
+  setL1SnapshotCache(normPath, safeSnapshot);
 
   // 2. L2 Web Storage: Ultra-lightweight skeleton only (~3KB, prevents QuotaExceededError!)
   // Filter out conflict files and set isMerging: false so cold-start never speculatively flashes merge conflicts

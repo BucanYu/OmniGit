@@ -133,6 +133,9 @@ export class StreamLogBuffer {
 }
 
 const serviceLogBuffers = new Map<string, StreamLogBuffer>();
+const pendingLogFlushTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const lastLogFlushTime = new Map<string, number>();
+const LOG_FLUSH_INTERVAL_MS = 32;
 
 const DEFAULT_RUNTIME_STATE: ServiceRuntimeState = {
   status: 'stopped',
@@ -1215,6 +1218,11 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
   },
 
   clearLogs: (serviceId: string) => {
+    const pendingTimer = pendingLogFlushTimers.get(serviceId);
+    if (pendingTimer) {
+      clearTimeout(pendingTimer);
+      pendingLogFlushTimers.delete(serviceId);
+    }
     serviceLogBuffers.get(serviceId)?.clear();
     set((state) => ({
       runtimeStates: {
@@ -1275,23 +1283,45 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
       buffer = new StreamLogBuffer(2000);
       serviceLogBuffers.set(serviceId, buffer);
     }
-    const updatedLines = buffer.append(text);
+    buffer.append(text);
 
-    set((state) => {
-      const prevRuntime = state.getRuntime(serviceId);
-      return {
-        runtimeStates: {
-          ...state.runtimeStates,
-          [serviceId]: {
-            ...prevRuntime,
-            logs: updatedLines,
+    const flushNow = () => {
+      pendingLogFlushTimers.delete(serviceId);
+      lastLogFlushTime.set(serviceId, Date.now());
+      const currentBuffer = serviceLogBuffers.get(serviceId);
+      const updatedLines = currentBuffer ? currentBuffer.getDisplayLines() : [];
+      set((state) => {
+        const prevRuntime = state.getRuntime(serviceId);
+        return {
+          runtimeStates: {
+            ...state.runtimeStates,
+            [serviceId]: {
+              ...prevRuntime,
+              logs: updatedLines,
+            },
           },
-        },
-      };
-    });
+        };
+      });
+    };
+
+    const now = Date.now();
+    const lastFlush = lastLogFlushTime.get(serviceId) || 0;
+    if (!pendingLogFlushTimers.has(serviceId)) {
+      if (now - lastFlush >= LOG_FLUSH_INTERVAL_MS) {
+        flushNow();
+      } else {
+        const delay = Math.max(8, LOG_FLUSH_INTERVAL_MS - (now - lastFlush));
+        pendingLogFlushTimers.set(serviceId, setTimeout(flushNow, delay));
+      }
+    }
   },
 
   handleProcessExit: (serviceId: string, exitCode: number, signal?: string) => {
+    const pendingTimer = pendingLogFlushTimers.get(serviceId);
+    if (pendingTimer) {
+      clearTimeout(pendingTimer);
+      pendingLogFlushTimers.delete(serviceId);
+    }
     const prevRuntime = get().getRuntime(serviceId);
     const wasUserStopped = prevRuntime.status === 'stopped' || prevRuntime.status === 'stopping';
     const isSuccess = exitCode === 0;
@@ -1334,13 +1364,20 @@ export const useServicesStore = create<ServicesState>((set, get) => ({
       exitMsg = `\n\x1b[31m>>> [OmniGit] 进程异常退出 (退出代码: ${exitCode}${formattedDuration ? `，耗时: ${formattedDuration}` : ''})\x1b[0m\n`;
     }
 
-    get().appendLog(serviceId, exitMsg);
+    let buffer = serviceLogBuffers.get(serviceId);
+    if (!buffer) {
+      buffer = new StreamLogBuffer(2000);
+      serviceLogBuffers.set(serviceId, buffer);
+    }
+    const finalLogs = buffer.append(exitMsg);
+    lastLogFlushTime.set(serviceId, Date.now());
 
     set((state) => ({
       runtimeStates: {
         ...state.runtimeStates,
         [serviceId]: {
           ...state.getRuntime(serviceId),
+          logs: finalLogs,
           status: nextStatus,
           pid: undefined,
           exitCode,
