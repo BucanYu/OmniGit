@@ -22,18 +22,27 @@ const VCS_METADATA_DIRS = new Set([
 ]);
 
 export class FileSystemService {
-  private gitignoreCache = new Map<string, { mtime: number; rules: string[] }>();
+  private gitignoreCache = new Map<string, { mtime: number; checkedAt: number; rules: string[] }>();
 
   /**
-   * Parse .gitignore rules into simple prefix/suffix filters (cached with mtime check)
+   * Parse .gitignore rules into simple prefix/suffix filters (cached with 5s TTL + mtime check)
    */
   public loadGitignoreRules(repoPath: string): string[] {
+    const now = Date.now();
+    const cached = this.gitignoreCache.get(repoPath);
+    if (cached && now - cached.checkedAt < 5000) {
+      return cached.rules;
+    }
+
     const gitignorePath = path.join(repoPath, '.gitignore');
-    if (!fs.existsSync(gitignorePath)) return [];
+    if (!fs.existsSync(gitignorePath)) {
+      this.gitignoreCache.set(repoPath, { mtime: 0, checkedAt: now, rules: [] });
+      return [];
+    }
     try {
       const stat = fs.statSync(gitignorePath);
-      const cached = this.gitignoreCache.get(repoPath);
       if (cached && cached.mtime === stat.mtimeMs) {
+        cached.checkedAt = now;
         return cached.rules;
       }
       const content = fs.readFileSync(gitignorePath, 'utf8');
@@ -41,10 +50,10 @@ export class FileSystemService {
         .split(/\r?\n/)
         .map((l) => l.trim())
         .filter((l) => l && !l.startsWith('#'));
-      this.gitignoreCache.set(repoPath, { mtime: stat.mtimeMs, rules });
+      this.gitignoreCache.set(repoPath, { mtime: stat.mtimeMs, checkedAt: now, rules });
       return rules;
     } catch {
-      return [];
+      return cached ? cached.rules : [];
     }
   }
 

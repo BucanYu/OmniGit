@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { isUniversalIgnoredDirName, isBinaryOrArtifactFile } from './ignorePatterns';
 
 export interface SearchCodeOptions {
   isCaseSensitive?: boolean;
@@ -20,29 +21,8 @@ export interface SearchCodeMatch {
   isFileNameMatch?: boolean;
 }
 
-// VCS and heavy cache directories to skip during recursive search to avoid lockups
-const SEARCH_SKIP_DIRS = new Set([
-  '.git',
-  '.svn',
-  '.hg',
-  'node_modules',
-  '.next',
-  '.nuxt',
-  '.turbo',
-  '.cache',
-  '.output',
-  'coverage',
-  '.tmp_chrome_e2e',
-]);
-
-const BINARY_EXTS = new Set([
-  '.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.svgz',
-  '.pdf', '.zip', '.tar', '.gz', '.7z', '.rar',
-  '.exe', '.dll', '.so', '.dylib', '.node', '.bin',
-  '.jar', '.war', '.class', '.pyc',
-  '.mp3', '.mp4', '.wav', '.mov', '.avi',
-  '.woff', '.woff2', '.ttf', '.eot',
-]);
+// Maximum number of files to inspect per search call to prevent event loop lockup on huge directories
+const MAX_SCANNED_FILES = 15000;
 
 export class CodeSearchService {
   /**
@@ -121,9 +101,10 @@ export class CodeSearchService {
     };
 
     const results: SearchCodeMatch[] = [];
+    let scannedFiles = 0;
 
     const walk = (currentDir: string) => {
-      if (results.length >= maxResults) return;
+      if (results.length >= maxResults || scannedFiles >= MAX_SCANNED_FILES) return;
 
       let entries: fs.Dirent[] = [];
       try {
@@ -133,20 +114,20 @@ export class CodeSearchService {
       }
 
       for (const entry of entries) {
-        if (results.length >= maxResults) break;
+        if (results.length >= maxResults || scannedFiles >= MAX_SCANNED_FILES) break;
         const name = entry.name;
-
-        // Skip internal VCS and dependency heavy caches
-        if (SEARCH_SKIP_DIRS.has(name)) {
-          continue;
-        }
 
         const fullPath = path.join(currentDir, name);
         const relPath = path.relative(resolvedRepo, fullPath).replace(/\\/g, '/');
 
         if (entry.isDirectory()) {
+          // Skip multi-language internal VCS, build artifacts, virtualenvs, and heavy caches
+          if (isUniversalIgnoredDirName(name)) {
+            continue;
+          }
           walk(fullPath);
         } else if (entry.isFile()) {
+          scannedFiles++;
           // Check if file name itself matches search query
           const isNameMatched = matchFileName(name);
           if (isNameMatched) {
@@ -170,14 +151,13 @@ export class CodeSearchService {
             });
           }
 
-          const ext = path.extname(name).toLowerCase();
-          if (BINARY_EXTS.has(ext) || !matchPattern(name)) {
+          if (isBinaryOrArtifactFile(name) || !matchPattern(name)) {
             continue;
           }
 
           try {
             const stat = fs.statSync(fullPath);
-            if (stat.size > 5 * 1024 * 1024) continue; // Skip files > 5MB
+            if (stat.size > 2 * 1024 * 1024) continue; // Skip source files > 2MB
 
             const content = fs.readFileSync(fullPath, 'utf8');
             regex.lastIndex = 0;

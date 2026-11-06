@@ -26,6 +26,8 @@ interface ServiceLogViewerProps {
 
 const ansiHtmlCache = new Map<string, string>();
 const MAX_ANSI_HTML_CACHE_SIZE = 3000;
+const DEFAULT_VISIBLE_LOG_LINES = 350;
+const LOAD_MORE_LOG_STEP = 400;
 
 // Convert standard ANSI color escape sequences to safe styled HTML spans
 function parseAnsiToHtml(text: string): string {
@@ -143,6 +145,39 @@ export const ServiceLogViewer: React.FC<ServiceLogViewerProps> = ({
   const [copied, setCopied] = useState(false);
   const [logSearchQuery, setLogSearchQuery] = useState('');
   const [isKillingPort, setIsKillingPort] = useState(false);
+  const [manualStartIndex, setManualStartIndex] = useState<number | null>(null);
+
+  // Reset manual start index when switching service, re-enabling auto-scroll, or clearing logs
+  useEffect(() => {
+    if (isAutoScroll || !runtime || runtime.logs.length === 0) {
+      setManualStartIndex(null);
+    }
+  }, [serviceId, isAutoScroll, runtime?.logs.length === 0]);
+
+  const lockCurrentWindowStart = () => {
+    setManualStartIndex((prev) => {
+      if (prev !== null) return prev;
+      const total = runtime?.logs.length || 0;
+      return Math.max(0, total - DEFAULT_VISIBLE_LOG_LINES);
+    });
+  };
+
+  const loadEarlierLogs = (showAll = false) => {
+    const container = logContainerRef.current;
+    const prevScrollHeight = container ? container.scrollHeight : 0;
+    const prevScrollTop = container ? container.scrollTop : 0;
+    setManualStartIndex((prev) => {
+      const total = runtime?.logs.length || 0;
+      const currentStart = prev !== null ? prev : Math.max(0, total - DEFAULT_VISIBLE_LOG_LINES);
+      return showAll ? 0 : Math.max(0, currentStart - LOAD_MORE_LOG_STEP);
+    });
+    if (container) {
+      requestAnimationFrame(() => {
+        const newScrollHeight = container.scrollHeight;
+        container.scrollTop = prevScrollTop + Math.max(0, newScrollHeight - prevScrollHeight);
+      });
+    }
+  };
 
   const isRunning = runtime?.status === 'running';
   const isStarting = runtime?.status === 'starting';
@@ -228,6 +263,7 @@ export const ServiceLogViewer: React.FC<ServiceLogViewerProps> = ({
         rafIdRef.current = null;
       }
       if (isAutoScroll) {
+        lockCurrentWindowStart();
         setAutoScroll(service.id, false);
       }
     } else if (e.deltaY > 0) {
@@ -258,6 +294,7 @@ export const ServiceLogViewer: React.FC<ServiceLogViewerProps> = ({
       // Swiping downward moves scroll position UP: pause auto-scroll
       isProgrammaticScrollRef.current = false;
       if (isAutoScroll) {
+        lockCurrentWindowStart();
         setAutoScroll(service.id, false);
       }
     }
@@ -285,6 +322,7 @@ export const ServiceLogViewer: React.FC<ServiceLogViewerProps> = ({
     if (distanceFromBottom > 60) {
       // User explicitly scrolled up away from bottom -> pause auto-scroll
       if (isAutoScroll) {
+        lockCurrentWindowStart();
         setAutoScroll(service.id, false);
       }
     } else if (distanceFromBottom <= 20) {
@@ -604,9 +642,47 @@ export const ServiceLogViewer: React.FC<ServiceLogViewerProps> = ({
               const filteredLogs = q
                 ? runtime.logs.filter((line) => line.toLowerCase().includes(q))
                 : runtime.logs;
-              return filteredLogs.map((line, index) => (
-                <LogLineItem key={index} line={line} />
-              ));
+
+              const totalFiltered = filteredLogs.length;
+              const effectiveStartIndex = q
+                ? 0
+                : isAutoScroll
+                ? Math.max(0, totalFiltered - DEFAULT_VISIBLE_LOG_LINES)
+                : manualStartIndex !== null
+                ? Math.min(manualStartIndex, Math.max(0, totalFiltered - 1))
+                : Math.max(0, totalFiltered - DEFAULT_VISIBLE_LOG_LINES);
+
+              const visibleLogs =
+                effectiveStartIndex > 0 ? filteredLogs.slice(effectiveStartIndex) : filteredLogs;
+
+              return (
+                <>
+                  {effectiveStartIndex > 0 && (
+                    <div className="mb-2 px-3 py-1.5 rounded-lg bg-zinc-800/70 border border-zinc-700/60 flex items-center justify-between text-[11px] font-sans text-zinc-400 select-none">
+                      <span>已折叠更早的 {effectiveStartIndex} 行日志（保障高频输出流畅度）</span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => loadEarlierLogs(false)}
+                          className="px-2 py-0.5 rounded bg-zinc-700/70 hover:bg-zinc-600 text-sky-400 cursor-pointer transition"
+                        >
+                          加载前 {Math.min(LOAD_MORE_LOG_STEP, effectiveStartIndex)} 行
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => loadEarlierLogs(true)}
+                          className="px-2 py-0.5 rounded bg-zinc-700/70 hover:bg-zinc-600 text-zinc-200 cursor-pointer transition"
+                        >
+                          显示全部 ({totalFiltered})
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {visibleLogs.map((line, idx) => (
+                    <LogLineItem key={effectiveStartIndex + idx} line={line} />
+                  ))}
+                </>
+              );
             })()
           )}
         </div>

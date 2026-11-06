@@ -165,8 +165,9 @@ export function CodeEditorPanel() {
     window.addEventListener('focus', handleFocus);
     document.addEventListener('visibilitychange', handleVisibility);
 
-    // 3. Heartbeat check every 2500ms
+    // 3. Heartbeat check every 2500ms (only when window is visible)
     const timer = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
       syncActiveTabWithDisk();
     }, 2500);
 

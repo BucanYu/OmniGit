@@ -14,6 +14,10 @@ import type {
   RealBranchInfo,
   RealRepoStatus,
 } from '../gitTypes';
+import { isUniversalIgnoredDirName } from '../ignorePatterns';
+
+const REPO_AUTHORS_CACHE_TTL_MS = 5 * 60 * 1000;
+const repoAuthorsCache = new Map<string, { timestamp: number; authors: GitAuthorItem[] }>();
 
 export const gitStatusIdentityOps = {
   // 1. Get current Git user configuration (supports repo-specific local config & credential match)
@@ -117,7 +121,11 @@ export const gitStatusIdentityOps = {
         }
         const entries = fs.readdirSync(dir, { withFileTypes: true });
         for (const entry of entries) {
-          if (entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== 'node_modules') {
+          if (
+            entry.isDirectory() &&
+            !entry.name.startsWith('.') &&
+            !isUniversalIgnoredDirName(entry.name)
+          ) {
             await checkDir(path.join(dir, entry.name), depth + 1);
           }
         }
@@ -660,9 +668,16 @@ export const gitStatusIdentityOps = {
     return accounts;
   },
 
-  // 12.1 Get repo commit authors from git shortlog
+  // 12.1 Get repo commit authors from git shortlog (cached for 5 minutes to prevent repeated full-history scan)
   async getRepoAuthors(repoPath?: string): Promise<GitAuthorItem[]> {
     if (repoPath && fs.existsSync(repoPath)) {
+      const cacheKey = path.normalize(repoPath).toLowerCase();
+      const now = Date.now();
+      const cached = repoAuthorsCache.get(cacheKey);
+      if (cached && now - cached.timestamp < REPO_AUTHORS_CACHE_TTL_MS) {
+        return cached.authors;
+      }
+
       const shortlogRes = await runGit(['shortlog', '-sne', '--all'], repoPath);
       let out = shortlogRes.code === 0 ? shortlogRes.stdout : '';
       if (!out) {
@@ -693,6 +708,7 @@ export const gitStatusIdentityOps = {
           }
         }
         if (authors.length > 0) {
+          repoAuthorsCache.set(cacheKey, { timestamp: now, authors });
           return authors;
         }
       }
@@ -717,6 +733,7 @@ export const gitStatusIdentityOps = {
     workspacePaths?: string[]
   ): Promise<{ success: boolean; user: GitUserInfo; message?: string }> {
     if (!name) return { success: false, user: { name: '', email: '' }, message: 'User name is required' };
+    repoAuthorsCache.clear();
 
     const targets: string[] = [];
     if (applyToAllWorkspace && workspacePaths && workspacePaths.length > 0) {

@@ -14,6 +14,7 @@ import {
 import type { OmniGitSettings } from '../gitTypes';
 import { gitSnapshotService } from '../gitSnapshotService';
 import { fileSystemService, type SearchCodeMatch, type SearchCodeOptions } from '../fileSystemService';
+import { shouldIgnoreWatchPath } from '../ignorePatterns';
 
 export const gitWorkspaceCloneOps = {
   // 28. Open file in external editor (VS Code or system default)
@@ -174,49 +175,39 @@ export const gitWorkspaceCloneOps = {
 
       let debounceTimer: NodeJS.Timeout | null = null;
       let watcher: fs.FSWatcher | null = null;
+      let lastFiredAt = 0;
+
+      const DEBOUNCE_MS = 800;
+      const MIN_COOLDOWN_MS = 2500;
 
       try {
-        watcher = fs.watch(normalized, { recursive: true }, (eventType, filename) => {
+        watcher = fs.watch(normalized, { recursive: true }, (_eventType, filename) => {
           if (!filename) return;
-          const fn = filename.toString().replace(/\\/g, '/');
+          const rawFilename = filename.toString();
 
-          if (fn.startsWith('.git') || fn.includes('/.git')) {
-            const isSignificantGitChange =
-              fn === '.git/index' ||
-              fn.endsWith('/.git/index') ||
-              fn === '.git/HEAD' ||
-              fn.endsWith('/.git/HEAD') ||
-              fn === '.git/MERGE_HEAD' ||
-              fn.endsWith('/.git/MERGE_HEAD') ||
-              fn === '.git/MERGE_MSG' ||
-              fn.endsWith('/.git/MERGE_MSG') ||
-              fn === '.git/ORIG_HEAD' ||
-              fn.endsWith('/.git/ORIG_HEAD') ||
-              fn === '.git/REBASE_HEAD' ||
-              fn.endsWith('/.git/REBASE_HEAD') ||
-              fn.startsWith('.git/refs/heads/') ||
-              fn.includes('/.git/refs/heads/') ||
-              fn.startsWith('.git/refs/remotes/') ||
-              fn.includes('/.git/refs/remotes/');
-
-            if (!isSignificantGitChange) {
-              return;
-            }
-          } else if (
-            fn.includes('node_modules') ||
-            fn.includes('.vscode') ||
-            fn.includes('.idea') ||
-            fn.includes('.temp') ||
-            fn.endsWith('.tmp') ||
-            fn.endsWith('~')
-          ) {
+          // Layer 1 & 2: Multi-language universal ignore dictionary + repository .gitignore rules
+          const ignored = shouldIgnoreWatchPath(rawFilename, (baseName, relPath) => {
+            const rules = fileSystemService.loadGitignoreRules(normalized);
+            return fileSystemService.matchesGitignore(baseName, relPath, rules);
+          });
+          if (ignored) {
             return;
           }
 
+          // Layer 3: Debounce + Cooldown throttle to prevent build/compile Git spawn storms
           if (debounceTimer) clearTimeout(debounceTimer);
+          const now = Date.now();
+          const elapsedSinceLastFire = now - lastFiredAt;
+          const waitMs =
+            elapsedSinceLastFire < MIN_COOLDOWN_MS
+              ? Math.max(DEBOUNCE_MS, MIN_COOLDOWN_MS - elapsedSinceLastFire)
+              : DEBOUNCE_MS;
+
           debounceTimer = setTimeout(() => {
+            lastFiredAt = Date.now();
             const currentEntry = repoWatchers.get(normalized);
             if (currentEntry) {
+              currentEntry.debounceTimer = null;
               currentEntry.callbacks.forEach((cb) => {
                 try {
                   cb();
@@ -225,7 +216,12 @@ export const gitWorkspaceCloneOps = {
                 }
               });
             }
-          }, 350);
+          }, waitMs);
+
+          const currentEntry = repoWatchers.get(normalized);
+          if (currentEntry) {
+            currentEntry.debounceTimer = debounceTimer;
+          }
         });
 
         watcher.on('error', (err) => {

@@ -1,8 +1,25 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { spawn, execSync, ChildProcess } from 'child_process';
+import { spawn, execSync, execFile, ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
+
+function execFileAsync(cmd: string, args: string[], timeoutMs = 5000): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile(
+      cmd,
+      args,
+      { encoding: 'utf8', windowsHide: true, timeout: timeoutMs, maxBuffer: 4 * 1024 * 1024 },
+      (err, stdout) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(stdout || '');
+        }
+      }
+    );
+  });
+}
 
 let iconv: any = null;
 try {
@@ -71,6 +88,8 @@ export class NodeServiceProcessManager extends EventEmitter {
   private activeServices = new Map<string, RunningServiceEntry>();
   private lockFilePath: string;
   private watchdogTimer: NodeJS.Timeout | null = null;
+  private registryCache: ActiveProcessRecord[] | null = null;
+  private registryWriteTimer: NodeJS.Timeout | null = null;
 
   constructor() {
     super();
@@ -103,32 +122,60 @@ export class NodeServiceProcessManager extends EventEmitter {
   public setCustomLockFilePath(customPath: string) {
     if (customPath) {
       this.lockFilePath = customPath;
+      this.registryCache = null;
     }
   }
 
   private readRegistry(): ActiveProcessRecord[] {
+    if (this.registryCache !== null) {
+      return this.registryCache;
+    }
     try {
       if (fs.existsSync(this.lockFilePath)) {
         const raw = fs.readFileSync(this.lockFilePath, 'utf8');
         const data = JSON.parse(raw);
-        return Array.isArray(data) ? data : [];
+        this.registryCache = Array.isArray(data) ? data : [];
+        return this.registryCache;
       }
     } catch (err) {
       console.warn('[NodeServiceProcessManager] Failed to read process registry:', err);
     }
-    return [];
+    this.registryCache = [];
+    return this.registryCache;
   }
 
-  private writeRegistry(records: ActiveProcessRecord[]) {
-    try {
-      const dir = path.dirname(this.lockFilePath);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
+  private writeRegistry(records: ActiveProcessRecord[], sync = false) {
+    this.registryCache = records;
+    if (sync) {
+      if (this.registryWriteTimer) {
+        clearTimeout(this.registryWriteTimer);
+        this.registryWriteTimer = null;
       }
-      fs.writeFileSync(this.lockFilePath, JSON.stringify(records, null, 2), 'utf8');
-    } catch (err) {
-      console.warn('[NodeServiceProcessManager] Failed to save process registry:', err);
+      try {
+        const dir = path.dirname(this.lockFilePath);
+        if (!fs.existsSync(dir)) {
+          fs.mkdirSync(dir, { recursive: true });
+        }
+        fs.writeFileSync(this.lockFilePath, JSON.stringify(records, null, 2), 'utf8');
+      } catch (err) {
+        console.warn('[NodeServiceProcessManager] Failed to save process registry synchronously:', err);
+      }
+      return;
     }
+
+    if (this.registryWriteTimer) {
+      clearTimeout(this.registryWriteTimer);
+    }
+    this.registryWriteTimer = setTimeout(async () => {
+      this.registryWriteTimer = null;
+      try {
+        const dir = path.dirname(this.lockFilePath);
+        await fs.promises.mkdir(dir, { recursive: true });
+        await fs.promises.writeFile(this.lockFilePath, JSON.stringify(this.registryCache || [], null, 2), 'utf8');
+      } catch (err) {
+        console.warn('[NodeServiceProcessManager] Failed to save process registry asynchronously:', err);
+      }
+    }, 100);
   }
 
   private addRecord(record: ActiveProcessRecord) {
@@ -137,9 +184,9 @@ export class NodeServiceProcessManager extends EventEmitter {
     this.writeRegistry(list);
   }
 
-  private removeRecord(serviceId: string) {
+  private removeRecord(serviceId: string, sync = false) {
     const list = this.readRegistry().filter((r) => r.serviceId !== serviceId);
-    this.writeRegistry(list);
+    this.writeRegistry(list, sync);
   }
 
   public isProcessAlive(pid: number): boolean {
@@ -712,7 +759,7 @@ export class NodeServiceProcessManager extends EventEmitter {
           entry.child.kill('SIGKILL');
         } catch {}
         this.activeServices.delete(id);
-        this.removeRecord(id);
+        this.removeRecord(id, true);
         count++;
       }
     }
@@ -743,12 +790,12 @@ export class NodeServiceProcessManager extends EventEmitter {
     return false;
   }
 
-  public checkPortOccupancy(port: number): { occupied: boolean; pid?: number; processName?: string } {
+  public async checkPortOccupancy(port: number): Promise<{ occupied: boolean; pid?: number; processName?: string }> {
     const cleanPort = Number(port);
     if (!cleanPort || cleanPort <= 0 || cleanPort > 65535) return { occupied: false };
     try {
       if (process.platform === 'win32') {
-        const out = execSync(`netstat -ano -p tcp`, { encoding: 'utf8', windowsHide: true });
+        const out = await execFileAsync('netstat', ['-ano', '-p', 'tcp'], 5000);
         const portSuffix = `:${cleanPort}`;
         for (const line of out.split(/\r?\n/)) {
           const trimmed = line.trim();
@@ -759,7 +806,7 @@ export class NodeServiceProcessManager extends EventEmitter {
             if (pid > 0) {
               let processName = '';
               try {
-                const tl = execSync(`tasklist /FI "PID eq ${pid}" /NH /FO CSV`, { encoding: 'utf8', windowsHide: true }).trim();
+                const tl = (await execFileAsync('tasklist', ['/FI', `PID eq ${pid}`, '/NH', '/FO', 'CSV'], 3000)).trim();
                 const m = tl.match(/^"([^"]+)"/);
                 if (m) processName = m[1];
               } catch {}
@@ -768,7 +815,7 @@ export class NodeServiceProcessManager extends EventEmitter {
           }
         }
       } else {
-        const out = execSync(`lsof -i :${cleanPort} -sTCP:LISTEN -Fp -Fc`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+        const out = await execFileAsync('lsof', ['-i', `:${cleanPort}`, '-sTCP:LISTEN', '-Fp', '-Fc'], 5000);
         let pid = 0;
         let processName = '';
         for (const l of out.split(/\r?\n/)) {
@@ -781,10 +828,10 @@ export class NodeServiceProcessManager extends EventEmitter {
     return { occupied: false };
   }
 
-  public killPortProcess(port: number): { success: boolean; killedPid?: number; message: string } {
-    const info = this.checkPortOccupancy(port);
+  public async killPortProcess(port: number): Promise<{ success: boolean; killedPid?: number; message: string }> {
+    const info = await this.checkPortOccupancy(port);
     if (!info.occupied || !info.pid) return { success: true, message: `Port ${port} is already free` };
-    const ok = this.killProcessTreeSync(info.pid);
+    const ok = await this.killProcessTree(info.pid);
     return {
       success: ok,
       killedPid: info.pid,

@@ -726,6 +726,7 @@ export function bindServiceEventListeners(store: {
   };
 
   const syncRunning = () => {
+    if (typeof document !== 'undefined' && document.hidden) return;
     if ((window as any).electronAPI?.services?.getRunning) {
       (window as any).electronAPI.services.getRunning().then(applyRunningServices).catch(() => {});
     } else {
@@ -736,14 +737,21 @@ export function bindServiceEventListeners(store: {
     }
   };
 
+  const handleVisibilityChange = () => {
+    if (typeof document !== 'undefined' && !document.hidden) {
+      syncRunning();
+    }
+  };
+
   // Immediate sync
   syncRunning();
 
-  // Periodic heartbeat reconciliation (every 3 seconds)
-  const heartbeatTimer = setInterval(syncRunning, 3000);
+  // Periodic heartbeat reconciliation (every 5 seconds while window is visible)
+  const heartbeatTimer = setInterval(syncRunning, 5000);
 
-  // Focus-based reconciliation
+  // Focus & visibility-based reconciliation
   window.addEventListener('focus', syncRunning);
+  document.addEventListener('visibilitychange', handleVisibilityChange);
 
   if ((window as any).electronAPI?.services) {
     const electronAPI = (window as any).electronAPI;
@@ -795,5 +803,6 @@ export function bindServiceEventListeners(store: {
   return () => {
     clearInterval(heartbeatTimer);
     window.removeEventListener('focus', syncRunning);
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
   };
 }

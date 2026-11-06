@@ -734,11 +734,11 @@ export async function handleGitApiRequest(req: IncomingMessage, res: ServerRespo
       res.end(JSON.stringify(scripts));
     } else if (pathname === '/api/services/check-port') {
       const port = Number(query.port || body.port || 0);
-      const result = nodeServiceProcessManager.checkPortOccupancy(port);
+      const result = await nodeServiceProcessManager.checkPortOccupancy(port);
       res.end(JSON.stringify(result));
     } else if (pathname === '/api/services/kill-port') {
       const port = Number(body.port || query.port || 0);
-      const result = nodeServiceProcessManager.killPortProcess(port);
+      const result = await nodeServiceProcessManager.killPortProcess(port);
       res.end(JSON.stringify(result));
     } else if (pathname === '/api/services/configs') {
       if (req.method === 'POST') {

@@ -56,12 +56,12 @@ export function setupServiceIpcHandlers() {
     return nodeServiceProcessManager.scanProjectScripts(projectPath);
   });
 
-  ipcMain.handle('services:check-port', (_event, port: number) => {
-    return nodeServiceProcessManager.checkPortOccupancy(Number(port) || 0);
+  ipcMain.handle('services:check-port', async (_event, port: number) => {
+    return await nodeServiceProcessManager.checkPortOccupancy(Number(port) || 0);
   });
 
-  ipcMain.handle('services:kill-port', (_event, port: number) => {
-    return nodeServiceProcessManager.killPortProcess(Number(port) || 0);
+  ipcMain.handle('services:kill-port', async (_event, port: number) => {
+    return await nodeServiceProcessManager.killPortProcess(Number(port) || 0);
   });
 
   ipcMain.handle('services:get-backup', () => {
