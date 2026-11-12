@@ -39,7 +39,7 @@
 
 ## 🎬 核心功能全景动态演示 (Live Walkthrough)
 
-> 以下动画展示了 OmniGit 最新版的核心全流程：从 **Git 核心工作台与 3-Way Merge 冲突合并**、**免检出精细化推送**，到**多工程资源树与 Monaco 代码编辑**、**Markdown 实时双栏拖拽渲染**、**VS Code 级终端 Dock**，再到**多微服务启动编排与实时彩色 ANSI 控制台日志**。
+> 以下动画展示了 OmniGit 最新版的核心全流程：从 **工作空间自研研发大盘与微前端门户 (Alt+0)**、**Git 核心工作台与 3-Way Merge 冲突合并**、**免检出精细化推送**，到 **多工程全量资源树与 Monaco 代码编辑**、**多微服务启动编排与实时彩色 ANSI 日志**、**10 合 1 全离线数据格式化与多窗口对比 (Alt+4)**，再到 **Markdown 实时双栏拖拽渲染** 与 **VS Code 级终端 Dock**。
 
 ![OmniGit 全景动态演示](docs/images/omnigit_demo.gif)
 

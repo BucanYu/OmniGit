@@ -39,7 +39,7 @@
 
 ## 🎬 Live Walkthrough Animation
 
-> The animated demo below showcases the complete workflow of OmniGit: from **Git Core Workbench and 3-Way Merge conflict resolution**, **Zero-Checkout selective push**, to **multi-root project exploration, Monaco code editing**, **draggable split Markdown live preview**, **VS Code-aligned terminal dock**, and the **Services & Launch Scripts Manager with real-time ANSI logs**.
+> The animated demo below showcases the complete workflow of OmniGit v0.6.0: from **Workspace Custom Portal & Dashboard (Alt+0)**, **Git Core Workbench & 3-Way Merge conflict resolution**, **Zero-Checkout selective push**, to **full workspace file exploration & Monaco code editing**, **Services & Launch Scripts Manager with real-time ANSI logs**, **10-in-1 offline Data Tools with multi-window comparison (Alt+4)**, **draggable split Markdown live preview**, and the **VS Code-aligned terminal dock**.
 
 ![OmniGit Live Walkthrough](docs/images/omnigit_demo.gif)
 

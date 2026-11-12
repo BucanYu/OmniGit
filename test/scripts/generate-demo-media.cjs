@@ -17,12 +17,14 @@ const REPORTS_DIR = path.resolve(__dirname, '..', 'reports');
 const DOCS_IMAGES_DIR = path.resolve(__dirname, '..', '..', 'docs', 'images');
 
 const FRAMES_CONFIG = [
-  { file: '01_omnigit_workbench.png', delay: 2800, title: 'Git Core Workbench: Changes, Commit & 3-Way Merge' },
+  { file: '09_workspace_dashboard.png', delay: 2800, title: 'Workspace Custom Dashboard & Microfrontend Portal (Alt+0)' },
+  { file: '01_omnigit_workbench.png', delay: 2800, title: 'Git Core Workbench: Changes, Commit & 3-Way Merge (Alt+1)' },
   { file: '08_selective_push_modal.png', delay: 2600, title: 'Zero-Checkout Selective Push & Patch Branches' },
-  { file: '02_workspace_explorer_editor.png', delay: 2800, title: 'Multi-Project Explorer & Monaco Code Editor' },
-  { file: '03_markdown_split_preview.png', delay: 2500, title: 'Markdown Split Live Preview & Free Dragging' },
-  { file: '04_terminal_dock.png', delay: 2500, title: 'Integrated Terminal Dock with VS Code Controls' },
-  { file: '07_services_orchestrator.png', delay: 2800, title: 'Multi-Service Orchestrator & Real-Time ANSI Logs' },
+  { file: '24_workspace_explorer_all_files.png', delay: 2800, title: 'Workspace Explorer: Full File Tree & Monaco Editor (Alt+2)' },
+  { file: '07_services_orchestrator.png', delay: 2800, title: 'Services Orchestrator: Project Switcher & Real-Time ANSI Logs (Alt+3)' },
+  { file: '22_data_tools_multi_window.png', delay: 3000, title: 'Data Tools: Multi-Window Tabs & Split Comparison (Alt+4)' },
+  { file: '03_markdown_split_preview.png', delay: 2400, title: 'Markdown Split Live Preview & Free Border Dragging' },
+  { file: '04_terminal_dock.png', delay: 2400, title: 'Integrated Terminal Dock with VS Code Ergonomics' },
   { file: '06_english_mode_ui.png', delay: 2400, title: 'Seamless Bilingual Localization & Classic Themes' },
 ];
 
@@ -145,12 +147,16 @@ async function runMediaGenerator() {
                 ctx.fillRect(0, 0, window.__TARGET_W, window.__TARGET_H);
                 ctx.drawImage(img, 0, 0, window.__TARGET_W, window.__TARGET_H);
 
-                // Add subtle feature badge at bottom-right
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-                ctx.fillRect(16, window.__TARGET_H - 42, 480, 30);
-                ctx.fillStyle = '#60a5fa';
+                // Add subtle feature badge at bottom-left
+                ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+                ctx.fillRect(16, window.__TARGET_H - 42, 560, 30);
+                ctx.strokeStyle = 'rgba(56, 189, 248, 0.4)';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(16, window.__TARGET_H - 42, 560, 30);
+
+                ctx.fillStyle = '#38bdf8';
                 ctx.font = 'bold 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-                ctx.fillText('OmniGit v0.5.0: ${frameInfo.title.replace(/'/g, "\\'")}', 28, window.__TARGET_H - 22);
+                ctx.fillText('OmniGit v0.6.0: ' + '${frameInfo.title.replace(/'/g, "\\'")}', 28, window.__TARGET_H - 22);
 
                 const imgData = ctx.getImageData(0, 0, window.__TARGET_W, window.__TARGET_H);
                 // Convert to base64
@@ -183,6 +189,12 @@ async function runMediaGenerator() {
     const gifOutPath = path.join(DOCS_IMAGES_DIR, 'omnigit_demo.gif');
     fs.writeFileSync(gifOutPath, gifBuffer);
     console.log(`   ✓ GIF generated successfully! Saved to: ${gifOutPath} (${(gifBuffer.length / 1024 / 1024).toFixed(2)} MB)`);
+
+    // Synchronize to app/public/docs/images
+    const publicImagesDir = path.resolve(__dirname, '..', '..', 'app', 'public', 'docs', 'images');
+    if (fs.existsSync(publicImagesDir)) {
+      fs.writeFileSync(path.join(publicImagesDir, 'omnigit_demo.gif'), gifBuffer);
+    }
 
     // Also record WebM video using MediaRecorder in Chrome
     console.log('6. Recording WebM video via MediaRecorder...');
