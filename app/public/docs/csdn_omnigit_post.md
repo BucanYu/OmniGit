@@ -88,7 +88,7 @@
 
 ## 四、如何获取与体验？
 
-项目在 GitHub 上完全开源，目前正式版是 **v0.5.0**：
+项目在 GitHub 上完全开源，目前正式版是 **v0.6.0**：
 
 - **项目开源地址**：[https://github.com/BucanYu/OmniGit](https://github.com/BucanYu/OmniGit)
 - **最新版 Releases 下载**：[https://github.com/BucanYu/OmniGit/releases/latest](https://github.com/BucanYu/OmniGit/releases/latest)
