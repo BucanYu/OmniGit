@@ -8,16 +8,20 @@
 
 为遵守单文件 `<= 800` 行红线，核心巨型模块已按职责拆解为 Facade + 领域子模块结构。**新增或修改功能时，必须直接定位并写入对应领域子模块，严禁将实现代码重新堆砌回 Facade 入口文件**。
 
-### 1. 后端 Git 引擎 (`app/src/server/`)
-- **Facade 入口**：`app/src/server/gitService.ts`（仅 60 行，只做聚合导出与向后兼容 re-export，禁止写入业务逻辑）
-- **7 大领域子模块 (`app/src/server/git/`)**：
+### 1. 后端 Git 与文件/检索领域引擎 (`app/src/server/`)
+- **Git Facade 入口**：`app/src/server/gitService.ts`（仅 60 行，只做聚合导出与向后兼容 re-export，禁止写入业务逻辑）
+- **7 大 Git 领域子模块 (`app/src/server/git/`)**：
   - `gitExec.ts`：Git 子进程并发信号量队列（`runGit`）、进程树强制清理（`killProcessTree`）、克隆进度解析、冲突标记扫描（`hasGitConflictMarkers` / `parseConflictMarkers`）
-  - `gitStatusIdentityOps.ts`：仓库状态检测（`getStatus`）、Git 身份/凭据探测、仓库文件变更监听（`repoWatchers`）
+  - `gitStatusIdentityOps.ts`：仓库状态检测（`getStatus`）、Git 身份/凭据探测、仓库文件变更监听（`repoWatchers`，联动 `.gitignore` 与 `ignorePatterns.ts` 并带 2500ms 冷却防抖）
   - `gitLogHistoryOps.ts`：提交历史分页查询（`getCommitLogs`，含 `%P` 拓扑父节点）、提交详情、单文件历史轨迹、Revert / Reset
   - `gitBranchPushOps.ts`：分支列表、新建/切换/删除/重命名分支、Pull / Push、待推送提交（Outgoing）统计
   - `gitMergeConflictOps.ts`：分支合并（`mergeBranch`）、三方冲突块提取（`getConflictDetails`）与冲突解决写回
   - `gitWorkspaceCloneOps.ts`：目录递归扫描 Git 仓库、流式克隆（`startCloneStream`）、工作空间备份与快照缓存读写
   - `gitBatchStashBlameOps.ts`：多仓库批量协同（`batchPull` / `batchFetch` / `batchCheckout`）、Git Stash 暂存架管理（List/Save/Apply/Pop/Drop）、行级 `git blame` 解析
+- **文件系统、跨仓代码搜索与通用忽略字典**：
+  - `fileSystemService.ts`：工作区文件树遍历（解绑 Git 硬过滤，全量返回工作区文件并标记非破坏性 `isIgnored: boolean`）、文件读写、原始文件流（`/api/fs/raw`）
+  - `codeSearchService.ts`：跨工程高性能并发代码搜索引擎（联动 `ignorePatterns.ts` 过滤构建产物与二进制文件，内置 15,000 文件扫描上限保护）
+  - `ignorePatterns.ts`：全语种通用构建产物、包管理缓存、虚拟环境与二进制扩展名忽略字典（供 `fs.watch`、仓库扫描与全局代码搜索共享）
 
 ### 2. 前端 Zustand 状态库 (`app/src/store/`)
 - **核心辅助与三级缓存**：`app/src/store/storeHelpers.ts`（路径归一化、`setL1SnapshotCache`、L1/L2/L3 快照读写、跨窗口事件广播）
@@ -34,6 +38,7 @@
   - `app/src/features/services/useServicesStore.ts`：Zustand 运行时状态、启停编排（支持 `startDelayMs` 顺序延时）、端口释放重启
   - `app/src/features/services/serviceStorage.ts`：`StreamLogBuffer` 流式日志缓冲、本地/磁盘持久化、HTTP 与 Electron IPC 双端请求封装、端口冲突日志嗅探
 - **重点 UI 子组件拆分映射**：
+  - `CodeEditorPanel.tsx` -> 二进制与超大文件提示卡片位于 `BinaryOrLargeFileNotice.tsx`
   - `DiffEditorPanel.tsx` -> 子组件位于 `DiffEditorSubcomponents.tsx`
   - `BranchMenu.tsx` -> 悬浮子菜单位于 `BranchFlyoutSubmenu.tsx`
   - `WelcomeWorkspaceView.tsx` -> 个性化设置标签页位于 `WelcomeCustomizeTab.tsx`
@@ -54,9 +59,13 @@
    - `runGit` 内置本地操作最大并发 `6`、远程网络操作最大并发 `3` 的信号量队列，并自动注入 `GIT_OPTIONAL_LOCKS=0` 与 `-c core.quotepath=false`，防止多仓库并发引发进程风暴或 `.git/index.lock` 争用。
 3. **L1 内存缓存 LRU 与元数据防抖**：
    - 写入内存快照统一调用 `setL1SnapshotCache(normPath, snapshot)`（强制 20 个仓库 LRU 上限，单仓 `commitLogs <= 120`、`commitHistory <= 30`）；
-   - 低频仓库元数据（Authors、RecentMessages、LastCommit）受 `repoMetadataFreshness`（30 秒 TTL）保护，切换项目时避免重复请求。
-4. **高频流式日志节流（32ms 合并刷新）**：
-   - 终端 stdout/stderr 流必须通过 `StreamLogBuffer.append(chunk)` 增量解析新增分片，并以 `LOG_FLUSH_INTERVAL_MS = 32` 节流合并更新 Zustand 状态，严禁每次收到 chunk 时对 2000 行历史数组做全量重拼或同步触发 React 渲染。
+   - 低频仓库元数据（Authors、RecentMessages、LastCommit）受 `repoMetadataFreshness`（30 秒 TTL）与 5 分钟贡献者缓存保护，切换项目时避免重复请求。
+4. **高频流式日志节流（32ms 合并刷新 + 350 行滑动窗口）**：
+   - 终端 stdout/stderr 流必须通过 `StreamLogBuffer.append(chunk)` 增量解析新增分片，并以 `LOG_FLUSH_INTERVAL_MS = 32` 节流合并更新 Zustand 状态；
+   - `ServiceLogViewer.tsx` 默认采用最新 `350` 行滑动窗口渲染，并尊重 `userScrolledUpRef` 手动滚轮优先锁，严禁每次收到 chunk 时对 2000 行历史数组做全量重拼或强制跳底。
+5. **编译风暴阻断与全异步进程探活**：
+   - `fs.watch` 必须联动 `.gitignore` 与 `ignorePatterns.ts` 全语种构建产物忽略字典，并执行防抖与 `2500ms` 冷却；
+   - 端口占用检测与进程清理（`netstat` / `lsof` / `taskkill`）必须使用异步 `execFileAsync`，严禁在主进程使用同步 `execSync`。
 
 ---
 

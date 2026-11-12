@@ -1,8 +1,8 @@
 # OmniGit - 极速多工程 Git 协作与本地微服务开发工作台 🚀
 
-> **以 IntelliJ IDEA 广受赞誉的 Git 提交体验与 3-Way Merge 冲突合并为核心，深度融合多工程源码资源管理、Monaco 代码编辑、Markdown 实时渲染、VS Code 级终端 Dock 与多微服务启动编排管理，专为现代开发者打造的超轻量秒开一体化工作台！**  
+> **以 IntelliJ IDEA 广受赞誉的 Git 提交体验与 3-Way Merge 冲突合并为核心，深度融合多工程源码资源管理、Monaco 代码编辑、Markdown 实时渲染、VS Code 级终端 Dock、多微服务启动编排管理、工作空间自研研发门户以及全离线多格式开发工具箱，专为现代开发者打造的超轻量秒开一体化工作台！**  
 > 
-> 专为微服务/多工程并行协作打造 · 细粒度挑选提交推送 · 外部冲突实时自愈 · 多微服务一键启停与 ANSI 实时日志 · 智能标签消歧 · 0ms 乐观水合 · 毫秒级秒开 · 隐私离线安全 · 永久免费开源
+> 专为微服务/多工程并行协作打造 · 多仓库批量拉取/切分支 · 细粒度挑选提交推送 · 外部冲突实时自愈 · 多微服务一键启停与端口冲突秒释 · 10 合 1 离线数据格式化与多窗对比 · 0ms 乐观水合 · 隐私离线安全 · 永久免费开源
 
 [English](README.en.md) | **简体中文**
 
@@ -77,7 +77,7 @@
 
 ---
 
-### 2. 🚀 免检出精细化挑选提交推送 (Zero-Checkout Selective Push)
+### 2. 🚀 免检出精细化挑选推送与多仓库高阶协同 (Selective Push & Multi-Repo Ops)
 ![精细化挑选提交推送弹窗](docs/images/08_selective_push_modal.png)
 
 - **免检出切换分支推送 (Zero-Checkout Push)**：
@@ -88,27 +88,32 @@
 - **截止到此提交推送 (Push Up To Here)**：
   - 右键任意历史提交卡片，支持仅推送截止到该节点的提交，敏捷隔离后续未测需求代码；
 - **提交日志跨分支一键同步 (Cross-Branch Cherry-pick & Sync)**：
-  - 在【提交日志】右键一键将已提交内容同步到 `test`、`uat` 等其他环境分支，并支持同步后自动推送到远程。
+  - 在【提交日志】右键一键将已提交内容同步到 `test`、`uat` 等其他环境分支，并支持同步后自动推送到远程；
+- **多仓库批量协同操作 (Batch Pull / Fetch / Checkout)**：
+  - 左侧仓库栏支持对工作空间内所有仓库一键并发执行**批量拉取 (Batch Pull)**、**批量抓取 (Batch Fetch)** 与**批量切换同名分支 (Batch Checkout)**，实时汇总各仓库执行状态明细；
+- **Git Stash 暂存架管理与彩色分支拓扑图 (Stash Shelf & Commit Graph)**：
+  - 提交面板集成 `StatusStashDrawer` 暂存架，支持一键暂存当前改动（可选包含未跟踪文件并备注）、查看列表、应用（Apply）、弹出（Pop）与删除（Drop）；
+  - 提交历史（Git Log）基于 `%P` 多父节点拓扑关系实时渲染彩色 SVG 分支分叉与合并轨道图（`CommitGraphLane`）。
 
 ---
 
 ### 3. 🛠️ 多微服务启动与脚本统一编排中心 (Services & Launch Scripts Manager)
 ![多微服务启动编排与实时日志查看器](docs/images/07_services_orchestrator.png)
 
-- **脚本驱动工作流 (Script-Centric Workflow)**：
-  - 自动深度扫描工程内的启动脚本（`package.json` scripts、`.bat`、`.sh` 等）；
-  - 支持快捷创建与编辑自定义启动脚本、停止脚本（Stop Script）及环境变量；
-- **Monorepo 嵌套工程自适应**：
-  - 智能感知多级嵌套工程目录，自动推导并绑定正确的执行工作目录 (Working Directory)；
-- **拖拽排序与持久化 (Drag-to-Reorder)**：
-  - 鼠标拖拽启动脚本卡片自由调整编排顺序，配置自动持久化跨会话记忆；
-- **流式实时彩色 ANSI 日志控制台**：
-  - 基于 SSE 协议的高性能实时控制台流，原生支持彩色 ANSI 渲染与 OSC 窗口标题过滤；
-  - **智能自动滚动 (Auto-Scroll)**：默认保持贴底滚动，向上回滚排查时自动锁定视野，点击悬浮按钮一秒回到底部；
-  - **字符流防乱序**：内置流式行缓冲分片合并，完美兼容 Windows GBK 与 Linux/macOS UTF-8 混合字符输出；
-- **微服务一键启停与孤儿进程守护**：
-  - 顶部一键启动/停止全部微服务，运行数量实时绿灯角标显示；
-  - 采用非阻塞异步进程启停，彻底杜绝 UI 线程卡死；退出时自动清理子进程，严防孤儿进程残留占满端口。
+- **脚本驱动工作流与模块内项目快切 (Script-Centric Workflow & Project Switcher)**：
+  - 自动深度扫描工程内的启动脚本（`package.json` scripts、`.bat`、`.sh` 等），支持手动创建与编辑启动脚本、停止脚本（Stop Script）及环境变量；
+  - 左上角内置**工程快速切换器**，支持在服务面板内直接切换当前项目并智能联动顶栏 Git 仓库状态；
+- **端口冲突实时嗅探与一键释放重启 (Port Conflict Detection & 1-Click Release)**：
+  - 支持配置监听端口并自动嗅探日志中的 `EADDRINUSE` 端口占用错误；
+  - 检测到端口被占用时提供醒目告警与**「一键释放端口并重启」**按钮，自动查杀占用该端口的进程并重新拉起服务；
+- **顺序启动延时编排与拖拽排序 (`startDelayMs` & Drag-to-Reorder)**：
+  - 支持鼠标拖拽脚本卡片自由调整顺序，并可为每个服务配置启动前置延时（`startDelayMs`），一键全部启动时按依赖顺序梯度拉起；
+- **流式实时彩色 ANSI 日志控制台与关键字过滤**：
+  - 基于 SSE 协议与 `32ms` 流式缓冲、默认 350 行滑动窗口的高性能控制台，原生支持彩色 ANSI 渲染与实时关键字搜索过滤；
+  - **手动滚动优先锁 (Scroll Priority Lock)**：默认保持贴底滚动；当用户向上滚轮查阅历史日志时立即锁定视口，彻底杜绝高频日志流强制跳底打断排查；
+- **一次性任务脚本智能完成识别与孤儿进程守护**：
+  - 自动区分常驻微服务与一次性构建/工具脚本（自动绕过 Windows `.bat` 中的阻塞式 `pause`），退出码为 `0` 时自动标记为绿标 `已完成 (Completed)` 状态；
+  - 采用非阻塞异步进程启停，退出时安全级联清理进程树，严防孤儿进程残留占满端口。
 
 ---
 
@@ -116,9 +121,12 @@
 ![多工程资源管理器与 Monaco 代码编辑器](docs/images/02_workspace_explorer_editor.png)
 
 - **跨仓库同屏聚合**：专为微服务、前后端分离与 Monorepo 打造，支持在一个窗口内并发展开多个工程目录树，快速收折与层级钻取；
-- **智能文件类型识别**：基于扩展名与文件属性提供标准代码图标，开发上下文一目了然；
-- **严苛去重与并发打开锁**：内置单飞保护锁机制，彻底避免同一文件被重复开启多个标签页的 Bug；再次点击已开文件时自动平滑聚焦至已有标签；
-- **一键唤起系统资源管理器**：鼠标悬停工程卡片即可一键打开系统原生文件夹，告别层层寻路。
+- **解绑 Git 硬过滤，全量透视工作区文件**：
+  - 突破传统 Git 工具屏蔽构建目录的限制，默认完整展现项目下所有配置文件（如 `.env.development`）、构建产物目录（`dist` / `build` / `target`）与依赖目录（仅跳过 `.git` / `.svn` / `.hg` 元数据目录）；
+  - 对命中 `.gitignore` 的文件提供半透明弱化视觉标识，顶栏内置**「显示全部文件 / 隐藏 Git 忽略文件」**一键切换开关与**「一键折叠全部文件夹」**按钮；
+- **二进制与超大文件安全预览卡片 (`BinaryOrLargeFileNotice`)**：
+  - 点击图片、压缩包、可执行程序或超过 2MB 的大文件时，自动展示结构化文件元数据卡片，支持一键「使用系统默认应用打开」或「在系统资源管理器中定位」；
+- **严苛去重与并发打开锁**：内置单飞保护锁机制，彻底避免同一文件被重复开启多个标签页，再次点击已开文件时自动平滑聚焦至已有标签。
 
 ---
 
@@ -126,6 +134,7 @@
 ![Monaco 悬浮查找替换小部件](docs/images/05_find_replace_monaco.png)
 
 - **毫秒级离线渲染**：集成与 VS Code 同源的 Monaco Editor，全本地资源秒开（< 50ms），支持主流编程语言语法高亮与行号定位；
+- **行级代码溯源 (`Inline Git Blame`)**：编辑器顶栏支持一键开启 `Git Blame`，直观呈现每一行代码的提交 Hash、作者、提交时间与摘要说明；
 - **智能同名标签消歧 (Smart Disambiguation)**：当不同工程中打开同名文件（如多个 `package.json` 或 `index.ts`）时，标签栏自动提取上级目录名称消歧标识，彻底杜绝混淆；
 - **横向滚轮滚动与标签溢出抽屉 (Overflow Drawer Menu)**：标签过多时支持鼠标滚轮平滑横向滑动，右侧提供下拉溢出菜单快速跳转；
 - **智能快捷注释 (<kbd>Ctrl + /</kbd>)**：一键切换单行/多行注释与反注释，原生支持通用源码、HTML 及 Markdown 块注释；
@@ -172,7 +181,7 @@
 - **桌面 + Web 双端体验无缝对齐**：既可作为高性能 Electron 桌面独立客户端运行，亦可通过浏览器直接访问局域网/开发机，全套功能与 SSE 流日志完全等价；
 - **纯正双语体系**：中文模式彻底消除中英杂糅，呈现纯正自然表达；鼠标悬停气泡提示专业英文对照与 IDEA 快捷键（`Ctrl+K` 调出提交、`Ctrl+Shift+K` 一键推送）；
 - **经典主题预设**：内置 Darcula、IDEA Light、Nord Frost 等经典配色，暗黑与明亮模式随心切换；
-- **0ms 瞬时水合秒开**：结合 L1 内存 / L2 本地存储 / L3 磁盘快照，打开工作空间首屏 0 延迟秒开，无白屏、无闪烁；
+- **0ms 瞬时水合秒开与全系统防卡死架构**：结合 L1 内存 / L2 本地存储 / L3 磁盘快照、Git 进程信号量并发控制与全语种构建产物监听防抖，打开工作空间首屏 0 延迟秒开，编译期间零卡顿；
 - **全内置物理隔离**：**绝不上传任何用户代码与账户凭证**，100% 离线数据安全。
 
 ---
@@ -200,17 +209,38 @@
 
 ---
 
+### 11. 🧰 全离线多格式数据格式化与开发工具箱 (Data Tools Workbench)
+![多窗口数据格式化与结构树透视对比工作台](docs/images/22_data_tools_multi_window.png)
+
+- **快捷键 <kbd>Alt + 4</kbd> 一键直达，100% 本地离线零隐私泄露**：
+  - 告别在线 JSON 格式化网站上传业务敏感报文、Token 与生产 SQL 的安全隐患，所有解析与转换均在本地毫秒级完成；
+- **10 大高频数据格式与离线开发工具一站式集成**：
+  - **JSON / JSON5**：一键美化、压缩、**智能语法纠错 (Smart Fix)**（自动修复单引号、尾随逗号、无引号 Key 与注释）、Key 字典序递归排序、**一键生成 TypeScript `interface` 类型定义**；
+  - **YAML / XML / HTML / SQL**：支持 2/4 空格自适应缩进美化、单行压缩，并将 YAML / XML 实时映射至右侧交互式结构树；
+  - **JWT Token / URL Query / Base64**：离线解码 JWT Header & Payload（自动识别 `exp`/`iat` 时间戳与过期状态）、URL 参数键值拆解、UTF-8 中文无损 Base64 编解码只读预览；
+  - **Timestamp 时间戳 / UUID & Hash / Regex 正则测试器**：秒/毫秒时间戳与多时区日期互转、UUID v4 批量生成与 MD5/SHA1/SHA256/SHA512 摘要计算、正则表达式实时高亮匹配与捕获组（Capture Groups）提取；
+- **IDE 级多窗口标签页与双栏分屏对比 (Multi-Window Tabs & Split Compare)**：
+  - 点击顶部 `+ 新增窗口` 可直接指定目标数据格式开启多个独立窗口，支持双击重命名与跨会话自动持久化；
+  - 一键开启**双窗口并排对比模式 (Side-by-Side Split Compare)**，同屏比对两个接口返回的 JSON / YAML 报文差异；
+- **四维联动视图 (`Split` / `Editor` / `Tree` / `Table`)**：
+  - 支持左源码右结构树分栏、纯编辑器、纯交互式树形视图（支持按层级折叠、关键字过滤、一键复制 JSONPath 与节点值）以及二维数组表格透视视图（Table View）。
+
+---
+
 ## 📊 主流开发与 Git 客户端全方位横向对比
 
 | 核心维度 | **OmniGit** | SourceTree | GitKraken | Fork | VS Code 原生 |
 | :--- | :---: | :---: | :---: | :---: | :---: |
-| **定位范畴** | **Git 核心 + 多工程微服务工作台** | 传统 Git 客户端 | 传统 Git 客户端 | 传统 Git 客户端 | 通用文本编辑器 |
+| **定位范畴** | **Git 核心 + 多工程微服务研发门户** | 传统 Git 客户端 | 传统 Git 客户端 | 传统 Git 客户端 | 通用文本编辑器 |
 | **开源与授权** | **100% 免费开源 (MIT)** | 免费闭源 | 免费版阉割 / 付费订阅 | $49.99 商业收费 | 免费开源 |
 | **三方冲突解决 (3-Way Merge)** | **原生三栏可视化比对** | 需配置外部工具 | 核心功能强制收费 | 原生支持 | 需安装复杂插件 |
 | **外部冲突解决自愈** | **原生实时探测自动暂存** | 无，需手动暂存 | 需手动刷新暂存 | 需手动暂存 | 需手动暂存 |
-| **多微服务启动编排 & ANSI 日志** | **原生内置 (支持脚本发现/启停/排序)** | 无 | 无 | 无 | 需插件或脚本 |
+| **多仓库批量拉取/切分支 & 分支拓扑图** | **原生支持 (批量操作/拓扑图/Stash/Blame)** | 需逐个仓库切换 | 多仓库操作付费 | 需逐个仓库切换 | 需安装多插件 |
+| **多微服务启动编排 & 端口冲突一键释放** | **原生内置 (脚本发现/延时编排/杀端口)** | 无 | 无 | 无 | 需插件或手工命令 |
 | **免检出精细化推送 / 补丁分支** | **原生支持 (多选提交/补丁分支)** | 仅支持整分支推送 | 较复杂 | 基础操作 | 仅支持整分支推送 |
-| **多工程资源树 & Monaco 编辑器** | **原生内置 (智能消歧/中缝拖拽)** | 无 | 无 | 无 | 原生具备 |
+| **多工程资源树 & Monaco 编辑器** | **原生内置 (全文件透视/智能消歧/中缝拖拽)** | 无 | 无 | 无 | 原生具备 |
+| **工作空间自定义研发门户 (微前端宿主)** | **原生内置 (`Alt+0` 态势大盘 + `OmniGitBridge`)** | 无 | 无 | 无 | 需开发独立插件 |
+| **离线多格式数据工具箱 (JSON/YAML/JWT/正则)** | **原生内置 (`Alt+4` 10合1工具/多窗并排对比)** | 无 | 无 | 无 | 需安装多个插件 |
 | **集成终端 Dock** | **原生内置 (VS Code 规范)** | 无，仅外置终端 | 内置终端 | 仅外置终端 | 原生具备 |
 | **一键撤销合并 (Undo Merge)** | **原生支持 (带历史自愈)** | 需敲复杂命令行 | 需复杂历史树回退 | 需手动回滚 | 无 |
 | **跨分支同步提交** | **日志右键一键 Cherry-pick 同步** | 需手动检出分支 | 步骤繁琐 | 支持 | 需手动执行命令 |
@@ -227,6 +257,7 @@
 | <kbd>Alt + 1</kbd> | 全局 | 快速切换至 **Git 核心工作台** 视图 |
 | <kbd>Alt + 2</kbd> | 全局 | 快速切换至 **工作区源码资源管理器** 视图 |
 | <kbd>Alt + 3</kbd> | 全局 | 快速切换至 **微服务启动编排面板** 视图 |
+| <kbd>Alt + 4</kbd> | 全局 | 快速切换至 **数据格式化与离线开发工具箱 (Data Tools)** 视图 |
 | <kbd>Ctrl + K</kbd> | Git 视图 | 快速聚焦提交说明输入框，准备提交改动 |
 | <kbd>Ctrl + Shift + K</kbd> | Git 视图 | 唤起精细化挑选推送弹窗 (Selective Push) |
 | <kbd>Ctrl + Enter</kbd> | 提交面板 | 快速执行提交当前选中的文件 |
@@ -234,6 +265,8 @@
 | <kbd>Ctrl + /</kbd> | Monaco 编辑器 | 智能添加 / 移除当前行或选中块的代码注释 |
 | <kbd>Ctrl + Shift + F</kbd> | 全局 | 唤起工作区跨文件全局搜索弹窗 |
 | <kbd>Ctrl + `</kbd> | 全局 | 快速唤起或隐藏底部集成终端 Dock |
+| <kbd>Ctrl + Shift + `</kbd> | 全局 | 在底部集成终端 Dock 中直接新建终端会话 |
+| <kbd>Ctrl + ,</kbd> | 全局 | 快速唤起系统全局设置弹窗 |
 
 ---
 
@@ -263,10 +296,13 @@ npm run dev
 
 ### 4. 自动化回归测试流水线
 ```bash
-# 运行后端 API 与端到端回归测试
-npm run test:e2e
-# 运行多微服务生命周期端到端测试
-node app/scripts/test-e2e-services.cjs
+# 方式一：一键运行全量 7 阶段 API SLA 与无头浏览器 CDP E2E 测试套件
+node test/scripts/run-all-tests.cjs
+
+# 方式二：按模块独立运行定向 E2E 测试
+node --experimental-websocket test/scripts/test-workspace-explorer-e2e.cjs
+node --experimental-websocket test/scripts/test-data-tools-multi-window-e2e.cjs
+node --experimental-websocket test/scripts/test-services-lifecycle-e2e.cjs
 ```
 
 ---
@@ -278,42 +314,47 @@ OmniGit/
 ├── app/                              # 应用核心工程
 │   ├── electron/                     # Electron 桌面端主进程与自动更新
 │   │   ├── main.ts                   # 窗口生命周期、本地私有调度服务与环境探测
-│   │   ├── preload.ts                # 安全预加载脚本
+│   │   ├── preload.ts                # 安全预加载脚本 (IPC 通道桥接)
+│   │   ├── serviceProcessManager.ts  # 桌面端微服务进程生命周期、端口检测与进程树清理
 │   │   └── updater.ts                # 基于 GitHub Releases 的静默检查与更新
 │   ├── src/                          # 前端源码 (React 18 + Zustand + Tailwind)
-│   │   ├── components/               # 通用基础组件 (Modal, Button, Input, Dropdown)
-│   │   ├── features/                 # 核心业务模块
-│   │   │   ├── activity-bar/         # 左侧核心活动栏 (Git工作台 / 资源管理 / 微服务编排)
-│   │   │   ├── conflict-3way/        # 3-Way Merge 可视化三方冲突合并器
-│   │   │   ├── diff-editor/          # Monaco 双栏/单栏差异比对面板
-│   │   │   ├── editor/               # Monaco 源码编辑器、查找替换与 Markdown 渲染
-│   │   │   ├── git-log/              # 提交日志、分支历史树与跨分支同步弹窗
+│   │   ├── components/               # 通用基础组件 (Modal, Button, ResizeDivider, Toast)
+│   │   ├── features/                 # 核心业务模块 (严格遵循 <= 800 行模块化协议)
+│   │   │   ├── activity-bar/         # 左侧核心活动栏 (Dashboard / Git / Explorer / Services / DataTools)
+│   │   │   ├── code-editor/          # Monaco 源码编辑器、行级 Blame、大文件卡片与 Markdown 渲染
+│   │   │   ├── data-tools/           # 10 合 1 离线数据格式化、结构树透视与多窗口分屏对比工作台
+│   │   │   ├── diff-editor/          # Monaco 双栏/单栏差异比对面板与子组件
+│   │   │   ├── git-conflict/         # 3-Way Merge 可视化三方冲突合并器与冲突块子组件
+│   │   │   ├── git-log/              # 提交日志、SVG 彩色分支拓扑图 (CommitGraphLane) 与跨分支同步
 │   │   │   ├── git-push/             # 分支选择、提交多选与精细化推送弹窗
-│   │   │   ├── git-status/           # 工作区改动 (Changes)、搁置架 (Shelf)、提交面板
-│   │   │   ├── services/             # 多微服务启动与脚本统一编排中心 (实时ANSI日志流)
+│   │   │   ├── git-status/           # 工作区改动 (Changes)、Git Stash 暂存架 (StatusStashDrawer)、提交框
+│   │   │   ├── global-search/        # 跨工程全局代码搜索弹窗
+│   │   │   ├── navigation/           # 顶栏分支菜单 (BranchMenu / Flyout)、撤销合并、身份切换
+│   │   │   ├── services/             # 多微服务启动编排、端口冲突释放、实时日志流与持久化存储
+│   │   │   ├── settings/             # 系统全局设置、Git 账户管理、主题预设与关于/更新页
 │   │   │   ├── terminal/             # VS Code 风格集成终端 Dock (PTY 多会话管理)
-│   │   │   ├── topbar/               # 顶栏分支菜单、撤销合并、身份切换与全局操作
-│   │   │   └── workspace/            # 多工程文件资源树与工作区管理
+│   │   │   ├── workspace/            # 多仓库侧边栏 (支持批量 Pull/Fetch/Checkout) 与欢迎屏管理
+│   │   │   ├── workspace-dashboard/  # 工作空间自定义研发门户 (OmniGitBridge) 与默认工程态势大盘
+│   │   │   └── workspace-explorer/   # 多工程全文件资源树、Git 忽略文件显隐切换与目录钻取
 │   │   ├── locales/                  # 纯正双语国际化字典与类型化解析 (zh-CN / en-US)
-│   │   ├── server/                   # 本地调度引擎与 API 服务 (Git/文件系统/服务进程)
-│   │   └── store/                    # 全局状态管理 (useAppStore, 0ms 乐观更新机制)
+│   │   ├── server/                   # 本地调度引擎与 API 服务
+│   │   │   ├── git/                  # Git 7 大领域子模块 (Exec/Status/Log/Branch/Merge/Clone/BatchStashBlame)
+│   │   │   ├── gitService.ts         # Git 聚合门面 (Facade)
+│   │   │   ├── fileSystemService.ts  # 文件树遍历与非破坏性 .gitignore 标记解析
+│   │   │   ├── codeSearchService.ts  # 跨仓库高性能并发代码搜索引擎
+│   │   │   ├── ignorePatterns.ts     # 全语种通用构建产物/虚拟环境/二进制忽略字典
+│   │   │   ├── dashboardServeHandler.ts # 自研门户静态构建产物安全托管与 <base> 动态注入
+│   │   │   └── nodeServiceProcessManager.ts # Web 端微服务进程管理、异步端口检测与日志流
+│   │   └── store/                    # 全局状态管理 (useAppStore、9 大领域 Slices、L1/L2/L3 三级缓存)
 │   ├── electron-builder.yml          # NSIS 单文件打包配置
 │   └── package.json                  # 依赖与脚本
-├── docs/                             # 架构设计、PRD、图文教程与高清素材
-│   ├── images/                       # 核心界面高清预览图与演示动图
-│   │   ├── omnigit_demo.gif          # 全景动态演示动图
-│   │   ├── omnigit_demo.webm         # 全景动态演示视频
-│   │   ├── 01_omnigit_workbench.png  # 3-Way Merge 冲突解决与 Git 核心工作台
-│   │   ├── 02_workspace_explorer_editor.png # 资源管理器与代码编辑器
-│   │   ├── 03_markdown_split_preview.png    # Markdown 双栏渲染与全屏预览
-│   │   ├── 04_terminal_dock.png      # 集成终端 Dock 与新建菜单
-│   │   ├── 05_find_replace_monaco.png# Monaco 悬浮查找替换小部件
-│   │   ├── 06_english_mode_ui.png    # 纯正英文模式 UI
-│   │   ├── 07_services_orchestrator.png     # 多微服务启动编排与实时日志
-│   │   └── 08_selective_push_modal.png      # 分支免检出切换与精细化推送
-│   └── OmniGit_PRD.md                # 架构设计与产品规格说明书
+├── docs/                             # 架构设计、PRD、微前端开发指南与高清素材
+│   ├── images/                       # 核心界面高清预览图与演示动图 (01~25 场景全覆盖)
+│   ├── CUSTOM_DASHBOARD_GUIDE.md     # 工作空间自定义研发门户与 OmniGitBridge 开发指南
+│   ├── implementation_0.6.0_plan.md  # v0.6.0 架构设计与演进实施方案
+│   └── OmniGit_PRD.md                # 产品需求与系统架构规格说明书
 ├── scripts/                          # 开发者运维工具箱与便携版 NSIS
-├── test/                             # 自动化 E2E 与基准测试工程
+├── test/                             # 自动化 API SLA 与 Chrome CDP 无头 E2E 测试套件
 └── README.md                         # 项目总说明文档 (简体中文)
 ```
 

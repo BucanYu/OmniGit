@@ -49,6 +49,7 @@ npm install
 | **`start_desktop.bat`** | **原生桌面客户端直启**<br>自动完成前后端构建并以原生桌面无边框窗口模式运行 OmniGit，体验最真实的独立桌面应用效果。 | 本地桌面端实测 | 双击直接运行 |
 | **`start_dev.bat`**<br>`start_dev.ps1` | **Web 浏览器端快速开发热重载**<br>启动本地 Vite 开发服务器（监听 `http://localhost:5345`），并自动唤起默认系统浏览器开启热重载调试。 | 前端组件与界面开发 | 双击 `start_dev.bat`，或在 PowerShell 执行 `./start_dev.ps1` |
 | **`stop_dev.bat`**<br>`stop_dev.ps1` | **开发端口释放与进程终止**<br>智能检索并强制终止当前占用 `5345` 端口的后台 Node 进程，彻底解决端口被占用的问题。 | 服务关闭 / 端口清理 | 双击 `stop_dev.bat` |
+| **`publish_release.bat`** | **GitHub Releases 一键发布助手**<br>自动读取当前 `app/package.json` 版本号并调用 `gh release create` 上传安装包（未安装 `gh` 时引导网页上传）。 | 版本发布上线 | 双击 `publish_release.bat` |
 | `package.cjs` | **跨平台打包调度核心**<br>控制编译、locales 瘦身剪裁、LZMA 压制与无头冒烟测试闭环。 | 由 `build_desktop.bat` 内部调用 | 自动化调度 |
 | `installer.nsi` | **NSIS 单文件安装包构建配置**<br>定义了中文安装向导、自定义目录、桌面/开始菜单快捷方式、注册表登记与静默升级规范。 | 由打包流水线内部调用 | 自动化调用 |
 | `generate_icon.ps1` | **专属桌面图标生成器**<br>从矢量参数生成 Windows 标配的多分辨率无损 `.ico` 与 `.png` 品牌图标。 | 品牌图标更新维护 | 由打包流水线或手动调用 |
@@ -57,14 +58,14 @@ npm install
 
 ## 四、 编译输出物与 GitHub Releases 分发规范
 
-执行 `scripts/build_desktop.bat` 后，产物统一输出在 **`app/release/`** 目录中：
+执行 `scripts/build_desktop.bat` 后，产物统一输出在 **`app/release/`** 目录中（版本号自动读取自 `app/package.json`，当前为 `0.6.0`）：
 
 ```
 app/release/
- ├── OmniGit-Setup-0.5.0.exe        <- [对外正式发布] Windows 单文件安装包 (LZMA 高压缩，约 76MB)
+ ├── OmniGit-Setup-0.6.0.exe        <- [对外正式发布] Windows 单文件安装包 (LZMA 高压缩，约 76MB)
  ├── OmniGit-win32-x64/             <- [本地便携调试] Windows 绿色免安装运行目录 (直接双击 OmniGit.exe 运行)
- ├── OmniGit-v0.5.0-mac-arm64.zip   <- [对外正式发布] macOS Apple Silicon (M系列芯片) 独立应用包
- └── OmniGit-v0.5.0-mac-x64.zip     <- [对外正式发布] macOS Intel x64 独立应用包
+ ├── OmniGit-v0.6.0-mac-arm64.zip   <- [对外正式发布] macOS Apple Silicon (M系列芯片) 独立应用包
+ └── OmniGit-v0.6.0-mac-x64.zip     <- [对外正式发布] macOS Intel x64 独立应用包
 ```
 
 > [!IMPORTANT]

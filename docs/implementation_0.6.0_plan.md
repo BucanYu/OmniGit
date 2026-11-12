@@ -251,3 +251,42 @@ flowchart TD
 | **多语言与暗黑主题核查** | 切换中英双语，首页、配置弹窗、顶部工具栏提示均呈现纯正单语言；切换主题时，iframe 收到主题更新事件。 |
 | **自动化测试网核查** | 运行 `node test/scripts/run-all-tests.cjs`，所有测试用例 100% 成功，产出 `test/reports/09_workspace_dashboard.png`。 |
 | **构建红线核查** | 控制台运行 `npm run typecheck`，退出码为 0，无任何类型错误或未导入变量。 |
+
+---
+
+## 六、v0.6.0 后续迭代扩展与全模块升级交付记录 (Extended Milestones in v0.6.0)
+
+在完成阶段 0~6 的工作空间自定义研发门户（Workspace Dashboard）基础上，`v0.6.0` 版本围绕开发者高频痛点与全系统性能稳定性，持续完成了以下 5 大核心扩展阶段并已合入 `main` 主干：
+
+### 阶段 7：全离线多格式数据格式化与开发工具箱 (`Data Tools Workbench` - `Alt + 4`)
+- **目录与模块**：`app/src/features/data-tools/`（`DataToolsWorkbench.tsx`、`DataToolsTabBar.tsx`、`DataToolsHeader.tsx`、`useDataToolsStore.ts`、`analyzer.ts`、`tabPersistence.ts`、`formatters/*`）；
+- **10 合 1 离线格式与工具支持**：
+  1. `JSON / JSON5`（美化、压缩、Smart Fix 智能语法修复、Key 字典序递归排序、TypeScript `interface` 自动生成）；
+  2. `YAML`（2/4 空格幂等美化、压缩与结构树实时映射）；
+  3. `XML / HTML`、`SQL`、`JWT Token`（离线解码与 `exp` 过期校验）、`URL Query`、`Base64`（UTF-8 无损编解码与只读预览）；
+  4. 新增离线实用工具：`Timestamp 时间戳转换`（`timestampFormatter.ts`）、`UUID / Hash 生成器`（`uuidHashFormatter.ts`）、`Regex 正则测试器`（`regexTester.ts`）；
+- **IDE 级多窗口标签与双栏并排对比**：支持点击 `+ 新增窗口` 通过视口级固定下拉菜单直接选择任意格式开启新窗口、双击重命名、跨会话持久化，并支持双窗口左右并排分屏对比（Side-by-Side Split Compare）。
+
+### 阶段 8：Git 核心工作台四大高阶能力扩展 (`Multi-Repo Batch Ops` / `Stash` / `Graph` / `Blame`)
+- **多仓库批量协同操作**：在 `Sidebar.tsx` 与 `gitBatchStashBlameOps.ts` 中实现工作空间多仓库一键并发 `Batch Pull`、`Batch Fetch` 与 `Batch Checkout`（同名分支批量签出）；
+- **Git Stash 暂存架管理**：新增 `StatusStashDrawer.tsx`，支持一键暂存（含 Untracked 选项與备注）、列表查看、Apply、Pop 与 Drop；
+- **提交历史彩色分支拓扑图**：新增 `CommitGraphLane.tsx`，基于 `%P` 父提交拓扑关系绘制 SVG 分支演进与合并轨道；
+- **编辑器行级代码溯源 (`Inline Git Blame`)**：在 `CodeEditorPanel.tsx` 集成行级 `git blame` 解析与展示。
+
+### 阶段 9：多微服务编排中心全生命周期增强 (`Services & Launch Scripts`)
+- **模块内项目快速切换器**：支持在服务面板内直接切换工程并联动同步顶栏活跃 Git 仓库状态；
+- **端口冲突检测与一键释放重启**：异步探测监听端口与嗅探 `EADDRINUSE` 日志，冲突时支持一键查杀占用端口进程并重启服务；
+- **顺序启动前置延时 (`startDelayMs`) 与日志关键字过滤**：支持按卡片编排顺序延时梯度启动，控制台支持实时关键字过滤；
+- **手动滚动优先锁与一次性任务脚本完成识别**：用户向上滚轮查阅时立即锁定视口不被高频日志流打断；自动绕过 Windows `.bat` 中的阻塞式 `pause`，退出码 `0` 的一次性脚本自动标记为绿标 `已完成 (Completed)`。
+
+### 阶段 10：源码资源管理器解绑 Git 硬过滤与全文件透视 (`Workspace Explorer`)
+- **解绑硬编码目录屏蔽**：重构 `fileSystemService.ts`，移除 `DEFAULT_IGNORED_DIRS` 硬过滤（仅跳过 `.git` / `.svn` / `.hg`），默认展示工作区下所有文件与目录（含 `dist`、`build`、`.env*`、`node_modules`）；
+- **非破坏性 `.gitignore` 弱化标识与显隐切换**：将 `.gitignore` 匹配转化为 `isIgnored: boolean` 属性，在 `FileTreeNode.tsx` 中半透明弱化显示，并在 `WorkspaceExplorerPanel.tsx` 顶栏提供「显示全部文件 / 隐藏 Git 忽略文件」一键切换开关与「一键折叠全部文件夹」按钮；
+- **二进制与超大文件安全预览卡片**：新增 `BinaryOrLargeFileNotice.tsx`，点击图片、压缩包、可执行程序或 >2MB 文件时展示元数据卡片，支持一键调用系统默认应用打开或在资源管理器中定位。
+
+### 阶段 11：全工程 800 行模块化重构与全系统防卡死高频性能优化
+- **严格遵守 `<= 800` 行红线**：将 `gitService.ts` 拆解为 60 行 Facade + `app/src/server/git/` 下 7 大领域子模块；抽离 `codeSearchService.ts`、`ignorePatterns.ts`、`serviceStorage.ts`、Store 切片与 UI 子组件；
+- **全系统防卡死基线**：
+  - `runGit` 信号量并发控制（本地最大 6、远程最大 3）与 `GIT_OPTIONAL_LOCKS=0`；
+  - `fs.watch` 联动 `.gitignore` 与全语种忽略规则库（`ignorePatterns.ts`），引入防抖与 `2500ms` 冷却期阻断编译风暴；
+  - `ServiceLogViewer` 采用 `32ms` 流式缓冲与默认最新 `350` 行滑动窗口渲染，端口探测与杀进程全面异步化（`execFileAsync`）。

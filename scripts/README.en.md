@@ -49,6 +49,7 @@ All `.bat` scripts can be executed by **double-clicking in Windows Explorer** or
 | **`start_desktop.bat`** | **Native Desktop Client Direct Launch**<br>Automatically compiles frontend/backend and launches OmniGit in a native borderless desktop window to preview real standalone desktop behavior. | Local desktop testing | Double-click to run |
 | **`start_dev.bat`**<br>`start_dev.ps1` | **Web Browser Fast Dev Server (HMR)**<br>Starts local Vite dev server (listening on `http://localhost:5345`) and automatically opens the default system browser with hot-reload debugging. | UI & component development | Double-click `start_dev.bat`, or run `./start_dev.ps1` in PowerShell |
 | **`stop_dev.bat`**<br>`stop_dev.ps1` | **Port Cleanup & Process Termination**<br>Intelligently finds and terminates background Node processes occupying port `5345`, resolving port conflict issues. | Server shutdown / Port cleanup | Double-click `stop_dev.bat` |
+| **`publish_release.bat`** | **GitHub Releases Publisher**<br>Reads current version from `app/package.json` and publishes the installer via `gh release create` (or opens browser upload guide). | Release publishing | Double-click `publish_release.bat` |
 | `package.cjs` | **Core Packaging Orchestrator**<br>Handles compilation, locale pruning, LZMA solid compression, and automated headless smoke testing. | Invoked by `build_desktop.bat` | Automated |
 | `installer.nsi` | **NSIS Single-File Installer Script**<br>Defines wizard UI, custom installation path, desktop/start menu shortcuts, uninstaller registry entries, and silent updates. | Invoked by build pipeline | Automated |
 | `generate_icon.ps1` | **Desktop Icon Generator**<br>Generates standard multi-resolution lossless `.ico` and `.png` brand icons from vector specs. | Branding updates | Pipeline / Manual |
@@ -57,14 +58,14 @@ All `.bat` scripts can be executed by **double-clicking in Windows Explorer** or
 
 ## 4. Build Artifacts & GitHub Releases Distribution
 
-When you run `scripts/build_desktop.bat`, the output files are generated in **`app/release/`**:
+When you run `scripts/build_desktop.bat`, the output files are generated in **`app/release/`** (version automatically synced with `app/package.json`, currently `0.6.0`):
 
 ```
 app/release/
- ├── OmniGit-Setup-0.5.0.exe        <- [Official Release] Windows single-file installer (LZMA compressed, ~76MB)
+ ├── OmniGit-Setup-0.6.0.exe        <- [Official Release] Windows single-file installer (LZMA compressed, ~76MB)
  ├── OmniGit-win32-x64/             <- [Portable Preview] Windows portable folder (run OmniGit.exe directly)
- ├── OmniGit-v0.5.0-mac-arm64.zip   <- [Official Release] macOS Apple Silicon (M-series) app bundle
- └── OmniGit-v0.5.0-mac-x64.zip     <- [Official Release] macOS Intel x64 app bundle
+ ├── OmniGit-v0.6.0-mac-arm64.zip   <- [Official Release] macOS Apple Silicon (M-series) app bundle
+ └── OmniGit-v0.6.0-mac-x64.zip     <- [Official Release] macOS Intel x64 app bundle
 ```
 
 > [!IMPORTANT]

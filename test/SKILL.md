@@ -25,12 +25,17 @@ OmniGit/
 │   ├── SKILL.md                # 本自动化测试规范与复用操作指南
 │   ├── run-test.bat            # Windows 一键执行入口脚本
 │   ├── scripts/
-│   │   ├── run-all-tests.cjs   # 统一测试调度入口
-│   │   ├── api-e2e-test.cjs    # 后端 API、性能 SLA 与安全沙箱测试
-│   │   └── cdp-browser-test.cjs# 基于 Chrome CDP 的浏览器 E2E 交互与截图测试
-│   └── reports/                # 自动化产物（截图与日志）
-│       ├── 01_git_workbench.png   # Git 提交工作台截图
-│       └── 02_explorer_editor.png # 源码资源管理器与 Monaco 编辑器截图
+│   │   ├── run-all-tests.cjs                       # 统一 7 阶段测试调度总入口
+│   │   ├── api-e2e-test.cjs                        # 阶段 1：后端 API、性能 SLA 与安全沙箱测试
+│   │   ├── cdp-browser-test.cjs                    # 阶段 2：基于 Chrome CDP 的核心工作台交互与截图测试
+│   │   ├── test-services-project-switcher-e2e.cjs  # 阶段 3：微服务模块内工程切换与 Git 状态联动测试
+│   │   ├── test-builtin-doc-open-e2e.cjs           # 阶段 4：内置开发指南在编辑器中一键打开渲染测试
+│   │   ├── test-data-tools-e2e.cjs                 # 阶段 5：Data Tools 格式化、结构树、表格与 TS 生成测试
+│   │   ├── test-services-lifecycle-e2e.cjs         # 阶段 6：微服务生命周期、pause 防阻塞与一次性任务完成测试
+│   │   ├── test-data-tools-multi-window-e2e.cjs    # 阶段 7：Data Tools 多窗口标签页、格式下拉与双栏对比测试
+│   │   ├── test-data-tools-all-formats-e2e.cjs     # 专项：Data Tools 全格式美化与幂等性断言测试
+│   │   └── test-workspace-explorer-e2e.cjs         # 专项：源码资源管理器全文件展示、.gitignore 显隐切换与二进制卡片测试
+│   └── reports/                # 自动化产物（01 ~ 25 全场景高清验证截图与 JSON 报告）
 ```
 
 ---
@@ -41,12 +46,13 @@ OmniGit/
 | :--- | :--- | :--- |
 | **Monaco 静态资源离线化** | `/vs/loader.js` 本地响应 < 50ms，彻底杜绝外网 CDN 超时导致的 `Loading...` 停滞 | `api-e2e-test.cjs` 校验本地静态资源大小与延迟 |
 | **Monaco 主样式表加载** | `/vs/editor/editor.main.css` 响应 < 30ms，本地完整响应 | `api-e2e-test.cjs` HTTP 检查 |
-| **工作区备份接口** | `/api/git/workspaces/backup` 返回真实持久化数组 | `api-e2e-test.cjs` 结构校验 |
-| **文件树遍历延迟** | `/api/fs/tree` 目录列表响应 < 50ms（移除同步 `fs.statSync`，带 `.gitignore` 内存缓存） | `api-e2e-test.cjs` 压测检查 |
-| **文件极速读取** | `/api/fs/read` 源码文件读取响应 < 30ms，保留原始编码与换行符 (CRLF/LF) | `api-e2e-test.cjs` 内容与标头检查 |
+| **工作区备份与静态门户托管** | `/api/git/workspaces/backup` 返回持久化数组，`/api/workspace/dashboard-serve` 动态注入 `<base>` 且拦截越界访问 | `api-e2e-test.cjs` 结构与安全校验 |
+| **文件树全量遍历与 `.gitignore` 标记** | `/api/fs/tree` 目录列表响应 < 50ms，解绑 Git 硬过滤返回全量文件（含 `dist`、`.env*`），准确标注 `isIgnored: boolean` | `api-e2e-test.cjs` & `test-workspace-explorer-e2e.cjs` |
+| **文件极速读取与二进制识别** | `/api/fs/read` 源码文件读取响应 < 30ms，保留原始编码与换行符 (CRLF/LF)，准确标记 `isBinary` 与 `isTooLarge` | `api-e2e-test.cjs` & `test-workspace-explorer-e2e.cjs` |
 | **安全沙箱越界防护** | 尝试路径穿越（如 `../../Windows`）必须返回错误或拦截，拒绝非法读取 | `api-e2e-test.cjs` 安全探测 |
-| **浏览器界面水合与模式切换** | 正常加载页面，无控制台严重报错，支持 `Alt + 1` (Git) 与 `Alt + 2` (Explorer) 快捷切换 | `cdp-browser-test.cjs` Chrome CDP 交互验证 |
-| **目录级联展开与源码渲染** | 点击项目根目录展开文件树，点击源文件能够正确挂载 Monaco Editor，代码行数 > 0 且无白屏 | `cdp-browser-test.cjs` 真实 DOM 探查并留存截图 |
+| **浏览器界面水合与 5 大模式切换** | 正常加载页面，无控制台严重报错，支持 `Alt + 0` ~ `Alt + 4` 快捷切换所有主工作台视图 | `cdp-browser-test.cjs` Chrome CDP 交互验证 |
+| **微服务生命周期与项目快切** | 模块内切换项目联动 Git 状态，一次性脚本自动完成标记为 `completed`，含 `pause` 脚本不挂起 | `test-services-project-switcher-e2e.cjs` & `test-services-lifecycle-e2e.cjs` |
+| **Data Tools 多格式与多窗口对比** | 覆盖全部离线格式美化/压缩幂等性、多窗口新建下拉定位、分屏并排对比与持久化恢复 | `test-data-tools-e2e.cjs` & `test-data-tools-multi-window-e2e.cjs` |
 
 ---
 
@@ -85,19 +91,24 @@ node test/scripts/run-all-tests.cjs
   3. `package.json` 中的 `predev` 与 `prebuild` 钩子强制自动执行拷贝；
   4. 自动化测试脚本 `cdp-browser-test.cjs` 会实时轮询 `.monaco-editor` 节点与 `.view-line`，一旦检测到渲染停滞或 `Loading...` 超过阈值立即报警。
 
-### 5.2 目录浏览与单子目录连续点击优化防退化
+### 5.2 目录全量浏览、`.gitignore` 显隐切换与单子目录链式展开防退化
 - **根因回顾**：
-  1. `fileSystemService.ts` 在每次展开目录时，为获取文件大小对目录下每个非目录项同步执行 `fs.statSync`，造成大量无意义磁盘 I/O。
-  2. Java 等多级包路径（如 `src/main/java/com/adas/...`）如果每级都需要手动点击，操作繁琐且体验滞后。
+  1. `fileSystemService.ts` 在每次展开目录时，为获取文件大小对目录下每个非目录项同步执行 `fs.statSync`，造成大量无意义磁盘 I/O；
+  2. 早期版本将 `dist`、`build`、`.env*` 等目录或 `.gitignore` 匹配项在后端硬性过滤，导致源码查看模块无法浏览工作区全量文件；
+  3. Java 等多级包路径（如 `src/main/java/com/adas/...`）如果每级都需要手动点击，操作繁琐且体验滞后。
 - **解决方案**：
   1. `readDirectory` 仅通过 `fs.readdirSync(..., { withFileTypes: true })` 获取文件列表，移除每文件同步 `statSync`；
-  2. `.gitignore` 规则增加基于 `mtime` 的内存缓存，避免重复读盘解析；
-  3. 前端 `useWorkspaceExplorerStore.ts` 支持单子目录自动链式展开（最多 8 层），实现类似 VS Code 的紧凑文件夹体验。
+  2. 解绑 Git 硬过滤（仅跳过 `.git` / `.svn` / `.hg`），将 `.gitignore` 规则基于 `mtime` 内存缓存转化为非破坏性的 `isIgnored: boolean` 标记，支持前端默认全量展示与一键切换隐藏被忽略文件；
+  3. 前端 `useWorkspaceExplorerStore.ts` 支持单子目录自动链式展开（最多 8 层），并对二进制/超大文件通过 `BinaryOrLargeFileNotice.tsx` 呈现安全元数据卡片。
 
 ---
 
 ## 6. 测试产物查看指南
 
-测试运行完毕后，可在以下路径查看生成的自动化报告截图：
+测试运行完毕后，可在 `test/reports/` 下查看生成的自动化报告截图（涵盖 `01` ~ `25` 全模块场景）：
 - **Git 提交工作台视图**：[01_git_workbench.png](file:///d:/projects/OmniGit/test/reports/01_git_workbench.png)
 - **源码资源管理器与 Monaco 编辑器视图**：[02_explorer_editor.png](file:///d:/projects/OmniGit/test/reports/02_explorer_editor.png)
+- **工作空间自定义研发门户与态势大盘**：[09_workspace_dashboard.png](file:///d:/projects/OmniGit/test/reports/09_workspace_dashboard.png)
+- **微服务一次性任务脚本完成状态**：[21_services_task_completed.png](file:///d:/projects/OmniGit/test/reports/21_services_task_completed.png)
+- **Data Tools 多窗口标签与双栏并排对比**：[22_data_tools_multi_window.png](file:///d:/projects/OmniGit/test/reports/22_data_tools_multi_window.png)
+- **资源管理器全文件展示与 `.gitignore` 显隐切换**：[24_workspace_explorer_all_files.png](file:///d:/projects/OmniGit/test/reports/24_workspace_explorer_all_files.png) / [25_workspace_explorer_hide_ignored.png](file:///d:/projects/OmniGit/test/reports/25_workspace_explorer_hide_ignored.png)

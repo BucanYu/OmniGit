@@ -1,8 +1,8 @@
 # OmniGit - High-Performance Multi-Repo Git Workbench & Local Microservices Platform 🚀
 
-> **Centered around the beloved IntelliJ IDEA Git workflow & 3-Way Merge conflict resolver, seamlessly integrating multi-root workspace exploration, Monaco code editing, live draggable Markdown preview, VS Code-aligned terminal dock, and unified microservice launch script orchestration for modern developers.**  
+> **Centered around the beloved IntelliJ IDEA Git workflow & 3-Way Merge conflict resolver, seamlessly integrating multi-root workspace exploration, Monaco code editing, live draggable Markdown preview, VS Code-aligned terminal dock, unified microservice launch orchestration, custom workspace developer portal, and a 10-in-1 offline data formatting workbench for modern developers.**  
 > 
-> Built for multi-repo & microservices collaboration · Fine-grained selective push · Real-time external conflict auto-healing · 1-Click microservices start/stop & real-time ANSI console · Smart tab disambiguation · 0ms Optimistic UI · Sub-second startup · Offline privacy-first · 100% Free & Open-Source
+> Built for multi-repo & microservices collaboration · Multi-repo batch pull/checkout · Fine-grained selective push · Real-time external conflict auto-healing · 1-Click microservices start/stop & port conflict release · 10-in-1 offline data formatter & split compare · 0ms Optimistic UI · Offline privacy-first · 100% Free & Open-Source
 
 **English** | [简体中文](README.md)
 
@@ -77,7 +77,7 @@ With modern software architecture evolving into microservices and monorepos, dev
 
 ---
 
-### 2. 🚀 Zero-Checkout Selective Push & Patch Branches
+### 2. 🚀 Zero-Checkout Selective Push & Multi-Repo Batch Collaboration
 ![Selective Push Modal](docs/images/08_selective_push_modal.png)
 
 - **Zero-Checkout Branch Selection**:
@@ -87,27 +87,32 @@ With modern software architecture evolving into microservices and monorepos, dev
 - **Push Up To Here**:
   - Right-click any commit card to push history up to that point, isolating subsequent unverified commits;
 - **Cross-Branch Cherry-pick & Sync**:
-  - In Commit Log, right-click any commit to cleanly cherry-pick and sync to other branches (such as `test` or `uat`) with optional automatic remote pushing.
+  - In Commit Log, right-click any commit to cleanly cherry-pick and sync to other branches (such as `test` or `uat`) with optional automatic remote pushing;
+- **Multi-Repo Batch Operations (Batch Pull / Fetch / Checkout)**:
+  - Concurrently execute **Batch Pull**, **Batch Fetch**, and **Batch Checkout** across all repositories in your workspace from the sidebar header with real-time per-repo status feedback;
+- **Git Stash Shelf Manager & SVG Commit Branch Graph**:
+  - Built-in `StatusStashDrawer` to stash local changes (with optional untracked files and message), inspect stashes, Apply, Pop, and Drop;
+  - Real-time multi-parent SVG branch evolution and merge graph (`CommitGraphLane`) in the Commit Log.
 
 ---
 
 ### 3. 🛠️ Services & Launch Scripts Manager (Unified Microservice Orchestrator)
 ![Services Orchestrator & Real-Time Console](docs/images/07_services_orchestrator.png)
 
-- **Script-Centric Workflow**:
-  - Automatically discovers scripts across all workspace projects (`package.json` scripts, `.bat`, `.sh`, etc.);
-  - Create and edit custom launch scripts, stop scripts, and environment variables;
-- **Monorepo Directory Auto-Resolution**:
-  - Intelligently deduces working directories for nested packages in Monorepo setups;
-- **Drag-to-Reorder with Persistence**:
-  - Reorder service script cards freely with intuitive drag-and-drop; order is persisted across restarts;
-- **Real-Time ANSI Color Streaming Console**:
-  - High-performance Server-Sent Events (SSE) streaming console with native ANSI color rendering and OSC title sanitization;
-  - **Smart Auto-Scroll**: Sticks to bottom by default; locks viewport when scrolling up for inspection, with a 1-click floating button to jump back down;
-  - **Chunk Line Buffering**: Prevents stream fragmentation and cleanly decodes mixed Windows GBK and Linux UTF-8 logs;
-- **1-Click Start/Stop All & Orphan Process Guard**:
-  - Top action bar to start or stop all microservices with live running count badge;
-  - Non-blocking asynchronous lifecycle execution prevents UI stutter; sub-processes are automatically cleaned up to prevent lingering port collisions.
+- **Script-Centric Workflow & In-Module Project Switcher**:
+  - Automatically discovers scripts across all workspace projects (`package.json` scripts, `.bat`, `.sh`, etc.), with support for custom launch scripts, stop scripts, and environment variables;
+  - Built-in **In-Module Project Switcher** in the top-left header to switch projects directly and sync active Git repository state;
+- **Port Conflict Detection & 1-Click Port Release**:
+  - Configure service ports and automatically sniff `EADDRINUSE` port collision errors from live logs;
+  - Displays a prominent port conflict alert with a **1-Click Release Port & Restart** button that safely terminates the occupying PID tree and restarts the service;
+- **Sequential Start Delay & Drag-to-Reorder (`startDelayMs`)**:
+  - Reorder service cards via drag-and-drop and configure per-service startup delays (`startDelayMs`) for ordered dependency orchestration;
+- **Real-Time ANSI Color Streaming Console & Keyword Filter**:
+  - High-performance SSE console with `32ms` chunk batching, 350-line sliding window rendering, native ANSI color rendering, and real-time keyword log filtering;
+  - **Manual Scroll Priority Lock**: Sticks to bottom by default, and immediately locks viewport when the user scrolls up via mouse wheel so continuous log output never interrupts inspection;
+- **One-Shot Task Script Auto-Completion & Orphan Process Guard**:
+  - Automatically bypasses blocking Windows `pause` commands and distinguishes long-running services from one-shot task scripts (marking exit code `0` as `Completed`);
+  - Asynchronous process lifecycle management and cascade process-tree termination prevent UI freezes and orphan processes.
 
 ---
 
@@ -115,9 +120,12 @@ With modern software architecture evolving into microservices and monorepos, dev
 ![Workspace Explorer & Monaco Editor](docs/images/02_workspace_explorer_editor.png)
 
 - **Cross-Repo Single Window**: Designed for microservices, front-and-backend pairs, and monorepos. Browse, expand, and drill down through multiple repository file trees concurrently in a single pane;
-- **Smart File Type Recognition**: Visual code icons tailored by file extension and attributes;
-- **Tab Deduplication with Single-Flight Lock**: Eliminates duplicate tab bugs by auto-focusing existing tabs when clicking already open files;
-- **Reveal in OS File Explorer**: 1-click button to open the project folder in Windows File Explorer or macOS Finder.
+- **Unbound from Git Hard Exclusion (Full Workspace Visibility)**:
+  - Shows all workspace files and folders by default—including `.env*`, `dist`, `build`, `target`, and `node_modules` (skipping only `.git` / `.svn` / `.hg` metadata directories);
+  - Styles `.gitignore`-matched entries with muted opacity and provides a top-bar **Show All Files / Hide Git Ignored Files** toggle plus **Collapse All Folders**;
+- **Safe Binary & Large File Metadata Card (`BinaryOrLargeFileNotice`)**:
+  - Selecting images, archives, binaries, or files larger than 2MB displays a clean metadata card with 1-click actions to **Open with Default System App** or **Reveal in OS File Explorer**;
+- **Tab Deduplication with Single-Flight Lock**: Eliminates duplicate tab bugs by auto-focusing existing tabs when clicking already open files.
 
 ---
 
@@ -125,6 +133,7 @@ With modern software architecture evolving into microservices and monorepos, dev
 ![Monaco Floating Find and Replace](docs/images/05_find_replace_monaco.png)
 
 - **Sub-50ms Offline Load**: Powered by the same Monaco Editor engine as VS Code, fully bundled locally with syntax highlighting and line numbers for all major languages;
+- **Inline Git Blame**: Toggle line-by-line Git Blame annotations directly in the editor header to inspect commit hashes, authors, relative timestamps, and commit summaries;
 - **Smart Tab Disambiguation**: When identical file names are open across different projects (e.g. multiple `package.json` files), the tab strip automatically appends parent directory labels;
 - **Horizontal Wheel Scroll & Tab Overflow Drawer**: Smooth mouse wheel scrolling along tab strips with an overflow dropdown menu for instant navigation;
 - **Smart Comment Toggle (<kbd>Ctrl + /</kbd>)**: Toggle single-line and block comments instantly across source code, HTML, and Markdown;
@@ -171,7 +180,7 @@ With modern software architecture evolving into microservices and monorepos, dev
 - **Full Desktop + Web Parity**: Run as a standalone Electron desktop client or access via any browser on your local network with identical features and real-time streaming;
 - **Strict Bilingual Support**: English and Chinese locales are maintained with zero translation mixing;
 - **Classic Themes**: Built-in Darcula, IDEA Light, and Nord Frost themes;
-- **0ms Instant Hydration**: L1 memory, L2 LocalStorage, and L3 disk snapshots eliminate loading flashes and blank screens;
+- **0ms Instant Hydration & Anti-Freeze Guardrails**: L1 memory, L2 LocalStorage, and L3 disk snapshots combined with Git process concurrency semaphores and universal build-artifact watcher cooldowns eliminate loading flashes and compilation freezes;
 - **100% Offline Sandbox**: **Never uploads your code or credentials**.
 
 ---
@@ -199,17 +208,38 @@ With modern software architecture evolving into microservices and monorepos, dev
 
 ---
 
+### 11. 🧰 10-in-1 Offline Data Formatter & Inspector Workbench (Data Tools)
+![Data Tools Multi-Window & Split Comparison Workbench](docs/images/22_data_tools_multi_window.png)
+
+- **Shortcut <kbd>Alt + 4</kbd> Instant Access, 100% Offline & Privacy-Safe**:
+  - Format sensitive production JSON payloads, JWT tokens, and SQL queries locally in milliseconds without ever pasting proprietary data into third-party web tools;
+- **10 High-Frequency Formats & Developer Utilities Built In**:
+  - **JSON / JSON5**: Beautify, minify, **Smart Syntax Auto-Fix** (repairs single quotes, trailing commas, unquoted keys, and comments), recursive alphabetical key sorting, and **1-Click TypeScript `interface` generation**;
+  - **YAML / XML / HTML / SQL**: 2/4-space indentation formatting, minification, and live structural tree mapping for YAML and XML;
+  - **JWT Token / URL Query / Base64**: Offline JWT Header & Payload inspection (with automatic `exp`/`iat` timestamp decoding and expiration badges), URL query parameter table breakdown, and UTF-8 safe Base64 encoding/decoding;
+  - **Timestamp Converter / UUID & Hash / Regex Tester**: Bi-directional Unix timestamp (s/ms) and timezone conversion, bulk UUID v4 & MD5/SHA1/SHA256/SHA512 hash calculation, and real-time regular expression matching with capture group inspection;
+- **IDE-Grade Multi-Window Tabs & Side-by-Side Split Comparison**:
+  - Click `+ New Window` to open multiple tabs with a dedicated format selector dropdown, double-click tab renaming, and automatic cross-session persistence;
+  - Toggle **Side-by-Side Split Compare Mode** to compare two JSON / YAML / SQL tabs concurrently on the same screen;
+- **4 Interactive View Modes (`Split` / `Editor` / `Tree` / `Table`)**:
+  - Seamlessly switch between Split Editor + Tree, Editor-only, collapsible Tree Inspector (with search filter and 1-click JSONPath / value copy), and 2D Table View.
+
+---
+
 ## 📊 Comparison with Popular Tools
 
 | Dimension | **OmniGit** | SourceTree | GitKraken | Fork | Native VS Code |
 | :--- | :---: | :---: | :---: | :---: | :---: |
-| **Scope** | **Git Core + Multi-Repo Microservice Workbench** | Traditional Git client | Traditional Git client | Traditional Git client | General text editor |
+| **Scope** | **Git Core + Multi-Repo Microservice Portal** | Traditional Git client | Traditional Git client | Traditional Git client | General text editor |
 | **License** | **100% Free & Open-Source (MIT)** | Proprietary freeware | Freemium / Paid subscription | $49.99 Commercial | Free & open-source |
 | **3-Way Merge Conflict Resolver** | **Native 3-column visual merge** | Requires external tool | Paywalled | Native | Complex extensions needed |
 | **External Conflict Auto-Healing** | **Auto-detects and stages on external save** | Manual staging required | Manual refresh required | Manual staging required | Manual staging required |
-| **Multi-Service Launch & ANSI Logs** | **Native built-in (scripts, auto-scroll, stop guards)** | None | None | None | Needs tasks/plugins |
+| **Multi-Repo Batch Ops & Branch Graph** | **Native (Batch Pull/Fetch/Checkout, Graph, Stash, Blame)** | Manual per-repo | Multi-repo paywalled | Manual per-repo | Extensions required |
+| **Multi-Service Launch & Port Release** | **Native built-in (scripts, delay, 1-click port kill)** | None | None | None | Needs tasks/plugins |
 | **Selective Push & Patch Branches** | **Native support (multi-select, patch branches)** | Whole branch only | Complex | Basic | Whole branch only |
-| **Multi-Root Explorer & Monaco Editor**| **Native built-in (disambiguation, split preview)** | None | None | None | Native built-in |
+| **Multi-Root Explorer & Monaco Editor**| **Native built-in (all files, disambiguation, split preview)** | None | None | None | Native built-in |
+| **Custom Workspace Portal (Microfrontend)** | **Native (`Alt+0` Health Hub + `OmniGitBridge`)** | None | None | None | Custom extension required |
+| **Offline Data Tools (JSON/YAML/JWT/Regex)** | **Native (`Alt+4` 10-in-1 tools & multi-window compare)** | None | None | None | Multiple extensions needed |
 | **Integrated Terminal Dock** | **Native built-in (VS Code ergonomics)** | External terminal only | Built-in | External terminal only | Native built-in |
 | **1-Click Undo Merge** | **Native (with history sniffing)** | CLI commands required | Complex tree undo | Manual rollback | None |
 | **Cross-Branch Commit Sync** | **Right-click Cherry-pick & push** | Manual branch checkouts | Clunky | Supported | Manual CLI required |
@@ -226,6 +256,7 @@ With modern software architecture evolving into microservices and monorepos, dev
 | <kbd>Alt + 1</kbd> | Global | Switch to **Git Core Workbench** view |
 | <kbd>Alt + 2</kbd> | Global | Switch to **Workspace Explorer & Editor** view |
 | <kbd>Alt + 3</kbd> | Global | Switch to **Microservices Orchestrator** view |
+| <kbd>Alt + 4</kbd> | Global | Switch to **Data Formatter & Offline Developer Tools** view |
 | <kbd>Ctrl + K</kbd> | Git View | Focus commit message box |
 | <kbd>Ctrl + Shift + K</kbd> | Git View | Open Selective Push modal |
 | <kbd>Ctrl + Enter</kbd> | Commit Box | Commit selected changes |
@@ -233,6 +264,8 @@ With modern software architecture evolving into microservices and monorepos, dev
 | <kbd>Ctrl + /</kbd> | Monaco Editor | Toggle line or block comments |
 | <kbd>Ctrl + Shift + F</kbd> | Global | Open global search across all workspace files |
 | <kbd>Ctrl + `</kbd> | Global | Toggle bottom integrated terminal dock |
+| <kbd>Ctrl + Shift + `</kbd> | Global | Create a new terminal session in the dock |
+| <kbd>Ctrl + ,</kbd> | Global | Open System Settings modal |
 
 ---
 
@@ -262,10 +295,13 @@ The build pipeline validates TypeScript types, compiles assets, injects icons, a
 
 ### 4. Automated Regression Test Suite
 ```bash
-# Run API and E2E regression tests
-npm run test:e2e
-# Run microservices lifecycle end-to-end tests
-node app/scripts/test-e2e-services.cjs
+# Option 1: Run the complete 7-phase API SLA & headless Chrome CDP E2E suite
+node test/scripts/run-all-tests.cjs
+
+# Option 2: Run targeted E2E verification scripts
+node --experimental-websocket test/scripts/test-workspace-explorer-e2e.cjs
+node --experimental-websocket test/scripts/test-data-tools-multi-window-e2e.cjs
+node --experimental-websocket test/scripts/test-services-lifecycle-e2e.cjs
 ```
 
 ---
@@ -277,39 +313,44 @@ OmniGit/
 ├── app/                              # Core application
 │   ├── electron/                     # Electron main process & auto-updater
 │   │   ├── main.ts                   # Window lifecycle, private local server & detection
-│   │   ├── preload.ts                # Secure preload script
+│   │   ├── preload.ts                # Secure preload script (IPC bridge)
+│   │   ├── serviceProcessManager.ts  # Desktop service lifecycle, port checks & tree cleanup
 │   │   └── updater.ts                # Silent updater via GitHub Releases
 │   ├── src/                          # Frontend source (React 18 + Zustand + Tailwind)
-│   │   ├── components/               # Base UI components (Modal, Button, Input, Dropdown)
-│   │   ├── features/                 # Modular feature domains
-│   │   │   ├── activity-bar/         # Left Activity Bar (Git, Explorer, Services)
-│   │   │   ├── conflict-3way/        # Visual 3-Way Merge conflict resolver
-│   │   │   ├── diff-editor/          # Monaco diff viewer
-│   │   │   ├── editor/               # Monaco code editor, find/replace & Markdown preview
-│   │   │   ├── git-log/              # Commit log, branch graph & cross-branch sync
+│   │   ├── components/               # Base UI components (Modal, Button, ResizeDivider, Toast)
+│   │   ├── features/                 # Modular feature domains (strict <= 800-line limit)
+│   │   │   ├── activity-bar/         # Left Activity Bar (Dashboard, Git, Explorer, Services, DataTools)
+│   │   │   ├── code-editor/          # Monaco editor, inline Git Blame, binary notice & Markdown preview
+│   │   │   ├── data-tools/           # 10-in-1 offline formatter, tree inspector & split compare
+│   │   │   ├── diff-editor/          # Monaco diff viewer & subcomponents
+│   │   │   ├── git-conflict/         # Visual 3-Way Merge conflict resolver & subcomponents
+│   │   │   ├── git-log/              # Commit log, SVG CommitGraphLane & cross-branch sync
 │   │   │   ├── git-push/             # Branch selector, commit checkboxes & selective push
-│   │   │   ├── git-status/           # Changes, Shelf & commit box
-│   │   │   ├── services/             # Services & Launch Scripts Manager (ANSI streaming)
+│   │   │   ├── git-status/           # Changes, StatusStashDrawer (Git Stash) & commit box
+│   │   │   ├── global-search/        # Cross-project global code search modal
+│   │   │   ├── navigation/           # Top branch menu, flyout submenu, undo merge, user profile
+│   │   │   ├── services/             # Services orchestrator, port conflict killer & ANSI streaming
+│   │   │   ├── settings/             # System settings, Git accounts, themes & about tab
 │   │   │   ├── terminal/             # VS Code-styled terminal dock (PTY sessions)
-│   │   │   ├── topbar/               # Top branch menu, undo merge, user profile
-│   │   │   └── workspace/            # Multi-repo explorer & workspace tree
+│   │   │   ├── workspace/            # Multi-repo sidebar (Batch Pull/Fetch/Checkout) & welcome screen
+│   │   │   ├── workspace-dashboard/  # Custom workspace portal (OmniGitBridge) & health hub
+│   │   │   └── workspace-explorer/   # Full-workspace file tree, ignored toggle & directory drill-down
 │   │   ├── locales/                  # Strictly isolated i18n dictionaries (zh-CN / en-US)
-│   │   ├── server/                   # Local execution engine & API (Git/FS/Services)
-│   │   └── store/                    # State management (useAppStore, 0ms optimistic UI)
+│   │   ├── server/                   # Local execution engine & API
+│   │   │   ├── git/                  # 7 Git domain modules (Exec/Status/Log/Branch/Merge/Clone/BatchStashBlame)
+│   │   │   ├── gitService.ts         # Git facade module
+│   │   │   ├── fileSystemService.ts  # File tree traversal & non-destructive .gitignore tagging
+│   │   │   ├── codeSearchService.ts  # High-performance cross-repo code search engine
+│   │   │   ├── ignorePatterns.ts     # Universal multi-language build artifact & binary ignore dictionary
+│   │   │   ├── dashboardServeHandler.ts # Static SPA portal host & automatic <base> injector
+│   │   │   └── nodeServiceProcessManager.ts # Web service runner, async port probe & SSE log streaming
+│   │   └── store/                    # State management (useAppStore, 9 domain slices, L1/L2/L3 cache)
 │   ├── electron-builder.yml          # NSIS installer configuration
 │   └── package.json                  # Dependencies & scripts
-├── docs/                             # Architecture, PRD, tutorials & media assets
-│   ├── images/                       # High-res feature showcases & demo animations
-│   │   ├── omnigit_demo.gif          # Full workflow animation
-│   │   ├── omnigit_demo.webm         # Full workflow video
-│   │   ├── 01_omnigit_workbench.png  # 3-Way Merge conflict resolver & Git workbench
-│   │   ├── 02_workspace_explorer_editor.png # Workspace explorer & code editor
-│   │   ├── 03_markdown_split_preview.png    # Draggable split Markdown preview
-│   │   ├── 04_terminal_dock.png      # Integrated terminal dock
-│   │   ├── 05_find_replace_monaco.png# Monaco floating find & replace
-│   │   ├── 06_english_mode_ui.png    # English mode UI
-│   │   ├── 07_services_orchestrator.png     # Services orchestrator & real-time logs
-│   │   └── 08_selective_push_modal.png      # Zero-checkout selective push modal
+├── docs/                             # Architecture, PRD, portal dev guide & media assets
+│   ├── images/                       # High-res feature showcases & demo animations (01~25)
+│   ├── CUSTOM_DASHBOARD_GUIDE.md     # Custom workspace portal & OmniGitBridge developer guide
+│   ├── implementation_0.6.0_plan.md  # v0.6.0 architectural implementation plan
 │   └── OmniGit_PRD.md                # Product requirements & architecture documentation
 ├── scripts/                          # Developer automation scripts
 ├── test/                             # Automated E2E and benchmark test suite

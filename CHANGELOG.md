@@ -4,6 +4,80 @@
 
 ---
 
+## [v0.6.0] - 2026-10-29
+
+> **版本定位**：从“多工程 Git 与微服务协同工作台”全面进化为**一站式全功能本地研发门户与工程效率中枢**。重磅引入**工作空间自研研发门户与微前端宿主 (`Alt + 0`)**、**全离线多格式数据格式化与开发工具箱 (`Alt + 4`)**、**多仓库批量协同操作与分支拓扑图/Stash/Blame**、**微服务端口冲突一键释放与顺序延时编排**、**源码资源管理器解绑 Git 硬过滤全文件透视**，以及**全工程 800 行模块化拆分与全系统防卡死高频性能优化**。
+
+### 🚀 新增功能 (New Features)
+
+- **全新核心模式 1：工作空间自研研发门户与微前端大盘 (`Workspace Custom Dashboard` - `Alt + 0`)**：
+  - **默认全景工程态势大盘 (Command Hub)**：流式响应式布局聚合多仓库健康矩阵（分支胶囊、未提交改动数、待拉取/待推送角标 `↙ ↗`、微服务运行状态条），支持仓库关键字过滤、快速跳转与内置开发指南一键在编辑器中打开查阅；
+  - **微前端沙箱容器与 Keep-Alive 保活**：支持嵌入本地实时开发端口（如 `localhost:3000` / `5173`）、技术规范站点（VitePress / Swagger）、本地静态 SPA 构建产物（`./dist/index.html`）及团队敏捷看板；采用 CSS `Keep-Alive` 视图保活，跨模式切换零重载、不丢状态；
+  - **本地静态构建产物无服务挂载 (`/api/workspace/dashboard-serve/:workspaceId/*`)**：后端自动动态注入 `<base>` 标签并提供 SPA History 路由回退，彻底根除静态打包产物相对路径资源 404 白屏问题；
+  - **零信任受控双向通信桥接 (`OmniGitBridge`)**：基于单次会话随机 Token 与 `postMessage` 白名单鉴权，支持从自研门户直接调用宿主切换工作台模式、激活指定仓库、在内置 Monaco 编辑器中定位打开源码文件、触发全量 Git 状态同步及监听明暗主题动态同步；
+  - **团队级工程配置共享 (`.omnigit/dashboard.json`)**：支持将自定义门户配置保存至工作空间根目录并提交 Git，团队成员拉取代码后自动统一研发首页。
+- **全新核心模式 2：全离线多格式数据格式化与开发工具箱 (`Data Tools Workbench` - `Alt + 4`)**：
+  - **10 大高频数据格式与离线开发工具一站式集成**：
+    1. **JSON / JSON5**：美化、单行压缩、智能语法纠错（Smart Fix 自动修复单引号、尾随逗号、未加引号键名与注释）、Key 字典序递归排序、一键推导生成 TypeScript `interface` 类型定义；
+    2. **YAML**：标准缩进（2 / 4 空格）无损美化与压缩，完整解析并映射至右侧交互式结构树；
+    3. **XML / HTML**：层级标签自动缩进美化、单行压缩与节点结构树透视；
+    4. **SQL**：SQL 关键字大写标准化、多子句智能折行美化与单行压缩；
+    5. **JWT Token**：100% 本地离线解码 Header、Payload 与 Signature，自动转换 `iat` / `exp` 时间戳并高亮校验 Token 过期状态；
+    6. **URL Query**：URL 全串编解码、协议/域名/路径拆解与 Query 参数键值表格化提取；
+    7. **Base64**：支持 UTF-8 中文无损 Base64 编码与解码，保持左侧原文幂等并在右侧提供安全只读解码预览；
+    8. **Timestamp 时间戳转换**：秒级（10 位）/ 毫秒级（13 位）时间戳与本地时间、UTC、ISO 8601 及相对时间双向互转，附带常用时间锚点速查；
+    9. **UUID / Hash 生成器**：支持批量生成标准 UUID v4，以及离线实时计算文本的 MD5、SHA-1、SHA-256、SHA-512 哈希摘要；
+    10. **Regex 正则表达式测试器**：支持实时正则匹配高亮、修饰符切换、全量匹配项与捕获组（Capture Groups）结构化提取及常用正则模板一键填入；
+  - **多窗口标签页 (Multi-Window Tabs) 与双栏并排对比 (Side-by-Side Split Compare)**：
+    - 顶部配备 IDE 级多窗口标签栏，点击 `+ 新增窗口` 下拉菜单可直接选择任意格式创建独立工作窗口，支持双击重命名与跨会话自动持久化；
+    - 支持一键开启**分屏对比模式**，同屏左右并排比对两个窗口的 JSON / YAML / SQL 数据结构与字段差异；
+  - **四维联动视图 (`Split` / `Editor` / `Tree` / `Table`)**：
+    - 支持左源码右结构树分栏、纯编辑器、纯交互式树形视图（支持按层级折叠、关键字高亮过滤、一键复制 JSONPath 与节点值）以及二维数组表格透视视图（Table View）。
+- **Git 核心工作台重磅进阶 (`Multi-Repo Batch Ops` / `Stash Shelf` / `Commit Graph` / `Inline Blame`)**：
+  - **多仓库批量协同操作**：左侧仓库列表新增批量操作栏，支持对工作空间内所有仓库一键并发执行 **批量拉取 (Batch Pull)**、**批量抓取 (Batch Fetch)** 与 **批量切换同名分支 (Batch Checkout)**，实时反馈各仓库执行状态明细；
+  - **Git Stash 暂存架/搁置管理器 (`StatusStashDrawer`)**：提交面板顶栏集成 Stash 暂存抽屉，支持一键暂存当前修改（可选包含 Untracked 未跟踪文件并填写备注）、浏览暂存列表、一键应用（Apply）、弹出（Pop）与删除（Drop）；
+  - **提交历史彩色分支拓扑图 (`CommitGraphLane`)**：在提交历史（Git Log）列表中基于 `%P` 多父节点拓扑关系，实时渲染 SVG 彩色分支演进、分叉与合并轨道图；
+  - **代码编辑器行级 Git Blame 溯源 (`Inline Git Blame`)**：在内置 Monaco 源码编辑器顶栏支持一键开启 `Git Blame`，直观展示每一行代码的提交 Hash、作者、提交时间与摘要。
+- **多微服务启动编排中心全方位增强 (`Services & Launch Scripts Manager`)**：
+  - **模块内项目快速切换器**：服务面板左上角内置项目下拉切换器，支持在当前视图直接切换工程并智能同步顶栏活跃 Git 仓库状态；
+  - **端口冲突实时嗅探与一键释放重启**：支持为服务配置监听端口并自动嗅探日志中的 `EADDRINUSE` 端口占用错误，检测到冲突时展示醒目端口告警并提供**「一键释放端口并重启」**（自动查杀占用端口进程并重新拉起服务）；
+  - **顺序启动前置延时 (`startDelayMs`)**：支持配置服务启动前置等待毫秒数，在“一键全部启动”时按编排顺序与延时梯度依次拉起依赖服务；
+  - **控制台日志实时过滤**：日志查看器顶部支持关键字实时过滤匹配与计数，配合一键清空、自动换行与字体缩放；
+  - **一次性任务脚本智能完成识别**：自动区分常驻微服务与一次性构建/工具脚本，当脚本以退出码 `0` 正常结束时自动标记为绿标 `已完成 (Completed)` 状态。
+- **多工程源码资源管理器解绑 Git 硬过滤 (`Workspace Explorer`)**：
+  - **全量工作区文件透视**：移除文件树底层的硬编码目录屏蔽（仅跳过 `.git` / `.svn` / `.hg` 版本库内部目录），默认完整呈现项目下所有配置文件（如 `.env.development`）、构建产物目录（`dist` / `build` / `target`）与依赖目录；
+  - **Git 忽略文件弱化标识与一键显隐开关**：将 `.gitignore` 规则重构为非破坏性的 `isIgnored` 标记（半透明弱化样式），并在资源管理器顶栏提供「显示全部文件 / 隐藏 Git 忽略文件」一键切换按钮及「一键折叠全部文件夹」功能；
+  - **二进制与超大文件安全预览卡片 (`BinaryOrLargeFileNotice`)**：点击图片、压缩包、可执行程序或超过 2MB 的大文件时，自动展示结构化文件元数据卡片，并提供一键「使用系统默认应用打开」与「在系统资源管理器中定位」操作。
+
+### 🐛 缺陷修复与交互体验打磨 (Bug Fixes & UX Polish)
+
+- **修复 Windows 打包与启动批处理脚本阻塞及编码问题**：
+  - 自动剥离或绕过服务运行器内执行 `.bat` 脚本时的阻塞式 `pause` 指令，防止脚本失败或完成时挂起进程；
+  - 统一 `scripts/build_desktop.bat`、`start_desktop.bat` 与 `start_dev.bat` 的控制台提示与 UTF-8 编码处理，消除 CMD 环境下的中文引号报错。
+- **修复微服务控制台连续日志流抢占用户手动滚动的问题**：
+  - 重构 `ServiceLogViewer` 滚动意图检测逻辑（引入 `userScrolledUpRef` 与 `onWheel` 实时锁定），当用户向上滚轮查阅历史日志时，彻底阻断高频日志流强制跳底。
+- **修复微服务启动竞态与运行状态失步问题**：
+  - 增加前端启动中乐观锁保护与后端进程存活实时对账，彻底消除快速启停或跨模块切换时服务状态回跳为 `stopped` 的缺陷。
+- **移除服务卡片冗余类型标签**：精简服务卡片头部视觉层级，避免遮挡长脚本名称。
+- **修复内置文档跨安装环境路径解析与弹窗裁剪问题**：
+  - `builtinDocsHandler.ts` 动态兼容开发环境、绿色便携版与 NSIS 安装版目录结构；
+  - Data Tools 新增窗口下拉菜单与测试样例选择器采用视口级固定定位（Fixed Viewport Positioning），彻底解决窄窗口或滚动容器下的下拉菜单裁剪问题。
+
+### ⚡ 全系统防卡死优化与架构治理 (Performance & Modular Architecture)
+
+- **全工程严格执行 800 行单文件红线与模块化拆分 (`a981579`)**：
+  - 将 4,000+ 行的 `gitService.ts` 拆解为 60 行轻量 Facade 与 `app/src/server/git/` 下的 7 大领域子模块（`gitExec`、`gitStatusIdentityOps`、`gitLogHistoryOps`、`gitBranchPushOps`、`gitMergeConflictOps`、`gitWorkspaceCloneOps`、`gitBatchStashBlameOps`）；
+  - 将 `fileSystemService.ts` 拆分为目录读写、全局代码搜索引擎（`codeSearchService.ts`）与全语种通用忽略规则库（`ignorePatterns.ts`）；
+  - 将 Zustand 大型状态切片与 UI 组件拆分为职责单一的子模块（`workspaceSavedGroupsSlice`、`gitCommitActionsSlice`、`gitPushSlice`、`serviceStorage`、`DiffEditorSubcomponents`、`ThreeWayMergeSubcomponents`、`BranchFlyoutSubmenu` 等），全项目 100% 源码文件控制在 800 行红线以内。
+- **全系统防卡死与高频性能基线 (`dfc3466`, `92fef63`)**：
+  - **Git 子进程并发信号量队列 (`runGit`)**：限制本地 Git 操作最大并发数为 6、远程网络操作最大并发数为 3，并自动注入 `GIT_OPTIONAL_LOCKS=0`，彻底根除多仓库并发引发的进程风暴与 `.git/index.lock` 锁冲突；
+  - **文件监听编译风暴阻断**：`fs.watch` 深度联动 `.gitignore` 与全语种构建产物忽略字典（`ignorePatterns.ts`），引入防抖合并与 2500ms 冷却机制，防止前端/后端编译构建期间触发高频 `git status` 风暴；
+  - **流式日志 32ms 合并节流与 350 行滑动窗口**：通过 `StreamLogBuffer` 增量解析日志分片并以 32ms 节流刷新 Zustand 状态，日志视图默认采用最新 350 行滑动窗口渲染，减少 80% 以上 DOM 节点压力；
+  - **端口检测与进程树清理全面异步化**：将 `netstat` / `lsof` / `taskkill` 全面迁移至异步 `execFileAsync`，彻底消除主进程同步 `execSync` 造成的界面瞬时卡顿；
+  - **L1 快照 LRU 容量控制与后台休眠**：内存快照强制 20 个仓库 LRU 上限，仓库低频元数据增加 30 秒 TTL 与 5 分钟贡献者缓存，窗口最小化或隐藏时自动暂停后台轮询。
+
+---
+
 ## [v0.5.0] - 2026-10-23
 
 > **版本定位**：从单一 Git 客户端跨越式升级为**以 Git 协作与 3-Way Merge 为核心、深度融合多微服务启动编排与本地多工程协同的现代化开发者工作台**。引入全新的多微服务启动与实时 ANSI 日志流控制台、Monaco 编辑器同名标签智能消歧、VS Code 级终端 Dock、Markdown 本地图片流式解析、模块深度解耦架构、严格物理路径隔离及双层持久化容错体系。
