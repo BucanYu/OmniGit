@@ -118,7 +118,7 @@
 ---
 
 ### 4. 📂 多工程工作区资源管理器 (Multi-root Workspace Explorer)
-![多工程资源管理器与 Monaco 代码编辑器](docs/images/02_workspace_explorer_editor.png)
+![全量工作区源码资源管理器与 Monaco 代码编辑器](docs/images/24_workspace_explorer_all_files.png)
 
 - **跨仓库同屏聚合**：专为微服务、前后端分离与 Monorepo 打造，支持在一个窗口内并发展开多个工程目录树，快速收折与层级钻取；
 - **解绑 Git 硬过滤，全量透视工作区文件**：

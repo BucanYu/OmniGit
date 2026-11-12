@@ -117,7 +117,7 @@ With modern software architecture evolving into microservices and monorepos, dev
 ---
 
 ### 4. 📂 Multi-Root Workspace Explorer
-![Workspace Explorer & Monaco Editor](docs/images/02_workspace_explorer_editor.png)
+![Full Workspace Explorer & Monaco Editor](docs/images/24_workspace_explorer_all_files.png)
 
 - **Cross-Repo Single Window**: Designed for microservices, front-and-backend pairs, and monorepos. Browse, expand, and drill down through multiple repository file trees concurrently in a single pane;
 - **Unbound from Git Hard Exclusion (Full Workspace Visibility)**:
